@@ -495,9 +495,8 @@ export default function Marketplace() {
         }
 
         .junni-marketplace .real-deal-tag {
-          position: absolute;
-          top: 12px;
-          right: 12px;
+          display: inline-block;
+          align-self: flex-start;
           background: rgba(5,150,105,0.1);
           color: var(--success);
           font-size: 9px;
@@ -506,6 +505,12 @@ export default function Marketplace() {
           border-radius: 100px;
           text-transform: uppercase;
           letter-spacing: 0.05em;
+        }
+
+        .junni-marketplace .deal-header-left {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
         }
 
         .junni-marketplace .deal-header {
@@ -768,9 +773,11 @@ export default function Marketplace() {
                   href={deal.isDemo ? `/deals/${deal.id}` : `/deals/${deal.id}`}
                   className="deal-card"
                 >
-                  {!deal.isDemo && <span className="real-deal-tag">Live</span>}
                   <div className="deal-header">
-                    <div className="deal-company">{deal.company}</div>
+                    <div className="deal-header-left">
+                      {!deal.isDemo && <span className="real-deal-tag">Live</span>}
+                      <div className="deal-company">{deal.company}</div>
+                    </div>
                     <div className={`deal-badge ${deal.riskClass}`}>{deal.risk}</div>
                   </div>
                   <div className="deal-info">
