@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Junni — Apply for Funding</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fraunces:ital,wght@0,700;0,800;1,700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--cream:#FAF8F4;--navy:#1B2B4B;--gold:#D4940A;--gold-light:#F5C842;--white:#FFFFFF;--border:#E8E2D9;--text-muted:#7A7060;--text-secondary:#4A4035;--green:#059669;--red:#DC2626}
+body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--navy);-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
+
+/* NAV */
+.nav{height:62px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:rgba(250,248,244,0.95);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.nav-logo{display:flex;align-items:center;gap:9px}
+.nav-logomark{width:30px;height:30px;background:var(--navy);border-radius:7px;display:flex;align-items:center;justify-content:center}
+.nav-logomark svg{width:16px;height:16px}
+.nav-wordmark{font-size:17px;font-weight:700;color:var(--navy);letter-spacing:-0.4px}
+.nav-right{display:flex;align-items:center;gap:10px}
+.lang-pill{display:flex;background:rgba(27,43,75,0.06);border-radius:100px;padding:3px}
+.lang-pill button{background:none;border:none;font-size:12px;font-weight:600;padding:4px 11px;border-radius:100px;cursor:pointer;font-family:'Inter',sans-serif;color:var(--text-muted)}
+.lang-pill button.active{background:var(--navy);color:#fff}
+.nav-save{font-size:12px;color:var(--text-muted);font-weight:500}
+
+/* LAYOUT */
+.layout{display:grid;grid-template-columns:280px 1fr;flex:1;min-height:calc(100vh - 62px)}
+
+/* SIDEBAR */
+.sidebar{background:#fff;border-right:1px solid var(--border);padding:32px 24px;position:sticky;top:62px;height:calc(100vh - 62px);overflow-y:auto}
+.sidebar-heading{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:20px}
+.step-nav{display:flex;flex-direction:column;gap:4px;margin-bottom:32px}
+.step-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer;transition:background 0.12s}
+.step-item.active{background:rgba(27,43,75,0.05)}
+.step-item.done .step-dot{background:var(--green);border-color:var(--green)}
+.step-item.done .step-dot::after{content:'✓';color:#fff;font-size:9px;font-weight:800}
+.step-item.active .step-dot{background:var(--navy);border-color:var(--navy)}
+.step-item.active .step-dot::after{content:attr(data-n);color:#fff;font-size:10px;font-weight:700}
+.step-dot{width:26px;height:26px;border-radius:50%;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.15s}
+.step-item:not(.done):not(.active) .step-dot::after{content:attr(data-n);color:var(--text-muted);font-size:10px;font-weight:600}
+.step-text{flex:1}
+.step-title{font-size:13px;font-weight:600;color:var(--navy)}
+.step-item:not(.done):not(.active) .step-title{color:var(--text-muted);font-weight:500}
+.step-sub{font-size:11px;color:var(--text-muted);margin-top:1px}
+.step-connector{width:2px;height:16px;background:var(--border);margin-left:24px;margin-top:2px;margin-bottom:2px;border-radius:2px}
+.step-connector.done{background:var(--green)}
+
+/* PROGRESS BAR */
+.progress-wrap{margin-bottom:28px}
+.progress-label{display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:6px}
+.progress-track{height:4px;background:rgba(27,43,75,0.08);border-radius:4px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--navy),#3D5A8A);border-radius:4px;transition:width 0.4s ease}
+
+/* AI BOX */
+.ai-box{background:rgba(27,43,75,0.03);border:1px solid rgba(27,43,75,0.08);border-radius:10px;padding:14px}
+.ai-box-title{font-size:11px;font-weight:700;color:var(--navy);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.ai-box p{font-size:11px;color:var(--text-muted);line-height:1.55}
+
+/* MAIN CONTENT */
+.main{padding:40px 48px;max-width:780px}
+.step-content{display:none}
+.step-content.active{display:block}
+
+/* STEP HEADER */
+.step-header{margin-bottom:32px}
+.step-eyebrow{font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold);margin-bottom:8px}
+.step-header h1{font-family:'Fraunces',serif;font-size:32px;font-weight:800;color:var(--navy);letter-spacing:-0.8px;margin-bottom:8px}
+.step-header p{font-size:15px;color:var(--text-muted);line-height:1.6}
+
+/* FORM */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:24px}
+.form-grid.cols-1{grid-template-columns:1fr}
+.form-grid.cols-3{grid-template-columns:1fr 1fr 1fr}
+.form-full{grid-column:1/-1}
+.field{}
+label{font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:5px;letter-spacing:0.01em}
+label .req{color:var(--gold)}
+input[type=text],input[type=number],input[type=email],input[type=url],select,textarea{font-family:'Inter',sans-serif;font-size:14px;color:var(--navy);background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px 12px;width:100%;outline:none;transition:border-color 0.12s;-webkit-appearance:none}
+input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(27,43,75,0.06)}
+textarea{resize:vertical;min-height:80px}
+select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%237A7060' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;cursor:pointer}
+.field-hint{font-size:11px;color:var(--text-muted);margin-top:5px;line-height:1.4}
+
+/* NAVIGATION BUTTONS */
+.nav-buttons{display:flex;justify-content:space-between;align-items:center;margin-top:36px;padding-top:24px;border-top:1px solid var(--border)}
+.btn{border:none;padding:11px 22px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:7px;transition:all 0.12s}
+.btn-back{background:none;border:1px solid var(--border);color:var(--navy)}.btn-back:hover{background:rgba(27,43,75,0.03)}
+.btn-next{background:var(--navy);color:#fff}.btn-next:hover{opacity:0.85}
+
+@media (max-width:900px){
+  .layout{grid-template-columns:1fr}
+  .sidebar{position:relative;height:auto;top:0;border-right:none;border-bottom:1px solid var(--border);padding:24px}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-logo">
+    <img src="logos/junni_logo_for_beige_background.png" alt="Junni" style="height:72px;width:auto">
+  </div>
+  <div class="nav-right">
+    <div class="lang-pill"><button class="active">EN</button><button>FR</button></div>
+    <span class="nav-save">Progress saved automatically</span>
+  </div>
+</nav>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-heading">Application Steps</div>
+
+    <div class="progress-wrap">
+      <div class="progress-label">
+        <span id="progress-label">Step 1 of 6</span>
+        <span id="progress-pct">17%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:17%"></div></div>
+    </div>
+
+    <div class="step-nav" id="step-nav">
+      <div class="step-item active" data-step="1" onclick="goToStep(1)" style="cursor:pointer">
+        <div class="step-dot" data-n="1"></div>
+        <div class="step-text"><div class="step-title">Business Profile</div><div class="step-sub">Company info & description</div></div>
+      </div>
+      <div class="step-connector" id="conn-1"></div>
+      <div class="step-item" data-step="2" onclick="goToStep(2)" style="cursor:pointer">
+        <div class="step-dot" data-n="2"></div>
+        <div class="step-text"><div class="step-title">Financial Data</div><div class="step-sub">Revenue & EBITDA history</div></div>
+      </div>
+      <div class="step-connector" id="conn-2"></div>
+      <div class="step-item" data-step="3" onclick="goToStep(3)" style="cursor:pointer">
+        <div class="step-dot" data-n="3"></div>
+        <div class="step-text"><div class="step-title">KYC Verification</div><div class="step-sub">Identity & business docs</div></div>
+      </div>
+      <div class="step-connector" id="conn-3"></div>
+      <div class="step-item" data-step="4" onclick="goToStep(4)" style="cursor:pointer">
+        <div class="step-dot" data-n="4"></div>
+        <div class="step-text"><div class="step-title">Documents</div><div class="step-sub">Financial statements</div></div>
+      </div>
+      <div class="step-connector" id="conn-4"></div>
+      <div class="step-item" data-step="5" onclick="goToStep(5)" style="cursor:pointer">
+        <div class="step-dot" data-n="5"></div>
+        <div class="step-text"><div class="step-title">Loan Request</div><div class="step-sub">Amount, term & use of funds</div></div>
+      </div>
+      <div class="step-connector" id="conn-5"></div>
+      <div class="step-item" data-step="6" onclick="goToStep(6)" style="cursor:pointer">
+        <div class="step-dot" data-n="6"></div>
+        <div class="step-text"><div class="step-title">Review & Submit</div><div class="step-sub">Final check before scoring</div></div>
+      </div>
+    </div>
+
+    <div class="ai-box">
+      <div class="ai-box-title">✦ AI Credit Scoring</div>
+      <p>After submission, our engine analyzes your financials and generates a transparent credit score (1–10) with a full breakdown — typically in under 30 seconds.</p>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- STEP 1: BUSINESS PROFILE -->
+    <div class="step-content active" id="step-1">
+      <div class="step-header">
+        <div class="step-eyebrow">Step 1 of 6</div>
+        <h1>Business Profile</h1>
+        <p>Tell us about your company. This information helps lenders understand your business and market position.</p>
+      </div>
+      <div class="form-grid">
+        <div class="form-full field">
+          <label>Company Name <span class="req">*</span></label>
+          <input type="text" placeholder="Maple Ridge Manufacturing Inc.">
+        </div>
+        <div class="field">
+          <label>Industry <span class="req">*</span></label>
+          <select>
+            <option value="">Select industry</option>
+            <option>Technology</option>
+            <option>Healthcare</option>
+            <option selected>Manufacturing</option>
+            <option>Retail</option>
+            <option>Real Estate</option>
+            <option>Food & Beverage</option>
+            <option>Logistics & Transportation</option>
+            <option>Financial Services</option>
+            <option>Education</option>
+            <option>Energy</option>
+            <option>Construction</option>
+            <option>Media & Entertainment</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Years Operating <span class="req">*</span></label>
+          <input type="number" min="0" placeholder="12" value="12">
+        </div>
+        <div class="field">
+          <label>Number of Employees</label>
+          <input type="number" min="1" placeholder="87" value="87">
+        </div>
+        <div class="field">
+          <label>Website</label>
+          <input type="url" placeholder="https://mapleridge.ca">
+        </div>
+        <div class="field">
+          <label>City</label>
+          <input type="text" placeholder="Toronto" value="Toronto">
+        </div>
+        <div class="field">
+          <label>Province / Country</label>
+          <input type="text" placeholder="Ontario, Canada" value="Ontario, Canada">
+        </div>
+        <div class="form-full field">
+          <label>Business Description</label>
+          <textarea rows="3" placeholder="Brief description of your business, products or services, and target market...">Maple Ridge Manufacturing produces precision industrial components for the automotive and aerospace sectors across Ontario and Quebec. Founded in 2012, we serve 40+ OEM clients with ISO 9001-certified manufacturing processes.</textarea>
+          <div class="field-hint">2–4 sentences. This will appear in your deal listing on the marketplace.</div>
+        </div>
+      </div>
+      <div class="nav-buttons">
+        <button class="btn btn-back">← Cancel</button>
+        <button class="btn btn-next" onclick="goToStep(2)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- STEP 2: FINANCIAL DATA -->
+    <div class="step-content" id="step-2">
+      <div class="step-header">
+        <div class="step-eyebrow">Step 2 of 6</div>
+        <h1>Financial Data</h1>
+        <p>Provide 3 years of financials. This drives your AI credit score — accuracy here matters.</p>
+      </div>
+      <div class="form-grid cols-1">
+        <div class="field">
+          <label>Revenue 2023 (CAD) <span class="req">*</span></label>
+          <input type="number" placeholder="14200000" value="14200000">
+        </div>
+        <div class="field">
+          <label>EBITDA 2023 (CAD) <span class="req">*</span></label>
+          <input type="number" placeholder="2900000" value="2900000">
+        </div>
+        <div class="field">
+          <label>Revenue 2024 (CAD) <span class="req">*</span></label>
+          <input type="number" placeholder="16800000" value="16800000">
+        </div>
+        <div class="field">
+          <label>EBITDA 2024 (CAD) <span class="req">*</span></label>
+          <input type="number" placeholder="3600000" value="3600000">
+        </div>
+        <div class="field">
+          <label>Existing Debt Outstanding (CAD) <span class="req">*</span></label>
+          <input type="number" placeholder="820000" value="820000">
+          <div class="field-hint">Total of all current loans, credit lines, and debt obligations.</div>
+        </div>
+      </div>
+      <div class="nav-buttons">
+        <button class="btn btn-back" onclick="goToStep(1)">← Back</button>
+        <button class="btn btn-next" onclick="goToStep(3)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- STEP 3: KYC VERIFICATION -->
+    <div class="step-content" id="step-3">
+      <div class="step-header">
+        <div class="step-eyebrow">Step 3 of 6</div>
+        <h1>KYC Verification</h1>
+        <p>Upload identity and business verification documents. Required before your deal goes live on the marketplace.</p>
+      </div>
+      <div class="form-grid cols-1">
+        <div class="field">
+          <label>Business License <span class="req">*</span></label>
+          <input type="file" accept=".pdf,.jpg,.png">
+          <div class="field-hint">Provincial or federal business registration certificate</div>
+        </div>
+        <div class="field">
+          <label>Tax ID / CRA Number <span class="req">*</span></label>
+          <input type="file" accept=".pdf,.jpg,.png">
+          <div class="field-hint">Business Number (BN) or CRA registration document</div>
+        </div>
+        <div class="field">
+          <label>Bank Statement <span class="req">*</span></label>
+          <input type="file" accept=".pdf,.jpg,.png">
+          <div class="field-hint">Most recent 3 months of business banking statements</div>
+        </div>
+      </div>
+      <div class="nav-buttons">
+        <button class="btn btn-back" onclick="goToStep(2)">← Back</button>
+        <button class="btn btn-next" onclick="goToStep(4)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- STEP 4: DOCUMENTS -->
+    <div class="step-content" id="step-4">
+      <div class="step-header">
+        <div class="step-eyebrow">Step 4 of 6</div>
+        <h1>Supporting Documents</h1>
+        <p>Upload additional documents to strengthen your application. Deals with full documentation receive 40% more lender bids.</p>
+      </div>
+      <div class="form-grid cols-1">
+        <div class="field">
+          <label>Financial Statements (Optional)</label>
+          <input type="file" accept=".pdf,.xlsx,.xls,.csv,.doc,.docx">
+          <div class="field-hint">PDF, Excel, Word · up to 10MB · Optional but recommended</div>
+        </div>
+        <div class="field">
+          <label>Business Plan (Optional)</label>
+          <input type="file" accept=".pdf,.doc,.docx">
+          <div class="field-hint">Investor deck or business plan</div>
+        </div>
+        <div class="field">
+          <label>Tax Returns (Optional)</label>
+          <input type="file" accept=".pdf">
+          <div class="field-hint">CRA T2 or corporate tax returns</div>
+        </div>
+      </div>
+      <div class="nav-buttons">
+        <button class="btn btn-back" onclick="goToStep(3)">← Back</button>
+        <button class="btn btn-next" onclick="goToStep(5)">Continue →</button>
+      </div>
+    </div>
+
+    <!-- STEP 5: LOAN REQUEST -->
+    <div class="step-content" id="step-5">
+      <div class="step-header">
+        <div class="step-eyebrow">Step 5 of 6</div>
+        <h1>Loan Request</h1>
+        <p>Define the terms of your financing. Lenders will see these details and submit competitive bids.</p>
+      </div>
+      <div class="form-grid cols-1">
+        <div class="field">
+          <label>Requested Amount (CAD) <span class="req">*</span></label>
+          <input type="number" placeholder="3200000" value="3200000">
+          <div class="field-hint">Minimum $500,000 · Maximum $20,000,000+</div>
+        </div>
+        <div class="field">
+          <label>Loan Term <span class="req">*</span></label>
+          <select>
+            <option>12 months (1.0 yr)</option>
+            <option>18 months (1.5 yr)</option>
+            <option>24 months (2.0 yr)</option>
+            <option selected>36 months (3.0 yr)</option>
+            <option>48 months (4.0 yr)</option>
+            <option>60 months (5.0 yr)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Target Interest Rate (% p.a.)</label>
+          <input type="number" step="0.1" placeholder="7.5" value="7.4">
+          <div class="field-hint">Leave blank to accept market rate from lenders.</div>
+        </div>
+        <div class="field">
+          <label>Use of Funds <span class="req">*</span></label>
+          <textarea rows="3" placeholder="Describe how you plan to use the financing...">Equipment expansion ($1.9M), working capital ($800K), and partial debt refinancing ($500K) to support our 2025 growth plan.</textarea>
+        </div>
+      </div>
+      <div class="nav-buttons">
+        <button class="btn btn-back" onclick="goToStep(4)">← Back</button>
+        <button class="btn btn-next" onclick="goToStep(6)">Review Application →</button>
+      </div>
+    </div>
+
+    <!-- STEP 6: REVIEW & SUBMIT -->
+    <div class="step-content" id="step-6">
+      <div class="step-header">
+        <div class="step-eyebrow">Step 6 of 6</div>
+        <h1>Review & Submit</h1>
+        <p>Review your application before submitting for AI credit scoring.</p>
+      </div>
+      <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:14px">Business Profile</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><div style="font-size:11px;color:var(--text-muted)">Company</div><div style="font-size:13px;font-weight:600;color:var(--navy)">Maple Ridge Manufacturing Inc.</div></div>
+          <div><div style="font-size:11px;color:var(--text-muted)">Industry</div><div style="font-size:13px;font-weight:600;color:var(--navy)">Manufacturing</div></div>
+          <div><div style="font-size:11px;color:var(--text-muted)">Years Operating</div><div style="font-size:13px;font-weight:600;color:var(--navy)">12 years</div></div>
+          <div><div style="font-size:11px;color:var(--text-muted)">Location</div><div style="font-size:13px;font-weight:600;color:var(--navy)">Toronto, Ontario</div></div>
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:14px">Loan Request</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><div style="font-size:11px;color:var(--text-muted)">Amount</div><div style="font-size:13px;font-weight:600;color:var(--navy)">$3,200,000</div></div>
+          <div><div style="font-size:11px;color:var(--text-muted)">Term</div><div style="font-size:13px;font-weight:600;color:var(--navy)">36 months</div></div>
+          <div><div style="font-size:11px;color:var(--text-muted)">Rate Target</div><div style="font-size:13px;font-weight:600;color:var(--navy)">7.4% p.a.</div></div>
+        </div>
+      </div>
+      <div class="nav-buttons">
+        <button class="btn btn-back" onclick="goToStep(5)">← Back</button>
+        <button class="btn btn-next" style="background:var(--gold);color:#fff" onclick="submitApplication()">✦ Submit Application</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+let currentStep = 1;
+
+function goToStep(n) {
+  document.querySelectorAll('.step-content').forEach(el => el.classList.remove('active'));
+  const target = document.getElementById('step-' + n);
+  if (target) target.classList.add('active');
+
+  document.querySelectorAll('.step-item').forEach(item => {
+    const s = parseInt(item.dataset.step);
+    item.classList.remove('active','done');
+    if (s < n) item.classList.add('done');
+    else if (s === n) item.classList.add('active');
+  });
+
+  for(let i=1;i<=5;i++){
+    const c = document.getElementById('conn-'+i);
+    if(c) c.classList.toggle('done', i < n);
+  }
+
+  const pct = Math.round(((n-1)/5)*100);
+  document.getElementById('progress-fill').style.width = Math.max(17,pct)+'%';
+  document.getElementById('progress-pct').textContent = Math.max(17,pct)+'%';
+  document.getElementById('progress-label').textContent = 'Step '+n+' of 6';
+
+  currentStep = n;
+  window.scrollTo(0,0);
+}
+
+function submitApplication() {
+  alert('Application submitted! Your AI credit score will be generated shortly.');
+}
+</script>
+
+</body>
+</html>

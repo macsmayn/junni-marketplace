@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — Junni</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,700;0,800;0,900;1,700;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --navy: #1B2B4B;
+      --gold: #D4940A;
+      --gold-light: #F5C842;
+      --cream: #FAF8F4;
+      --white: #FFFFFF;
+      --border: #E8E2D9;
+      --text-muted: #7A7060;
+      --text-secondary: #4A4035;
+      --success: #059669;
+      --warning: #D97706;
+      --danger: #DC2626;
+      --info: #2563EB;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', sans-serif;
+      font-weight: 400;
+      color: var(--text-secondary);
+      background-color: var(--cream);
+    }
+
+    /* ===== NAVIGATION ===== */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 80px;
+      background: rgba(250, 248, 244, 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 40px;
+      z-index: 100;
+    }
+
+    nav .logo img {
+      height: 72px;
+      width: auto;
+    }
+
+    /* ===== MAIN CONTAINER ===== */
+    .login-wrapper {
+      margin-top: 80px;
+      min-height: calc(100vh - 80px);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .login-left {
+      background: var(--navy);
+      padding: 60px 60px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      color: var(--white);
+    }
+
+    .login-left h1 {
+      font-family: 'Fraunces', serif;
+      font-size: 48px;
+      font-weight: 900;
+      margin-bottom: 20px;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+    }
+
+    .login-left p {
+      font-family: 'Inter', sans-serif;
+      font-size: 16px;
+      font-weight: 400;
+      color: rgba(255, 255, 255, 0.7);
+      line-height: 1.65;
+      margin-bottom: 40px;
+    }
+
+    .login-features {
+      list-style: none;
+      gap: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .login-features li {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .login-features li::before {
+      content: '✓';
+      color: var(--gold);
+      font-weight: 700;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    /* ===== LOGIN FORM ===== */
+    .login-right {
+      background: var(--white);
+      padding: 60px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .login-form-header {
+      margin-bottom: 40px;
+    }
+
+    .login-form-header h2 {
+      font-family: 'Fraunces', serif;
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--navy);
+      margin-bottom: 8px;
+      letter-spacing: -0.03em;
+    }
+
+    .login-form-header p {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      letter-spacing: 0.01em;
+    }
+
+    input[type="email"],
+    input[type="password"] {
+      width: 100%;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--navy);
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    input[type="email"]:focus,
+    input[type="password"]:focus {
+      border-color: var(--navy);
+      box-shadow: 0 0 0 3px rgba(27, 43, 75, 0.06);
+    }
+
+    input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .form-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      font-size: 13px;
+    }
+
+    .form-row a {
+      color: var(--navy);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .form-row a:hover {
+      color: var(--gold);
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+
+    .btn-sign-in {
+      width: 100%;
+      background: var(--navy);
+      color: var(--white);
+      border: none;
+      border-radius: 8px;
+      padding: 14px 24px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-bottom: 16px;
+    }
+
+    .btn-sign-in:hover {
+      opacity: 0.85;
+    }
+
+    .btn-sign-up {
+      width: 100%;
+      background: transparent;
+      color: var(--navy);
+      border: 1px solid var(--navy);
+      border-radius: 8px;
+      padding: 14px 24px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-sign-up:hover {
+      background: var(--navy);
+      color: var(--white);
+    }
+
+    .signup-link {
+      text-align: center;
+      margin-top: 20px;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    .signup-link a {
+      color: var(--navy);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .signup-link a:hover {
+      color: var(--gold);
+    }
+
+    /* ===== MOBILE ===== */
+    @media (max-width: 768px) {
+      nav {
+        padding: 0 20px;
+        height: 70px;
+      }
+
+      nav .logo img {
+        height: 50px;
+      }
+
+      .login-wrapper {
+        grid-template-columns: 1fr;
+      }
+
+      .login-left {
+        padding: 40px 20px;
+        min-height: 300px;
+      }
+
+      .login-left h1 {
+        font-size: 32px;
+      }
+
+      .login-right {
+        padding: 40px 20px;
+      }
+
+      .login-form-header h2 {
+        font-size: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav>
+    <a href="/" class="logo">
+      <img src="logos/junni_logo_for_beige_background.png" alt="Junni" style="height:72px;width:auto">
+    </a>
+  </nav>
+
+  <!-- Login Container -->
+  <div class="login-wrapper">
+    
+    <!-- Left Panel -->
+    <div class="login-left">
+      <h1>Access your account.</h1>
+      <p>Manage your deals, track funding progress, and monitor your portfolio in real time.</p>
+      <ul class="login-features">
+        <li>Real-time deal tracking</li>
+        <li>Transparent bid competition</li>
+        <li>Instant fund transfers</li>
+        <li>24/7 dashboard access</li>
+      </ul>
+    </div>
+
+    <!-- Right Panel - Form -->
+    <div class="login-right">
+      <div class="login-form-header">
+        <h2>Sign in</h2>
+        <p>Enter your credentials to continue</p>
+      </div>
+
+      <form onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label for="email">Email Address</label>
+          <input type="email" id="email" placeholder="you@company.com" required>
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" placeholder="••••••••" required>
+        </div>
+
+        <div class="form-row">
+          <div class="checkbox-group">
+            <input type="checkbox" id="remember">
+            <label for="remember" style="margin-bottom: 0; font-weight: 400;">Remember me</label>
+          </div>
+          <a href="#">Forgot password?</a>
+        </div>
+
+        <button type="submit" class="btn-sign-in">Sign In</button>
+      </form>
+
+      <div class="signup-link">
+        Don't have an account? <a href="/role-select">Create one</a>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    function handleLogin(event) {
+      event.preventDefault();
+      console.log('Login attempted');
+      // Redirect based on role detection or stored preference
+      window.location.href = '/marketplace';
+    }
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Junni — Canada's SME Debt Marketplace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,700;0,800;0,900;1,700;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --navy: #1B2B4B;
+      --gold: #D4940A;
+      --gold-light: #F5C842;
+      --cream: #FAF8F4;
+      --white: #FFFFFF;
+      --border: #E8E2D9;
+      --text-muted: #7A7060;
+      --text-secondary: #4A4035;
+      --success: #059669;
+      --warning: #D97706;
+      --danger: #DC2626;
+      --info: #2563EB;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', sans-serif;
+      font-weight: 400;
+      color: var(--text-secondary);
+      background-color: var(--cream);
+    }
+
+    /* ===== NAVIGATION ===== */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 62px;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 40px;
+      z-index: 100;
+      transition: background 0.3s ease;
+    }
+
+    nav.scrolled {
+      background: rgba(250, 248, 244, 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    nav .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: 'Fraunces', serif;
+      font-weight: 800;
+      color: var(--navy);
+      font-size: 20px;
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+
+    nav .logo img {
+      height: 50px;
+      width: auto;
+    }
+
+    nav .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .lang-toggle {
+      display: flex;
+      gap: 0;
+      background: transparent;
+      border: none;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    .lang-toggle button {
+      background: transparent;
+      border: none;
+      padding: 4px 8px;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 12px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .lang-toggle button.active {
+      background: var(--navy);
+      color: var(--white);
+      border-radius: 100px;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: 'Inter', sans-serif;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .btn-navy {
+      background: var(--navy);
+      color: var(--white);
+    }
+
+    .btn-navy:hover {
+      opacity: 0.85;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--navy);
+      border: 1px solid var(--navy);
+    }
+
+    .btn-ghost:hover {
+      background: var(--navy);
+      color: var(--white);
+    }
+
+    /* ===== HERO ===== */
+    .hero {
+      margin-top: 62px;
+      min-height: calc(100vh - 62px);
+      background: var(--navy);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      padding: 60px 40px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before,
+    .hero::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+      opacity: 0.04;
+      background: var(--white);
+    }
+
+    .hero::before {
+      width: 400px;
+      height: 400px;
+      top: -100px;
+      right: 10%;
+    }
+
+    .hero::after {
+      width: 300px;
+      height: 300px;
+      bottom: 0;
+      left: 5%;
+    }
+
+    .hero-left {
+      z-index: 2;
+      color: var(--white);
+    }
+
+    .hero-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: var(--gold);
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .hero h1 {
+      font-family: 'Fraunces', serif;
+      font-size: 56px;
+      font-weight: 900;
+      line-height: 1.2;
+      margin-bottom: 16px;
+      letter-spacing: -0.03em;
+    }
+
+    .hero h1 .italic-gold {
+      font-style: italic;
+      color: var(--gold);
+    }
+
+    .hero-subtitle {
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      font-weight: 400;
+      line-height: 1.65;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: 32px;
+      max-width: 500px;
+    }
+
+    .hero-ctas {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn-gold {
+      background: var(--gold);
+      color: var(--white);
+    }
+
+    .btn-gold:hover {
+      opacity: 0.9;
+    }
+
+    .hero-right {
+      z-index: 2;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .demo-card {
+      background: var(--white);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 4px 24px rgba(27, 43, 75, 0.15);
+      max-width: 320px;
+      width: 100%;
+    }
+
+    .demo-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 16px;
+    }
+
+    .demo-card-title {
+      font-family: 'Fraunces', serif;
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--navy);
+      letter-spacing: -0.03em;
+    }
+
+    .demo-card-badge {
+      background: rgba(5, 150, 105, 0.08);
+      color: var(--success);
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 100px;
+    }
+
+    .demo-card-stat {
+      margin-bottom: 20px;
+    }
+
+    .demo-card-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 6px;
+    }
+
+    .demo-card-value {
+      font-family: 'Fraunces', serif;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--navy);
+      letter-spacing: -0.03em;
+    }
+
+    .demo-progress-bar {
+      height: 3px;
+      background: rgba(27, 43, 75, 0.08);
+      border-radius: 3px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+
+    .demo-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--navy) 0%, #3D5A8A 100%);
+      width: 78%;
+      animation: fillBar 2s ease-in-out;
+    }
+
+    @keyframes fillBar {
+      from { width: 0%; }
+      to { width: 78%; }
+    }
+
+    .demo-progress-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    /* ===== STATS BAR ===== */
+    .stats-bar {
+      background: var(--cream);
+      padding: 40px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 40px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .stat-item {
+      text-align: left;
+      padding-left: 20px;
+      border-left: 2px solid var(--gold);
+    }
+
+    .stat-value {
+      font-family: 'Fraunces', serif;
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--gold);
+      margin-bottom: 4px;
+      letter-spacing: -0.03em;
+    }
+
+    .stat-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+    }
+
+    /* ===== HOW IT WORKS ===== */
+    .how-it-works {
+      background: var(--navy);
+      padding: 80px 40px;
+      margin: 80px 0 0 0;
+    }
+
+    .how-it-works-content {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .how-it-works .section-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: var(--gold);
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .how-it-works h2 {
+      font-family: 'Fraunces', serif;
+      font-size: 38px;
+      font-weight: 800;
+      color: var(--white);
+      margin-bottom: 12px;
+      letter-spacing: -0.03em;
+    }
+
+    .how-it-works-intro {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: 32px;
+      max-width: 400px;
+    }
+
+    .steps-container {
+      background: rgba(61, 90, 138, 0.3);
+      border: 1px solid rgba(212, 148, 10, 0.2);
+      border-radius: 12px;
+      padding: 48px 40px;
+    }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 48px;
+    }
+
+    .step {
+      text-align: left;
+    }
+
+    .step-number {
+      font-family: 'Fraunces', serif;
+      font-size: 64px;
+      font-weight: 800;
+      color: var(--gold);
+      margin-bottom: 16px;
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+
+    .step-title {
+      font-family: 'Fraunces', serif;
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--white);
+      margin-bottom: 12px;
+      letter-spacing: -0.03em;
+    }
+
+    .step-desc {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      color: rgba(255, 255, 255, 0.6);
+      line-height: 1.65;
+    }
+
+    /* ===== VALUE SECTIONS ===== */
+    .value-section {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 80px 40px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+    }
+
+    .value-section.reversed {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .value-section.reversed .left {
+      order: 2;
+    }
+
+    .value-section.reversed .right {
+      order: 1;
+    }
+
+    .value-card {
+      background: var(--navy);
+      padding: 40px;
+      border-radius: 14px;
+    }
+
+    .value-card h2 {
+      font-family: 'Fraunces', serif;
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--white);
+      margin-bottom: 24px;
+      letter-spacing: -0.03em;
+    }
+
+    .value-list {
+      list-style: none;
+      margin-bottom: 32px;
+    }
+
+    .value-list li {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      color: var(--white);
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 1.65;
+    }
+
+    .value-list li::before {
+      content: '✓';
+      color: var(--gold);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .value-preview {
+      background: var(--white);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 4px 24px rgba(27, 43, 75, 0.1);
+    }
+
+    /* ===== SOCIAL PROOF ===== */
+    .social-proof {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 80px 40px;
+      text-align: center;
+    }
+
+    .social-proof .section-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: var(--gold);
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .social-proof .section-title {
+      font-family: 'Fraunces', serif;
+      font-size: 38px;
+      font-weight: 800;
+      color: var(--navy);
+      margin-bottom: 40px;
+      letter-spacing: -0.03em;
+    }
+
+    .logos-row {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      margin-bottom: 60px;
+      flex-wrap: nowrap;
+    }
+
+    .logo-placeholder {
+      flex: 1;
+      min-width: 0;
+      height: 140px;
+      background: #E8E2D9;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .testimonials {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 32px;
+    }
+
+    .testimonial-card {
+      background: var(--white);
+      padding: 32px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+
+    .testimonial-quote {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--text-secondary);
+      line-height: 1.65;
+      margin-bottom: 20px;
+      font-style: italic;
+    }
+
+    .testimonial-author {
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      color: var(--navy);
+      font-size: 14px;
+    }
+
+    .testimonial-role {
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    /* ===== FINAL CTA ===== */
+    .final-cta {
+      background: var(--navy);
+      padding: 80px 40px;
+      text-align: center;
+      color: var(--white);
+    }
+
+    .final-cta h2 {
+      font-family: 'Fraunces', serif;
+      font-size: 48px;
+      font-weight: 900;
+      margin-bottom: 32px;
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+    }
+
+    .final-cta h2 .italic-gold {
+      font-style: italic;
+      color: var(--gold);
+    }
+
+    .final-cta-buttons {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+    }
+
+    /* ===== FOOTER ===== */
+    footer {
+      background: var(--cream);
+      padding: 40px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    footer .logo img {
+      height: 72px;
+      width: auto;
+    }
+
+    footer .footer-links {
+      display: flex;
+      gap: 32px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    footer .footer-links a {
+      color: var(--navy);
+      text-decoration: none;
+    }
+
+    footer .footer-links a:hover {
+      color: var(--gold);
+    }
+
+    footer .copyright {
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    /* ===== MOBILE ===== */
+    @media (max-width: 768px) {
+      nav {
+        padding: 0 20px;
+      }
+
+      .hero {
+        grid-template-columns: 1fr;
+        padding: 40px 20px;
+        min-height: auto;
+      }
+
+      .hero h1 {
+        font-size: 38px;
+      }
+
+      .hero-ctas {
+        flex-direction: column;
+      }
+
+      .btn {
+        width: 100%;
+        text-align: center;
+      }
+
+      .stats-bar {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 24px;
+        padding: 40px 20px;
+      }
+
+      .section-title {
+        font-size: 28px;
+      }
+
+      .steps-grid {
+        grid-template-columns: 1fr;
+        gap: 32px;
+      }
+
+      .value-section {
+        grid-template-columns: 1fr;
+        padding: 40px 20px;
+        gap: 40px;
+      }
+
+      .value-section.reversed .left {
+        order: unset;
+      }
+
+      .value-section.reversed .right {
+        order: unset;
+      }
+
+      .testimonials {
+        grid-template-columns: 1fr;
+      }
+
+      .final-cta h2 {
+        font-size: 32px;
+      }
+
+      .final-cta-buttons {
+        flex-direction: column;
+      }
+
+      footer {
+        flex-direction: column;
+        gap: 24px;
+        text-align: center;
+      }
+
+      footer .footer-links {
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav id="nav">
+    <a href="/" class="logo">
+      <img src="logos/junni_logo_for_beige_background.png" alt="Junni" style="height:72px;width:auto">
+    </a>
+    <div class="nav-right">
+      <div class="lang-toggle">
+        <button class="active" onclick="setLang('en')">EN</button>
+        <span style="color: var(--text-muted); margin: 0 4px;">|</span>
+        <button onclick="setLang('fr')">FR</button>
+      </div>
+      <a href="/login" class="btn btn-ghost">Sign In</a>
+      <a href="/role-select" class="btn btn-navy">Apply for Funding</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-left">
+      <div class="hero-label">Canada's SME Debt Marketplace</div>
+      <h1>Capital finds the right <span class="italic-gold">deal.</span></h1>
+      <p class="hero-subtitle">Junni connects Canadian SMEs with institutional lenders competing to fund them. AI-scored. Transparent. 7 days.</p>
+      <div class="hero-ctas">
+        <a href="/role-select" class="btn btn-gold">Apply for Funding</a>
+        <a href="/marketplace" class="btn btn-ghost" style="border-color: var(--white); color: var(--white);">Browse Marketplace</a>
+      </div>
+    </div>
+    <div class="hero-right">
+      <div class="demo-card">
+        <div class="demo-card-header">
+          <div class="demo-card-title">Maple Ridge Mfg</div>
+          <div class="demo-card-badge">Very Low Risk</div>
+        </div>
+        <div class="demo-card-stat">
+          <div class="demo-card-label">Loan Amount</div>
+          <div class="demo-card-value">$3.2M</div>
+        </div>
+        <div class="demo-card-stat">
+          <div class="demo-card-label">Funding Progress</div>
+          <div class="demo-progress-bar">
+            <div class="demo-progress-fill"></div>
+          </div>
+          <div class="demo-progress-label">78% funded • 12 lenders bidding</div>
+        </div>
+        <div class="demo-card-stat">
+          <div class="demo-card-label">Best Rate Offered</div>
+          <div class="demo-card-value" style="color: var(--success);">6.9%</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats Bar -->
+  <section class="stats-bar">
+    <div class="stat-item">
+      <div class="stat-value">$450M+</div>
+      <div class="stat-label">Capital Deployed</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value">1,200+</div>
+      <div class="stat-label">Active Deals</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value">5,000+</div>
+      <div class="stat-label">Lenders</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value">7 Days</div>
+      <div class="stat-label">Average Funding Time</div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="how-it-works">
+    <div class="how-it-works-content">
+      <div class="section-label">The Process</div>
+      <h2>Three steps to funded.</h2>
+      <p class="how-it-works-intro">From application to capital — transparent every step of the way.</p>
+      <div class="steps-container">
+        <div class="steps-grid">
+          <div class="step">
+            <div class="step-number">01</div>
+            <h3 class="step-title">Submit your deal</h3>
+            <p class="step-desc">Upload financials and funding requirements. Our AI scores your business and assigns an accurate risk tier within hours.</p>
+          </div>
+          <div class="step">
+            <div class="step-number">02</div>
+            <h3 class="step-title">Lenders compete</h3>
+            <p class="step-desc">Thousands of qualified lenders review your full credit memo and submit bids. Competition means better terms for you.</p>
+          </div>
+          <div class="step">
+            <div class="step-number">03</div>
+            <h3 class="step-title">Close & get funded</h3>
+            <p class="step-desc">Accept the best offer, sign digitally, and receive your funds. Everything tracked in one clean dashboard.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Borrower Value -->
+  <section class="value-section">
+    <div class="left">
+      <div class="value-card">
+        <h2>For Borrowers</h2>
+        <ul class="value-list">
+          <li>Transparent rates from multiple lenders</li>
+          <li>Fast AI credit scoring, no surprises</li>
+          <li>Capital in 7 days, not 7 months</li>
+          <li>Rates starting at 6.2% for strong profiles</li>
+        </ul>
+        <a href="/role-select" class="btn btn-gold" style="width: 100%; text-align: center;">Apply for Funding</a>
+      </div>
+    </div>
+    <div class="right">
+      <div class="value-preview">
+        <div style="margin-bottom: 24px;">
+          <div style="font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">Credit Score</div>
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <div style="width: 80px; height: 80px; background: linear-gradient(135deg, var(--gold), var(--navy)); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--white); font-family: 'Fraunces', serif; font-size: 32px; font-weight: 800; letter-spacing: -0.03em;">8.4</div>
+            <div>
+              <div style="font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 700; color: var(--success); text-transform: uppercase; letter-spacing: 0.05em;">Very Low Risk</div>
+              <div style="font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 400; color: var(--text-secondary);">Excellent financial health</div>
+            </div>
+          </div>
+        </div>
+        <div style="padding-top: 24px; border-top: 1px solid var(--border);">
+          <div style="font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">Active Bids</div>
+          <div style="font-family: 'Fraunces', serif; font-size: 28px; font-weight: 800; color: var(--navy); letter-spacing: -0.03em; margin-bottom: 4px;">12</div>
+          <div style="font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 400; color: var(--text-muted);">Lenders competing for this deal</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lender Value -->
+  <section class="value-section reversed">
+    <div class="left">
+      <div class="value-preview">
+        <div style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border);">
+          <div style="font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 700; color: var(--gold); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">Portfolio</div>
+          <div style="font-family: 'Fraunces', serif; font-size: 24px; font-weight: 800; color: var(--navy); letter-spacing: -0.03em;">$142K Deployed</div>
+        </div>
+        <div style="margin-bottom: 16px;">
+          <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy); letter-spacing: -0.03em;">Prairie Health Clinics</div>
+          <div style="font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 400; color: var(--text-muted); margin-bottom: 6px;">Healthcare • Saskatchewan</div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;">$150K</span>
+            <span style="font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; color: var(--success);">7.3% • Active</span>
+          </div>
+        </div>
+        <div style="margin-bottom: 16px;">
+          <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy); letter-spacing: -0.03em;">Cascade Logistics</div>
+          <div style="font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 400; color: var(--text-muted); margin-bottom: 6px;">Logistics • Alberta</div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;">$80K</span>
+            <span style="font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; color: var(--success);">8.1% • Active</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy); letter-spacing: -0.03em;">Riverdale Retail</div>
+          <div style="font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 400; color: var(--text-muted); margin-bottom: 6px;">Retail • Ontario</div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;">$50K</span>
+            <span style="font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; color: var(--gold);">8.8% • Funded</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="value-card">
+        <h2>For Lenders</h2>
+        <ul class="value-list">
+          <li>Institutional-grade deal sourcing</li>
+          <li>Transparent bid competition on every deal</li>
+          <li>Weighted returns 6.2%–8.8% per position</li>
+          <li>Full portfolio analytics and reporting</li>
+        </ul>
+        <a href="/marketplace" class="btn btn-gold" style="width: 100%; text-align: center;">Browse Deals</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Social Proof -->
+  <section class="social-proof">
+    <div class="section-label">Trusted By</div>
+    <h2 class="section-title">Institutions across Canada</h2>
+    <div class="logos-row">
+      <div class="logo-placeholder">Family Office</div>
+      <div class="logo-placeholder">Credit Union</div>
+      <div class="logo-placeholder">Fintech</div>
+      <div class="logo-placeholder">PE Fund</div>
+    </div>
+    <div class="testimonials">
+      <div class="testimonial-card">
+        <p class="testimonial-quote">"Junni has transformed how we deploy capital into Canadian SMEs. The AI scoring is remarkably accurate and the marketplace is genuinely competitive."</p>
+        <div class="testimonial-author">Sarah Chen</div>
+        <div class="testimonial-role">Portfolio Manager, Cascade Capital</div>
+      </div>
+      <div class="testimonial-card">
+        <p class="testimonial-quote">"We closed our funding in 6 days instead of the 4 months our traditional lenders said we'd need. The process was transparent and fair."</p>
+        <div class="testimonial-author">Marc Pellerin</div>
+        <div class="testimonial-role">Founder & CEO, Maple Ridge Manufacturing</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="final-cta">
+    <h2>Ready to find your <span class="italic-gold">funding?</span></h2>
+    <div class="final-cta-buttons">
+      <a href="/role-select" class="btn btn-gold">Apply as a Borrower</a>
+      <a href="/marketplace" class="btn btn-ghost" style="border-color: var(--white); color: var(--white);">Join as a Lender</a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <a href="/" class="logo">
+      <img src="logos/junni_logo_for_beige_background.png" alt="Junni logo" style="height:72px;width:auto">
+    </a>
+    <div class="footer-links">
+      <a href="/marketplace">Marketplace</a>
+      <a href="/privacy">Privacy Policy</a>
+      <a href="/terms">Terms of Service</a>
+    </div>
+    <div class="copyright">© 2026 Junni Financial Inc.</div>
+  </footer>
+
+  <script>
+    function setLang(lang) {
+      const buttons = document.querySelectorAll('.lang-toggle button');
+      buttons.forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+      console.log('Language set to:', lang);
+    }
+
+    const nav = document.getElementById('nav');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 100) {
+        nav.classList.add('scrolled');
+      } else {
+        nav.classList.remove('scrolled');
+      }
+    });
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Maple Ridge Manufacturing — Junni</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,700;0,800;0,900;1,700;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --navy: #1B2B4B;
+      --gold: #D4940A;
+      --gold-light: #F5C842;
+      --cream: #FAF8F4;
+      --white: #FFFFFF;
+      --border: #E8E2D9;
+      --text-muted: #7A7060;
+      --text-secondary: #4A4035;
+      --success: #059669;
+      --warning: #D97706;
+      --danger: #DC2626;
+      --info: #2563EB;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', sans-serif;
+      font-weight: 400;
+      color: var(--text-secondary);
+      background-color: var(--cream);
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      height: 80px;
+      background: rgba(250, 248, 244, 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 40px;
+      z-index: 100;
+    }
+
+    nav .logo {
+      display: flex;
+      align-items: center;
+    }
+
+    nav .logo img {
+      height: 40px;
+      width: auto;
+    }
+
+    nav .nav-left {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    nav .nav-back {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: color 0.2s ease;
+    }
+
+    nav .nav-back:hover {
+      color: var(--navy);
+    }
+
+    nav .nav-right {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn-nav {
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      transition: all 0.2s ease;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--navy);
+      border: 1px solid var(--navy);
+    }
+
+    .btn-ghost:hover {
+      background: var(--navy);
+      color: var(--white);
+    }
+
+    .btn-gold {
+      background: var(--gold);
+      color: var(--white);
+    }
+
+    .btn-gold:hover {
+      opacity: 0.88;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px;
+    }
+
+    .hero-section {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 32px;
+      margin-bottom: 48px;
+    }
+
+    .hero-left {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(5, 150, 105, 0.08);
+      color: var(--success);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 100px;
+      width: fit-content;
+      margin-bottom: 16px;
+    }
+
+    .hero-title {
+      font-family: 'Fraunces', serif;
+      font-size: 44px;
+      font-weight: 800;
+      color: var(--navy);
+      margin-bottom: 12px;
+      line-height: 1.1;
+    }
+
+    .hero-meta {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .hero-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hero-desc {
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .card-title {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .bid-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .form-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+
+    .form-input {
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--navy);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    .form-input:focus {
+      border-color: var(--navy);
+    }
+
+    .form-hint {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: 6px;
+    }
+
+    .btn-submit {
+      width: 100%;
+      background: var(--gold);
+      color: var(--white);
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-submit:hover {
+      opacity: 0.88;
+    }
+
+    .sidebar-stat {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+    }
+
+    .sidebar-stat:last-child {
+      border-bottom: none;
+    }
+
+    .sidebar-stat-label {
+      color: var(--text-muted);
+    }
+
+    .sidebar-stat-val {
+      font-weight: 700;
+      color: var(--navy);
+    }
+
+    .doc-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .doc-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .doc-icon-and-text {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .doc-icon {
+      font-size: 16px;
+    }
+
+    .doc-name {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--navy);
+    }
+
+    .doc-type {
+      font-family: 'Inter', sans-serif;
+      font-size: 9px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    .btn-view {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--navy);
+      border-radius: 5px;
+      padding: 3px 8px;
+      font-family: 'Inter', sans-serif;
+      font-size: 9px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-view:hover {
+      background: rgba(27, 43, 75, 0.03);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 32px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 32px;
+    }
+
+    .tab {
+      padding: 12px 0;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .tab.active {
+      color: var(--navy);
+      border-bottom-color: var(--navy);
+    }
+
+    .tab:hover {
+      color: var(--navy);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-bottom: 48px;
+    }
+
+    .bid-item {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+    }
+
+    .bid-lender {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .bid-lender-name {
+      font-weight: 600;
+      color: var(--navy);
+    }
+
+    .bid-lender-type {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .bid-rate {
+      font-family: 'Fraunces', serif;
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--navy);
+    }
+
+    .bid-details {
+      display: flex;
+      gap: 24px;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    .bid-amount {
+      color: var(--text-muted);
+    }
+
+    .bid-status {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .bid-status.accepted {
+      background: rgba(5, 150, 105, 0.1);
+      color: var(--success);
+    }
+
+    .bid-status.pending {
+      background: rgba(217, 119, 6, 0.1);
+      color: var(--warning);
+    }
+
+    .bids-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .bids-more {
+      text-align: center;
+      padding: 16px;
+      color: var(--navy);
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    @media (max-width: 768px) {
+      .hero-section {
+        grid-template-columns: 1fr;
+      }
+      .overview-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="nav-left">
+      <a href="/" class="logo">
+        <img src="logos/junni_logo_for_beige_background.png" alt="Junni" style="height:72px;width:auto">
+      </a>
+      <a href="/marketplace" class="nav-back">← Back to Marketplace</a>
+    </div>
+    <div class="nav-right">
+      <button class="btn-nav btn-ghost">Share Deal</button>
+      <button class="btn-nav btn-gold">Save Deal</button>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="hero-section">
+      <div class="hero-left">
+        <div class="hero-badge">✓ Very Low Risk</div>
+        <h1 class="hero-title">Maple Ridge Manufacturing</h1>
+        <div class="hero-meta">
+          <div class="hero-meta-item">🏭 Manufacturing</div>
+          <div class="hero-meta-item">📍 Ontario</div>
+          <div class="hero-meta-item">15 years in business</div>
+        </div>
+        <p class="hero-desc">Established manufacturer of precision injection-molded components for automotive and consumer goods. Seeking $3.2M expansion financing to add two new production lines and enter European markets.</p>
+
+        <!-- Deal Status -->
+        <div style="background: linear-gradient(135deg, var(--navy) 0%, #3D5A8A 100%); border-radius: 12px; padding: 20px; color: var(--white); margin-bottom: 32px;">
+          <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; margin-bottom: 8px;">Deal Status</div>
+          <div style="font-family: 'Fraunces', serif; font-size: 32px; font-weight: 800; margin-bottom: 12px;">78% Funded</div>
+          <div style="background: rgba(255, 255, 255, 0.15); border-radius: 8px; height: 6px; margin-bottom: 12px; overflow: hidden;">
+            <div style="background: var(--gold); height: 100%; width: 78%;"></div>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 13px;">
+            <span>$2.5M funded</span>
+            <span>$700K remaining</span>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab active" onclick="showTab(event, 'overview')">Overview</button>
+          <button class="tab" onclick="showTab(event, 'sources')">Sources & Uses</button>
+          <button class="tab" onclick="showTab(event, 'credit')">Credit Analysis</button>
+          <button class="tab" onclick="showTab(event, 'bids')">Active Bids</button>
+        </div>
+
+        <!-- OVERVIEW TAB -->
+        <div id="overview" class="tab-content active">
+          <div class="overview-grid">
+            <div style="background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 20px;">
+              <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy); margin-bottom: 20px;">Loan Details</div>
+              <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div>
+                  <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Loan Amount</div>
+                  <div style="font-family: 'Fraunces', serif; font-size: 26px; font-weight: 800; color: var(--navy);">$3.2M</div>
+                </div>
+                <div style="padding-top: 8px; border-top: 1px solid var(--border);">
+                  <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Term</div>
+                  <div style="font-size: 14px; font-weight: 600; color: var(--navy);">5 years</div>
+                </div>
+                <div style="padding-top: 8px; border-top: 1px solid var(--border);">
+                  <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Target Rate</div>
+                  <div style="font-size: 14px; font-weight: 600; color: var(--navy);">6.5% – 8.0%</div>
+                </div>
+              </div>
+            </div>
+            <div style="background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 20px;">
+              <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy); margin-bottom: 20px;">Company Metrics</div>
+              <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div>
+                  <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Annual Revenue</div>
+                  <div style="font-family: 'Fraunces', serif; font-size: 26px; font-weight: 800; color: var(--navy);">$28.5M</div>
+                </div>
+                <div style="padding-top: 8px; border-top: 1px solid var(--border);">
+                  <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">EBITDA</div>
+                  <div style="font-size: 14px; font-weight: 600; color: var(--navy);">$4.2M</div>
+                </div>
+                <div style="padding-top: 8px; border-top: 1px solid var(--border);">
+                  <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Years Operating</div>
+                  <div style="font-size: 14px; font-weight: 600; color: var(--navy);">15</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-top: 32px;">
+            <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy); margin-bottom: 20px;">Key Financial Ratios</div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+              <div>
+                <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px;">Debt-to-Equity</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 24px; font-weight: 800; color: var(--success);">0.65</div>
+              </div>
+              <div>
+                <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px;">DSCR</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 24px; font-weight: 800; color: var(--success);">2.8x</div>
+              </div>
+              <div>
+                <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px;">Current Ratio</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 24px; font-weight: 800; color: var(--success);">1.9</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SOURCES & USES TAB -->
+        <div id="sources" class="tab-content">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start;">
+            <div style="display: flex; flex-direction: column;">
+              <div style="background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 20px; flex-grow: 1;">
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy); margin-bottom: 20px;">Sources of Funds</div>
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                  <div style="padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--navy); margin-bottom: 4px;">New Debt (Junni)</div>
+                    <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">$3.2M</div>
+                  </div>
+                  <div style="padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--navy); margin-bottom: 4px;">Existing Bank Lines</div>
+                    <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">$1.5M</div>
+                  </div>
+                  <div style="padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--navy); margin-bottom: 4px;">Owner Equity</div>
+                    <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">$800K</div>
+                  </div>
+                </div>
+              </div>
+              <div style="background: rgba(212, 148, 10, 0.08); border: 2px solid rgba(212, 148, 10, 0.2); border-radius: 12px; padding: 20px; margin-top: 16px;">
+                <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gold); margin-bottom: 8px;">Total Sources</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 28px; font-weight: 800; color: var(--gold);">$5.5M</div>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column;">
+              <div style="background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 20px; flex-grow: 1;">
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy); margin-bottom: 20px;">Uses of Funds</div>
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                  <div style="padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--navy); margin-bottom: 4px;">New Equipment</div>
+                    <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">$2.8M</div>
+                  </div>
+                  <div style="padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--navy); margin-bottom: 4px;">Facility Upgrade</div>
+                    <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">$1.2M</div>
+                  </div>
+                  <div style="padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--navy); margin-bottom: 4px;">Working Capital</div>
+                    <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">$900K</div>
+                  </div>
+                  <div style="padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--navy); margin-bottom: 4px;">Transaction Costs</div>
+                    <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">$600K</div>
+                  </div>
+                </div>
+              </div>
+              <div style="background: rgba(212, 148, 10, 0.08); border: 2px solid rgba(212, 148, 10, 0.2); border-radius: 12px; padding: 20px; margin-top: 16px;">
+                <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gold); margin-bottom: 8px;">Total Uses</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 28px; font-weight: 800; color: var(--gold);">$5.5M</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CREDIT ANALYSIS TAB -->
+        <div id="credit" class="tab-content">
+          <div style="background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+            <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy); margin-bottom: 24px;">15 Principal Credit Metrics</div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Revenue Stability</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.7<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Profitability</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.4<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Liquidity</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.2<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Leverage</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.9<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Interest Coverage</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.6<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Asset Quality</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.3<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Cash Flow</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.5<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Working Capital</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.1<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Management</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.4<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Industry</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">7.9<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Market Position</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.3<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Customer Concentration</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.0<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Collateral</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.8<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Compliance</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">9.0<span style="font-size: 10px;">/10</span></div>
+              </div>
+              <div style="padding: 16px; background: rgba(5, 150, 105, 0.06); border-radius: 10px;">
+                <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Loan Structure</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 22px; font-weight: 800; color: var(--navy);">8.6<span style="font-size: 10px;">/10</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 35 Additional Metrics -->
+          <div style="background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 20px;">
+            <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy); margin-bottom: 24px;">35 Additional Credit Metrics</div>
+            <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Gross Margin</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">7.8</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Operating Margin</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">7.5</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">ROA</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">7.9</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Quick Ratio</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.1</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Cash Ratio</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">7.6</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Days Sales Outstanding</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.2</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Inventory Turnover</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.3</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Asset Turnover</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">7.7</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Free Cash Flow</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.4</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Cash Conversion</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.0</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Debt Maturity</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">7.9</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Covenant Compliance</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">9.1</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Revenue Growth</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.1</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">EBITDA Growth</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">7.8</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Cap Expenditure</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.2</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Research & Dev</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">7.4</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Employee Retention</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.5</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Customer Satisfaction</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.6</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Brand Reputation</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.3</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Supply Chain Risk</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">7.7</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Geographic Diversification</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.0</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Product Diversification</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.1</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Technology Infrastructure</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.2</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Regulatory Risk</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.4</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Insurance Coverage</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.7</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Environmental Compliance</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.5</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Social Responsibility</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.3</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Governance Structure</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.6</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Audit Findings</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">9.0</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Litigation History</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.8</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Credit History</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.9</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Payment Behavior</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">8.9</div>
+              </div>
+              <div style="padding: 12px; background: rgba(27, 43, 75, 0.04); border-radius: 8px;">
+                <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">Covenant Breaches</div>
+                <div style="font-family: 'Fraunces', serif; font-size: 18px; font-weight: 800; color: var(--navy);">9.1</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ACTIVE BIDS TAB -->
+        <div id="bids" class="tab-content">
+          <div class="bids-list">
+            <div class="bid-item">
+              <div class="bid-lender">
+                <div class="bid-lender-name">Cascade Capital</div>
+                <div class="bid-lender-type">PE Fund</div>
+              </div>
+              <div style="text-align: right;">
+                <div class="bid-rate">6.9%</div>
+                <div class="bid-details">
+                  <span class="bid-amount">$500K</span>
+                  <span class="bid-status accepted">Accepted</span>
+                </div>
+              </div>
+            </div>
+            <div class="bid-item">
+              <div class="bid-lender">
+                <div class="bid-lender-name">Prairie Credit Union</div>
+                <div class="bid-lender-type">Credit Union</div>
+              </div>
+              <div style="text-align: right;">
+                <div class="bid-rate">7.1%</div>
+                <div class="bid-details">
+                  <span class="bid-amount">$750K</span>
+                  <span class="bid-status pending">Pending</span>
+                </div>
+              </div>
+            </div>
+            <div class="bid-item">
+              <div class="bid-lender">
+                <div class="bid-lender-name">Venture Lending</div>
+                <div class="bid-lender-type">Fintech</div>
+              </div>
+              <div style="text-align: right;">
+                <div class="bid-rate">7.4%</div>
+                <div class="bid-details">
+                  <span class="bid-amount">$600K</span>
+                  <span class="bid-status pending">Pending</span>
+                </div>
+              </div>
+            </div>
+            <div class="bid-item">
+              <div class="bid-lender">
+                <div class="bid-lender-name">Maple Institutional</div>
+                <div class="bid-lender-type">Family Office</div>
+              </div>
+              <div style="text-align: right;">
+                <div class="bid-rate">7.2%</div>
+                <div class="bid-details">
+                  <span class="bid-amount">$350K</span>
+                  <span class="bid-status pending">Pending</span>
+                </div>
+              </div>
+            </div>
+            <div class="bids-more">+8 more bids</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div class="card">
+          <div class="card-title">Submit a Bid</div>
+          <form class="bid-form">
+            <div class="form-group">
+              <label class="form-label">Interest Rate</label>
+              <input type="number" class="form-input" placeholder="e.g. 7.2" step="0.1" min="5" max="12">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Amount ($)</label>
+              <input type="number" class="form-input" placeholder="e.g. 250000">
+            </div>
+            <div class="form-hint">Rate range: 6.2% – 8.8%</div>
+            <button type="submit" class="btn-submit">Place Bid</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Deal Summary</div>
+          <div class="sidebar-stat">
+            <span class="sidebar-stat-label">Funded</span>
+            <span class="sidebar-stat-val">78%</span>
+          </div>
+          <div class="sidebar-stat">
+            <span class="sidebar-stat-label">Remaining</span>
+            <span class="sidebar-stat-val">$704K</span>
+          </div>
+          <div class="sidebar-stat">
+            <span class="sidebar-stat-label">Active Bids</span>
+            <span class="sidebar-stat-val">12</span>
+          </div>
+          <div class="sidebar-stat">
+            <span class="sidebar-stat-label">Best Rate</span>
+            <span class="sidebar-stat-val">6.9%</span>
+          </div>
+          <div class="sidebar-stat">
+            <span class="sidebar-stat-label">Closes In</span>
+            <span class="sidebar-stat-val">5 days</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Documents</div>
+          <div class="doc-item">
+            <div class="doc-icon-and-text">
+              <span class="doc-icon">📄</span>
+              <div>
+                <div class="doc-name">Financial Statements</div>
+                <div class="doc-type">PDF • 2.4 MB</div>
+              </div>
+            </div>
+            <button class="btn-view">View</button>
+          </div>
+          <div class="doc-item">
+            <div class="doc-icon-and-text">
+              <span class="doc-icon">📊</span>
+              <div>
+                <div class="doc-name">Business Plan</div>
+                <div class="doc-type">PDF • 1.8 MB</div>
+              </div>
+            </div>
+            <button class="btn-view">View</button>
+          </div>
+          <div class="doc-item">
+            <div class="doc-icon-and-text">
+              <span class="doc-icon">📋</span>
+              <div>
+                <div class="doc-name">Management Summary</div>
+                <div class="doc-type">PDF • 890 KB</div>
+              </div>
+            </div>
+            <button class="btn-view">View</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function showTab(e, tabName) {
+      // Hide all tabs
+      const tabs = document.querySelectorAll('.tab-content');
+      tabs.forEach(tab => tab.classList.remove('active'));
+      
+      // Remove active from all buttons
+      document.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
+      
+      // Show selected tab
+      document.getElementById(tabName).classList.add('active');
+      
+      // Add active to button
+      e.target.classList.add('active');
+    }
+  </script>
+
+</body>
+</html>
