@@ -670,7 +670,7 @@ export default function BorrowerOnboarding() {
       {/* Navigation */}
       <nav className="nav">
         <div className="nav-logo">
-          <img src={LOGO_BEIGE} alt="Junni" />
+          <img src={LOGO_BEIGE} alt="Junni" style={{ width: "120px", height: "auto" }} />
         </div>
         <div className="nav-right">
           <div className="lang-pill">

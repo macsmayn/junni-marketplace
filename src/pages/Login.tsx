@@ -331,7 +331,7 @@ export default function Login() {
       {/* Navigation */}
       <nav>
         <a href="/" className="logo">
-          <img src={LOGO_BEIGE} alt="Junni" />
+          <img src={LOGO_BEIGE} alt="Junni" style={{ width: "120px", height: "auto" }} />
         </a>
       </nav>
 

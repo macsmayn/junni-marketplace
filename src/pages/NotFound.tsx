@@ -249,7 +249,7 @@ export default function NotFound() {
       <nav>
         <div className="nav-left">
           <a href="/" className="nav-logo">
-            <img src={LOGO_BEIGE} alt="Junni" style={{ height: "40px", width: "auto" }} />
+            <img src={LOGO_BEIGE} alt="Junni" style={{ width: "120px", height: "auto" }} />
           </a>
         </div>
         <div className="nav-right">

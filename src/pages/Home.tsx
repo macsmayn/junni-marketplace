@@ -35,7 +35,7 @@ export default function Home() {
       {/* Navigation */}
       <nav id="nav" className={scrolled ? "scrolled" : ""}>
         <a href="/" className="logo">
-          <img src={LOGO_BEIGE} alt="Junni" style={{ height: 72, width: "auto" }} />
+          <img src={LOGO_BEIGE} alt="Junni" style={{ width: "120px", height: "auto" }} />
         </a>
         <div className="nav-right">
           <div className="lang-toggle">
@@ -476,7 +476,7 @@ export default function Home() {
       {/* Footer */}
       <footer>
         <a href="/" className="logo">
-          <img src={LOGO_BEIGE} alt="Junni logo" style={{ height: 72, width: "auto" }} />
+          <img src={LOGO_BEIGE} alt="Junni logo" style={{ width: "120px", height: "auto" }} />
         </a>
         <div className="footer-links">
           <a href="/marketplace">Marketplace</a>

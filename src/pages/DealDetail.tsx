@@ -995,7 +995,7 @@ export default function DealDetail() {
       <nav>
         <div className="nav-left">
           <a href="/" className="logo">
-            <img src={LOGO_BEIGE} alt="Junni" />
+            <img src={LOGO_BEIGE} alt="Junni" style={{ width: "120px", height: "auto" }} />
           </a>
           <a href="/marketplace" className="nav-back">
             ← Back to Marketplace
