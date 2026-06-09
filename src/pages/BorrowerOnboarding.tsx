@@ -1,9 +1,9 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase } from '../lib/supabase';
 import { useLocation } from "wouter";
 
-const LOGO_BEIGE = "/manus-storage/junni-logo-beige_95169244.png";
+const LOGO_BEIGE = "/junni-logo-beige.png";
 
 export default function BorrowerOnboarding() {
   const [, setLocation] = useLocation();

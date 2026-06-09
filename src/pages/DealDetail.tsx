@@ -1,6 +1,6 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 
-const LOGO_BEIGE = "/manus-storage/junni-logo-beige_95169244.png";
+const LOGO_BEIGE = "/junni-logo-beige.png";
 
 const DEAL = {
   id: 1,

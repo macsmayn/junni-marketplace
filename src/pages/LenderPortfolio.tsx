@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 
-const LOGO_NAVY = "/manus-storage/junni-logo-navy_28bfc256.png";
+const LOGO_NAVY = "/junni-logo-navy.png";
 
 export default function LenderPortfolio() {
   const [, setLocation] = useLocation();

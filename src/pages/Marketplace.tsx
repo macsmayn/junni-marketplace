@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { supabase } from '../lib/supabase';
 
-const LOGO_BEIGE = "/manus-storage/junni-logo-beige_95169244.png";
+const LOGO_BEIGE = "/junni-logo-beige.png";
 
 const DEMO_DEALS = [
   {

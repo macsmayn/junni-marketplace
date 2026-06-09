@@ -1,6 +1,6 @@
-import { useLocation } from "wouter";
+﻿import { useLocation } from "wouter";
 
-const LOGO_BEIGE = "/manus-storage/junni-logo-beige_95169244.png";
+const LOGO_BEIGE = "/junni-logo-beige.png";
 
 export default function TermsOfService() {
   const [, setLocation] = useLocation();

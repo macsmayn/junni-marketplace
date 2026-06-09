@@ -1,8 +1,8 @@
-import { useEffect } from "react";
+﻿import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 
-const LOGO_BEIGE = "/manus-storage/junni-logo-beige_95169244.png";
+const LOGO_BEIGE = "/junni-logo-beige.png";
 
 export default function Login() {
   const { loginWithRedirect, isAuthenticated } = useAuth0();

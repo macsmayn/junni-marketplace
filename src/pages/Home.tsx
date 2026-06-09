@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { useLocation } from "wouter";
 
@@ -11,8 +11,8 @@ import { useLocation } from "wouter";
  * page-specific class names prefixed where useful.
  */
 
-const LOGO_BEIGE = "/manus-storage/junni-logo-beige_95169244.png";
-const LOGO_NAVY = "/manus-storage/junni-logo-navy_28bfc256.png";
+const LOGO_BEIGE = "/junni-logo-beige.png";
+const LOGO_NAVY = "/junni-logo-navy.png";
 const DASHBOARD_MOCKUP = "/manus-storage/dashboard-mockup_c1546dbf.png";
 
 export default function Home() {

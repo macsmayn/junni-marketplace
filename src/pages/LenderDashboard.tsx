@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+﻿import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 
-const LOGO_NAVY = "/manus-storage/junni-logo-navy_28bfc256.png";
-const LOGO_BEIGE = "/manus-storage/junni-logo-beige_a1b2c3d4.png";
+const LOGO_NAVY = "/junni-logo-navy.png";
+const LOGO_BEIGE = "/junni-logo-beige.png";
 
 export default function LenderDashboard() {
   const [, setLocation] = useLocation();
