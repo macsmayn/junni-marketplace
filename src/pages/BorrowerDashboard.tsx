@@ -1,11 +1,105 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useAuth0 } from "@auth0/auth0-react";
+import { supabase } from "../lib/supabase";
 
 const LOGO_NAVY = "/manus-storage/junni-logo-navy_28bfc256.png";
-const LOGO_BEIGE = "/manus-storage/junni-logo-beige_a1b2c3d4.png";
+
+interface DbUser {
+  id: string;
+  auth0_id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
+interface Deal {
+  id: string;
+  borrower_id: string;
+  company_name: string;
+  sector: string;
+  province: string;
+  amount_requested: number;
+  status: string;
+  created_at: string;
+}
+
+interface Bid {
+  id: string;
+  deal_id: string;
+  lender_id: string;
+  interest_rate: number;
+  amount_offered: number;
+  term_months: number;
+  status: string;
+  created_at: string;
+}
+
+interface DocRecord {
+  id: string;
+  uploaded_by: string;
+  deal_id: string;
+  name: string;
+  document_type: string;
+  created_at: string;
+  url?: string;
+}
+
+function formatCurrency(amount: number): string {
+  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `$${(amount / 1_000).toFixed(0)}K`;
+  return `$${amount.toLocaleString()}`;
+}
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function getInitials(name: string): string {
+  if (!name || !name.trim()) return "?";
+  return name
+    .trim()
+    .split(" ")
+    .filter((n) => n)
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+function getDealStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    active: "Active",
+    under_review: "Under Review",
+    pending: "Under Review",
+    funded: "Funded",
+    closed: "Closed",
+  };
+  return labels[status] || status;
+}
+
+function getDocIcon(docType: string): string {
+  const icons: Record<string, string> = {
+    "Financial Statement": "📊",
+    "KYC Document": "📋",
+    "Bank Statement": "🏦",
+    Legal: "⚖️",
+  };
+  return icons[docType] || "📄";
+}
+
+function formatLenderId(lenderId: string): string {
+  const parts = lenderId.split("-");
+  return `Lender #${(parts[parts.length - 1] || lenderId).toUpperCase().slice(0, 6)}`;
+}
 
 export default function BorrowerDashboard() {
   const [, setLocation] = useLocation();
+  const { user, isAuthenticated, isLoading: auth0Loading } = useAuth0();
   const [persona, setPersona] = useState("borrower");
   const [lang, setLang] = useState("en");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -13,10 +107,16 @@ export default function BorrowerDashboard() {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
   const lastScrollY = useRef(0);
 
+  const [dbUser, setDbUser] = useState<DbUser | null>(null);
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [bids, setBids] = useState<Bid[]>([]);
+  const [documents, setDocuments] = useState<DocRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 900);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   useEffect(() => {
@@ -29,17 +129,97 @@ export default function BorrowerDashboard() {
       }
       lastScrollY.current = currentScrollY;
     };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (auth0Loading) return;
+    if (!isAuthenticated || !user?.sub) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const { data: userData, error: userError } = await supabase
+          .from("users")
+          .select("*")
+          .eq("auth0_id", user.sub)
+          .single();
+
+        if (userError || !userData) {
+          setLoading(false);
+          return;
+        }
+
+        setDbUser(userData);
+
+        const { data: dealsData } = await supabase
+          .from("deals")
+          .select("*")
+          .eq("borrower_id", userData.id)
+          .order("created_at", { ascending: false });
+
+        const fetchedDeals: Deal[] = dealsData || [];
+        setDeals(fetchedDeals);
+
+        if (fetchedDeals.length > 0) {
+          const dealIds = fetchedDeals.map((d) => d.id);
+          const { data: bidsData } = await supabase
+            .from("bids")
+            .select("*")
+            .in("deal_id", dealIds)
+            .order("created_at", { ascending: false });
+          setBids(bidsData || []);
+        }
+
+        const { data: docsData } = await supabase
+          .from("documents")
+          .select("*")
+          .eq("uploaded_by", userData.id)
+          .order("created_at", { ascending: false });
+
+        setDocuments(docsData || []);
+      } catch (err) {
+        console.error("Error fetching dashboard data:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [isAuthenticated, user?.sub, auth0Loading]);
+
+  // Computed stats
+  const activeDealCount = deals.length;
+  const totalRequested = deals.reduce((sum, d) => sum + (d.amount_requested || 0), 0);
+  const pendingBids = bids.filter((b) => b.status === "pending");
+  const bestRate = bids.length > 0 ? Math.min(...bids.map((b) => b.interest_rate)) : null;
+  const dealsUnderReview = deals.filter(
+    (d) => d.status === "under_review" || d.status === "pending"
+  ).length;
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+  const newBidsThisWeek = bids.filter((b) => new Date(b.created_at) > oneWeekAgo).length;
+
+  const displayName = user?.name || dbUser?.name || "there";
+  const firstName = displayName.split(" ")[0];
+  const userInitials = getInitials(displayName);
+
+  const getDealName = (dealId: string): string => {
+    const deal = deals.find((d) => d.id === dealId);
+    return deal?.company_name || "Unknown Deal";
+  };
 
   const personas: Record<string, any> = {
     borrower: {
       sidebarLabel: "BORROWER",
       navItems: [
         { icon: "◉", text: "Dashboard", badge: null, active: true },
-        { icon: "📋", text: "My Deals", badge: "2", active: false },
-        { icon: "💼", text: "Bids Received", badge: "8", active: false },
+        { icon: "📋", text: "My Deals", badge: activeDealCount > 0 ? String(activeDealCount) : null, active: false },
+        { icon: "💼", text: "Bids Received", badge: pendingBids.length > 0 ? String(pendingBids.length) : null, active: false },
         { icon: "📄", text: "Documents", badge: null, active: false },
         { icon: "🔔", text: "Notifications", badge: null, active: false },
       ],
@@ -47,8 +227,8 @@ export default function BorrowerDashboard() {
         { icon: "🏪", text: "Marketplace", badge: null },
         { icon: "⚙️", text: "Settings", badge: null },
       ],
-      userName: "Marc Pellerin",
-      userAvatar: "MP",
+      userName: displayName,
+      userAvatar: userInitials,
       userRole: "Borrower",
     },
     lender: {
@@ -88,6 +268,27 @@ export default function BorrowerDashboard() {
   };
 
   const currentPersona = personas[persona] || personas.borrower;
+
+  if (auth0Loading || loading) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#FAF8F4",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "'Inter', sans-serif",
+          color: "#1B2B4B",
+          fontSize: "15px",
+          fontWeight: 500,
+          letterSpacing: "-0.01em",
+        }}
+      >
+        Loading...
+      </div>
+    );
+  }
 
   // ─────────────────────────────────────────────
   // MOBILE LAYOUT
@@ -258,8 +459,12 @@ export default function BorrowerDashboard() {
 
         <div className="content">
           <div className="welcome">
-            <h2>Welcome back, {currentPersona.userName.split(' ')[0]}.</h2>
-            <p>You have 2 active deals and 8 new bids to review.</p>
+            <h2>Welcome back, {firstName}.</h2>
+            <p>
+              {activeDealCount > 0 || bids.length > 0
+                ? `You have ${activeDealCount} active deal${activeDealCount !== 1 ? "s" : ""} and ${pendingBids.length} new bid${pendingBids.length !== 1 ? "s" : ""} to review.`
+                : "Get started by submitting your first deal."}
+            </p>
             <div className="welcome-actions">
               <button className="btn btn-gold" onClick={() => setLocation('/onboarding')}>+ Submit New Deal</button>
               <button className="btn btn-ghost-white">View Deals</button>
@@ -267,51 +472,134 @@ export default function BorrowerDashboard() {
           </div>
 
           <div className="stats-grid">
-            <div className="stat-card"><div className="stat-label">Active Deals</div><div className="stat-num">2</div><div className="stat-sub">1 pending review</div></div>
-            <div className="stat-card"><div className="stat-label">Total Requested</div><div className="stat-num">$5.0M</div><div className="stat-sub">across 2 deals</div></div>
-            <div className="stat-card"><div className="stat-label">Bids Received</div><div className="stat-num gold">12</div><div className="stat-sub">8 new this week</div></div>
-            <div className="stat-card"><div className="stat-label">Best Rate Offered</div><div className="stat-num">6.9%</div><div className="stat-sub">vs 7.4% proposed</div></div>
-          </div>
-
-          <div>
-            <div className="section-head"><div className="section-title">My Deals</div><button className="section-link" onClick={() => setLocation('/marketplace')}>View All</button></div>
-            <div className="deal-card">
-              <div className="deal-top"><div><div className="deal-company">Maple Ridge Manufacturing</div><div className="deal-sub">Manufacturing · Ontario · Submitted Mar 12, 2026</div></div><div className="deal-amount">$3.2M</div></div>
-              <div className="deal-bottom"><span className="status status-active">Active</span><button className="deal-view" onClick={() => setLocation('/deals/1')}>View →</button></div>
+            <div className="stat-card">
+              <div className="stat-label">Active Deals</div>
+              <div className="stat-num">{activeDealCount}</div>
+              <div className="stat-sub">{dealsUnderReview > 0 ? `${dealsUnderReview} pending review` : "None pending review"}</div>
             </div>
-            <div className="deal-card">
-              <div className="deal-top"><div><div className="deal-company">Maple Ridge Manufacturing — Expansion</div><div className="deal-sub">Manufacturing · Ontario · Submitted Apr 3, 2026</div></div><div className="deal-amount">$1.8M</div></div>
-              <div className="deal-bottom"><span className="status status-review">Under Review</span><button className="deal-view" onClick={() => setLocation('/deals/1')}>View →</button></div>
+            <div className="stat-card">
+              <div className="stat-label">Total Requested</div>
+              <div className="stat-num">{totalRequested > 0 ? formatCurrency(totalRequested) : "—"}</div>
+              <div className="stat-sub">across {activeDealCount} deal{activeDealCount !== 1 ? "s" : ""}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Bids Received</div>
+              <div className="stat-num gold">{bids.length}</div>
+              <div className="stat-sub">{newBidsThisWeek > 0 ? `${newBidsThisWeek} new this week` : "None this week"}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Best Rate Offered</div>
+              <div className="stat-num">{bestRate !== null ? `${bestRate.toFixed(1)}%` : "—"}</div>
+              <div className="stat-sub">{bids.length > 0 ? `across ${bids.length} bid${bids.length !== 1 ? "s" : ""}` : "No bids yet"}</div>
             </div>
           </div>
 
           <div>
-            <div className="section-head"><div className="section-title">Recent Bids</div><button className="section-link" onClick={() => setLocation('/marketplace')}>View All</button></div>
-            {[{lender:'Lender #4821',rate:'6.9%',best:true,amount:'$3.2M',term:'36 mo',action:'accept'},{lender:'Lender #2194',rate:'7.1%',best:false,amount:'$2.8M',term:'36 mo',action:'counter'},{lender:'Lender #5502',rate:'7.4%',best:false,amount:'$1.5M',term:'24 mo',action:'counter'}].map((bid,i) => (
-              <div key={i} className="bid-card">
-                <div className="bid-top"><div><div className="bid-lender">{bid.lender}</div><div className="bid-deal">Maple Ridge Mfg.</div></div><div className={`bid-rate${bid.best?' best':''}`}>{bid.rate}</div></div>
-                <div className="bid-meta">
-                  <div className="bid-meta-item"><span className="bid-meta-label">Amount</span><span className="bid-meta-val">{bid.amount}</span></div>
-                  <div className="bid-meta-item"><span className="bid-meta-label">Term</span><span className="bid-meta-val">{bid.term}</span></div>
-                  <div className="bid-meta-item"><span className="bid-meta-label">Status</span><span className="status status-review" style={{padding:'2px 8px'}}>Pending</span></div>
-                </div>
-                <div className="bid-bottom">
-                  <span style={{fontSize:'11px',color:'var(--text-muted)'}}>{bid.best?'Best rate offered':''}</span>
-                  {bid.action==='accept'?<button className="bid-action accept" onClick={() => alert('Bid accepted. Lender will be notified.')}>Accept</button>:<button className="bid-action counter" onClick={() => alert('Counter offer flow coming soon.')}>Counter</button>}
-                </div>
+            <div className="section-head">
+              <div className="section-title">My Deals</div>
+              <button className="section-link" onClick={() => setLocation('/marketplace')}>View All</button>
+            </div>
+            {deals.length === 0 ? (
+              <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", padding: "24px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>
+                No deals yet.{" "}
+                <button style={{ background: "none", border: "none", color: "#D4940A", fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif", fontSize: "13px" }} onClick={() => setLocation('/onboarding')}>
+                  Submit your first deal
+                </button>{" "}
+                to get started.
               </div>
-            ))}
+            ) : (
+              deals.map((deal) => (
+                <div key={deal.id} className="deal-card">
+                  <div className="deal-top">
+                    <div>
+                      <div className="deal-company">{deal.company_name}</div>
+                      <div className="deal-sub">{deal.sector} · {deal.province} · Submitted {formatDate(deal.created_at)}</div>
+                    </div>
+                    <div className="deal-amount">{formatCurrency(deal.amount_requested)}</div>
+                  </div>
+                  <div className="deal-bottom">
+                    <span className={`status ${deal.status === "active" ? "status-active" : "status-review"}`}>
+                      {getDealStatusLabel(deal.status)}
+                    </span>
+                    <button className="deal-view" onClick={() => setLocation(`/deals/${deal.id}`)}>View →</button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           <div>
-            <div className="section-head"><div className="section-title">Uploaded Documents</div><button className="section-link" onClick={() => setLocation('/onboarding')}>Upload New</button></div>
-            {[{icon:'📊',name:'Financial Statements 2023–2025.pdf',type:'Financial Statement',date:'Mar 12, 2026'},{icon:'📋',name:'Business Registration.pdf',type:'KYC Document',date:'Mar 12, 2026'},{icon:'🏦',name:'Bank Statement Q1 2026.pdf',type:'Bank Statement',date:'Apr 1, 2026'}].map((doc,i) => (
-              <div key={i} className="doc-card">
-                <div className="doc-icon">{doc.icon}</div>
-                <div className="doc-info"><div className="doc-name">{doc.name}</div><div className="doc-meta">{doc.type} · {doc.date}</div></div>
-                <button className="doc-view" onClick={() => alert('Document preview not available in demo mode.')}>View</button>
+            <div className="section-head">
+              <div className="section-title">Recent Bids</div>
+              <button className="section-link" onClick={() => setLocation('/marketplace')}>View All</button>
+            </div>
+            {bids.length === 0 ? (
+              <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", padding: "24px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>
+                No bids received yet.
               </div>
-            ))}
+            ) : (
+              bids.slice(0, 5).map((bid) => {
+                const isBest = bid.interest_rate === bestRate;
+                return (
+                  <div key={bid.id} className="bid-card">
+                    <div className="bid-top">
+                      <div>
+                        <div className="bid-lender">{formatLenderId(bid.lender_id)}</div>
+                        <div className="bid-deal">{getDealName(bid.deal_id)}</div>
+                      </div>
+                      <div className={`bid-rate${isBest ? " best" : ""}`}>{bid.interest_rate.toFixed(1)}%</div>
+                    </div>
+                    <div className="bid-meta">
+                      <div className="bid-meta-item">
+                        <span className="bid-meta-label">Amount</span>
+                        <span className="bid-meta-val">{formatCurrency(bid.amount_offered)}</span>
+                      </div>
+                      <div className="bid-meta-item">
+                        <span className="bid-meta-label">Term</span>
+                        <span className="bid-meta-val">{bid.term_months} mo</span>
+                      </div>
+                      <div className="bid-meta-item">
+                        <span className="bid-meta-label">Status</span>
+                        <span className="status status-review" style={{ padding: "2px 8px" }}>
+                          {bid.status.charAt(0).toUpperCase() + bid.status.slice(1)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="bid-bottom">
+                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{isBest ? "Best rate offered" : ""}</span>
+                      {bid.status === "pending" ? (
+                        <button className="bid-action accept" onClick={() => alert("Bid accepted. Lender will be notified.")}>Accept</button>
+                      ) : (
+                        <button className="bid-action counter" onClick={() => alert("Counter offer flow coming soon.")}>Counter</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div>
+            <div className="section-head">
+              <div className="section-title">Uploaded Documents</div>
+              <button className="section-link" onClick={() => setLocation('/onboarding')}>Upload New</button>
+            </div>
+            {documents.length === 0 ? (
+              <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", padding: "24px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>
+                No documents uploaded yet.
+              </div>
+            ) : (
+              documents.map((doc) => (
+                <div key={doc.id} className="doc-card">
+                  <div className="doc-icon">{getDocIcon(doc.document_type)}</div>
+                  <div className="doc-info">
+                    <div className="doc-name">{doc.name}</div>
+                    <div className="doc-meta">{doc.document_type} · {formatDate(doc.created_at)}</div>
+                  </div>
+                  <button className="doc-view" onClick={() => alert("Document preview not available in demo mode.")}>View</button>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -481,8 +769,12 @@ export default function BorrowerDashboard() {
         {/* WELCOME */}
         <div className="d-welcome">
           <div>
-            <h2>Welcome back, {currentPersona.userName.split(' ')[0]}.</h2>
-            <p>You have 2 active deals and 8 new bids to review.</p>
+            <h2>Welcome back, {firstName}.</h2>
+            <p>
+              {activeDealCount > 0 || bids.length > 0
+                ? `You have ${activeDealCount} active deal${activeDealCount !== 1 ? "s" : ""} and ${pendingBids.length} new bid${pendingBids.length !== 1 ? "s" : ""} to review.`
+                : "Get started by submitting your first deal."}
+            </p>
           </div>
           <div className="d-welcome-actions">
             <button className="d-btn d-btn-ghost-white">View Deals</button>
@@ -492,10 +784,26 @@ export default function BorrowerDashboard() {
 
         {/* STATS */}
         <div className="d-stats">
-          <div className="d-stat-card"><div className="d-stat-label">Active Deals</div><div className="d-stat-num">2</div><div className="d-stat-sub">1 pending review</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Total Requested</div><div className="d-stat-num">$5.0M</div><div className="d-stat-sub">across 2 deals</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Bids Received</div><div className="d-stat-num gold">12</div><div className="d-stat-sub">8 new this week</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Best Rate Offered</div><div className="d-stat-num">6.9%</div><div className="d-stat-sub">vs 7.4% proposed</div></div>
+          <div className="d-stat-card">
+            <div className="d-stat-label">Active Deals</div>
+            <div className="d-stat-num">{activeDealCount}</div>
+            <div className="d-stat-sub">{dealsUnderReview > 0 ? `${dealsUnderReview} pending review` : "None pending review"}</div>
+          </div>
+          <div className="d-stat-card">
+            <div className="d-stat-label">Total Requested</div>
+            <div className="d-stat-num">{totalRequested > 0 ? formatCurrency(totalRequested) : "—"}</div>
+            <div className="d-stat-sub">across {activeDealCount} deal{activeDealCount !== 1 ? "s" : ""}</div>
+          </div>
+          <div className="d-stat-card">
+            <div className="d-stat-label">Bids Received</div>
+            <div className="d-stat-num gold">{bids.length}</div>
+            <div className="d-stat-sub">{newBidsThisWeek > 0 ? `${newBidsThisWeek} new this week` : "None this week"}</div>
+          </div>
+          <div className="d-stat-card">
+            <div className="d-stat-label">Best Rate Offered</div>
+            <div className="d-stat-num">{bestRate !== null ? `${bestRate.toFixed(1)}%` : "—"}</div>
+            <div className="d-stat-sub">{bids.length > 0 ? `across ${bids.length} bid${bids.length !== 1 ? "s" : ""}` : "No bids yet"}</div>
+          </div>
         </div>
 
         {/* MY DEALS */}
@@ -505,18 +813,29 @@ export default function BorrowerDashboard() {
             <button className="d-section-link" onClick={() => setLocation('/marketplace')}>View All</button>
           </div>
           <div className="d-deal-list">
-            <div className="d-deal-row">
-              <div><div className="d-deal-company">Maple Ridge Manufacturing</div><div className="d-deal-sub">Manufacturing · Ontario · Submitted Mar 12, 2026</div></div>
-              <div className="d-deal-amount">$3.2M</div>
-              <span className="d-status d-status-active">Active</span>
-              <button className="d-deal-view" onClick={() => setLocation('/deals/1')}>View →</button>
-            </div>
-            <div className="d-deal-row">
-              <div><div className="d-deal-company">Maple Ridge Manufacturing — Expansion</div><div className="d-deal-sub">Manufacturing · Ontario · Submitted Apr 3, 2026</div></div>
-              <div className="d-deal-amount">$1.8M</div>
-              <span className="d-status d-status-review">Under Review</span>
-              <button className="d-deal-view" onClick={() => setLocation('/deals/1')}>View →</button>
-            </div>
+            {deals.length === 0 ? (
+              <div style={{ padding: "32px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>
+                No deals yet.{" "}
+                <button style={{ background: "none", border: "none", color: "#D4940A", fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif", fontSize: "13px" }} onClick={() => setLocation('/onboarding')}>
+                  Submit your first deal
+                </button>{" "}
+                to get started.
+              </div>
+            ) : (
+              deals.map((deal) => (
+                <div key={deal.id} className="d-deal-row">
+                  <div>
+                    <div className="d-deal-company">{deal.company_name}</div>
+                    <div className="d-deal-sub">{deal.sector} · {deal.province} · Submitted {formatDate(deal.created_at)}</div>
+                  </div>
+                  <div className="d-deal-amount">{formatCurrency(deal.amount_requested)}</div>
+                  <span className={`d-status ${deal.status === "active" ? "d-status-active" : "d-status-review"}`}>
+                    {getDealStatusLabel(deal.status)}
+                  </span>
+                  <button className="d-deal-view" onClick={() => setLocation(`/deals/${deal.id}`)}>View →</button>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -534,30 +853,34 @@ export default function BorrowerDashboard() {
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td style={{fontWeight:600}}>Lender #4821</td>
-                  <td style={{color:'var(--text-muted)'}}>Maple Ridge Mfg.</td>
-                  <td className="d-rate-best">6.9%</td>
-                  <td>$3.2M</td><td>36 mo</td>
-                  <td><span className="d-status d-status-review">Pending</span></td>
-                  <td><button className="d-btn d-btn-gold" style={{fontSize:'11px',padding:'6px 12px'}} onClick={() => alert('Bid accepted. Lender will be notified.')}>Accept</button></td>
-                </tr>
-                <tr>
-                  <td style={{fontWeight:600}}>Lender #2194</td>
-                  <td style={{color:'var(--text-muted)'}}>Maple Ridge Mfg.</td>
-                  <td style={{fontWeight:700}}>7.1%</td>
-                  <td>$2.8M</td><td>36 mo</td>
-                  <td><span className="d-status d-status-review">Pending</span></td>
-                  <td><button className="d-btn d-btn-ghost" style={{fontSize:'11px',padding:'6px 12px'}} onClick={() => alert('Counter offer flow coming soon.')}>Counter</button></td>
-                </tr>
-                <tr>
-                  <td style={{fontWeight:600}}>Lender #5502</td>
-                  <td style={{color:'var(--text-muted)'}}>Maple Ridge Mfg.</td>
-                  <td style={{fontWeight:700}}>7.4%</td>
-                  <td>$1.5M</td><td>24 mo</td>
-                  <td><span className="d-status d-status-review">Pending</span></td>
-                  <td><button className="d-btn d-btn-ghost" style={{fontSize:'11px',padding:'6px 12px'}} onClick={() => alert('Counter offer flow coming soon.')}>Counter</button></td>
-                </tr>
+                {bids.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: "center", color: "#7A7060", padding: "32px" }}>
+                      No bids received yet.
+                    </td>
+                  </tr>
+                ) : (
+                  bids.slice(0, 10).map((bid) => {
+                    const isBest = bid.interest_rate === bestRate;
+                    return (
+                      <tr key={bid.id}>
+                        <td style={{ fontWeight: 600 }}>{formatLenderId(bid.lender_id)}</td>
+                        <td style={{ color: "var(--text-muted)" }}>{getDealName(bid.deal_id)}</td>
+                        <td className={isBest ? "d-rate-best" : ""} style={{ fontWeight: 700 }}>{bid.interest_rate.toFixed(1)}%</td>
+                        <td>{formatCurrency(bid.amount_offered)}</td>
+                        <td>{bid.term_months} mo</td>
+                        <td><span className="d-status d-status-review">{bid.status.charAt(0).toUpperCase() + bid.status.slice(1)}</span></td>
+                        <td>
+                          {bid.status === "pending" ? (
+                            <button className="d-btn d-btn-gold" style={{ fontSize: "11px", padding: "6px 12px" }} onClick={() => alert("Bid accepted. Lender will be notified.")}>Accept</button>
+                          ) : (
+                            <button className="d-btn d-btn-ghost" style={{ fontSize: "11px", padding: "6px 12px" }} onClick={() => alert("Counter offer flow coming soon.")}>Counter</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -570,18 +893,27 @@ export default function BorrowerDashboard() {
             <button className="d-section-link" onClick={() => setLocation('/onboarding')}>Upload New</button>
           </div>
           <div className="d-doc-list">
-            {[{icon:'📊',name:'Financial Statements 2023–2025.pdf',type:'Financial Statement',date:'Mar 12, 2026'},{icon:'📋',name:'Business Registration.pdf',type:'KYC Document',date:'Mar 12, 2026'},{icon:'🏦',name:'Bank Statement Q1 2026.pdf',type:'Bank Statement',date:'Apr 1, 2026'}].map((doc,i) => (
-              <div key={i} className="d-doc-row">
-                <div className="d-doc-left">
-                  <div className="d-doc-icon">{doc.icon}</div>
-                  <div><div className="d-doc-name">{doc.name}</div><div className="d-doc-type">{doc.type}</div></div>
-                </div>
-                <div className="d-doc-right">
-                  <span className="d-doc-date">{doc.date}</span>
-                  <button className="d-doc-view" onClick={() => alert('Document preview not available in demo mode.')}>View</button>
-                </div>
+            {documents.length === 0 ? (
+              <div style={{ padding: "32px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>
+                No documents uploaded yet.
               </div>
-            ))}
+            ) : (
+              documents.map((doc) => (
+                <div key={doc.id} className="d-doc-row">
+                  <div className="d-doc-left">
+                    <div className="d-doc-icon">{getDocIcon(doc.document_type)}</div>
+                    <div>
+                      <div className="d-doc-name">{doc.name}</div>
+                      <div className="d-doc-type">{doc.document_type}</div>
+                    </div>
+                  </div>
+                  <div className="d-doc-right">
+                    <span className="d-doc-date">{formatDate(doc.created_at)}</span>
+                    <button className="d-doc-view" onClick={() => alert("Document preview not available in demo mode.")}>View</button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
