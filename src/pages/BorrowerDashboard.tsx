@@ -38,11 +38,12 @@ interface Bid {
 interface DocRecord {
   id: string;
   uploaded_by: string;
-  deal_id: string;
-  name: string;
-  document_type: string;
+  deal_id: string | null;
+  file_name: string;
+  file_type: string;
+  size_bytes: number;
+  storage_path: string;
   created_at: string;
-  url?: string;
 }
 
 function formatCurrency(amount: number): string {
@@ -82,14 +83,13 @@ function getDealStatusLabel(status: string): string {
   return labels[status] || status;
 }
 
-function getDocIcon(docType: string): string {
-  const icons: Record<string, string> = {
-    "Financial Statement": "📊",
-    "KYC Document": "📋",
-    "Bank Statement": "🏦",
-    Legal: "⚖️",
-  };
-  return icons[docType] || "📄";
+function getDocIcon(fileType: string): string {
+  if (!fileType) return "📄";
+  if (fileType.startsWith("image/")) return "🖼️";
+  if (fileType.includes("pdf")) return "📄";
+  if (fileType.includes("spreadsheet") || fileType.includes("excel") || fileType.includes("csv")) return "📊";
+  if (fileType.includes("word") || fileType.includes("document")) return "📝";
+  return "📄";
 }
 
 function formatLenderId(lenderId: string): string {
@@ -98,7 +98,7 @@ function formatLenderId(lenderId: string): string {
 }
 
 export default function BorrowerDashboard() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: auth0Loading } = useAuth0();
   const [persona, setPersona] = useState("borrower");
   const [lang, setLang] = useState("en");
@@ -112,6 +112,8 @@ export default function BorrowerDashboard() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [documents, setDocuments] = useState<DocRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 900);
@@ -213,19 +215,91 @@ export default function BorrowerDashboard() {
     return deal?.company_name || "Unknown Deal";
   };
 
+  const handleNavClick = (item: any, closeSidebar: boolean) => {
+    if (item.route) {
+      setLocation(item.route);
+    } else if (item.scrollTo) {
+      document.getElementById(item.scrollTo)?.scrollIntoView({ behavior: "smooth" });
+    } else if (item.alertMsg) {
+      alert(item.alertMsg);
+    }
+    if (closeSidebar) setSidebarOpen(false);
+  };
+
+  const handleViewDocument = async (doc: DocRecord) => {
+    const { data, error } = await supabase.storage
+      .from("documents")
+      .createSignedUrl(doc.storage_path, 3600);
+    if (error || !data?.signedUrl) {
+      alert("Could not generate document URL.");
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
+  };
+
+  const handleDeleteDocument = async (doc: DocRecord) => {
+    try {
+      await supabase.storage.from("documents").remove([doc.storage_path]);
+      await supabase.from("documents").delete().eq("id", doc.id);
+      if (dbUser) {
+        const { data: docsData } = await supabase
+          .from("documents")
+          .select("*")
+          .eq("uploaded_by", dbUser.id)
+          .order("created_at", { ascending: false });
+        setDocuments(docsData || []);
+      }
+    } catch (err) {
+      console.error("Error deleting document:", err);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !dbUser) return;
+    setUploading(true);
+    try {
+      const path = `${dbUser.id}/${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("documents")
+        .upload(path, file);
+      if (uploadError) throw uploadError;
+      const { error: insertError } = await supabase.from("documents").insert({
+        file_name: file.name,
+        file_type: file.type,
+        size_bytes: file.size,
+        storage_path: path,
+        uploaded_by: dbUser.id,
+        deal_id: deals[0]?.id ?? null,
+      });
+      if (insertError) throw insertError;
+      const { data: docsData } = await supabase
+        .from("documents")
+        .select("*")
+        .eq("uploaded_by", dbUser.id)
+        .order("created_at", { ascending: false });
+      setDocuments(docsData || []);
+    } catch (err) {
+      console.error("Error uploading document:", err);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const personas: Record<string, any> = {
     borrower: {
       sidebarLabel: "BORROWER",
       navItems: [
-        { icon: "◉", text: "Dashboard", badge: null, active: true },
-        { icon: "📋", text: "My Deals", badge: activeDealCount > 0 ? String(activeDealCount) : null, active: false },
-        { icon: "💼", text: "Bids Received", badge: pendingBids.length > 0 ? String(pendingBids.length) : null, active: false },
-        { icon: "📄", text: "Documents", badge: null, active: false },
-        { icon: "🔔", text: "Notifications", badge: null, active: false },
+        { icon: "◉", text: "Dashboard", badge: null, route: "/borrower-dashboard" },
+        { icon: "📋", text: "My Deals", badge: activeDealCount > 0 ? String(activeDealCount) : null, scrollTo: "deals" },
+        { icon: "💼", text: "Bids Received", badge: pendingBids.length > 0 ? String(pendingBids.length) : null, scrollTo: "bids" },
+        { icon: "📄", text: "Documents", badge: null, scrollTo: "documents" },
+        { icon: "🔔", text: "Notifications", badge: null, alertMsg: "Notifications coming soon" },
       ],
       accountItems: [
-        { icon: "🏪", text: "Marketplace", badge: null },
-        { icon: "⚙️", text: "Settings", badge: null },
+        { icon: "🏪", text: "Marketplace", badge: null, route: "/marketplace" },
+        { icon: "⚙️", text: "Settings", badge: null, alertMsg: "Settings coming soon" },
       ],
       userName: displayName,
       userAvatar: userInitials,
@@ -234,15 +308,15 @@ export default function BorrowerDashboard() {
     lender: {
       sidebarLabel: "LENDER",
       navItems: [
-        { icon: "◉", text: "Dashboard", badge: null, active: true },
-        { icon: "📊", text: "Portfolio", badge: null, active: false },
-        { icon: "🎯", text: "Opportunities", badge: "12", active: false },
-        { icon: "📄", text: "Documents", badge: null, active: false },
-        { icon: "🔔", text: "Notifications", badge: "3", active: false },
+        { icon: "◉", text: "Dashboard", badge: null, route: "/lender-dashboard" },
+        { icon: "📊", text: "Portfolio", badge: null, route: "/lender-portfolio" },
+        { icon: "🎯", text: "Opportunities", badge: "12", route: "/marketplace" },
+        { icon: "📄", text: "Documents", badge: null, alertMsg: "Documents coming soon" },
+        { icon: "🔔", text: "Notifications", badge: "3", alertMsg: "Notifications coming soon" },
       ],
       accountItems: [
-        { icon: "🏪", text: "Marketplace", badge: null },
-        { icon: "⚙️", text: "Settings", badge: null },
+        { icon: "🏪", text: "Marketplace", badge: null, route: "/marketplace" },
+        { icon: "⚙️", text: "Settings", badge: null, alertMsg: "Settings coming soon" },
       ],
       userName: "Sarah Chen",
       userAvatar: "SC",
@@ -251,15 +325,15 @@ export default function BorrowerDashboard() {
     admin: {
       sidebarLabel: "ADMIN",
       navItems: [
-        { icon: "◉", text: "Overview", badge: null, active: true },
-        { icon: "📋", text: "Deals", badge: "12", active: false },
-        { icon: "👥", text: "Users", badge: null, active: false },
-        { icon: "🔍", text: "KYC Review", badge: "3", active: false },
-        { icon: "💼", text: "Bids", badge: null, active: false },
+        { icon: "◉", text: "Overview", badge: null, route: "/admin" },
+        { icon: "📋", text: "Deals", badge: "12", alertMsg: "Admin deals coming soon" },
+        { icon: "👥", text: "Users", badge: null, alertMsg: "Admin users coming soon" },
+        { icon: "🔍", text: "KYC Review", badge: "3", alertMsg: "KYC review coming soon" },
+        { icon: "💼", text: "Bids", badge: null, alertMsg: "Admin bids coming soon" },
       ],
       accountItems: [
-        { icon: "📊", text: "Analytics", badge: null },
-        { icon: "⚙️", text: "Settings", badge: null },
+        { icon: "📊", text: "Analytics", badge: null, alertMsg: "Analytics coming soon" },
+        { icon: "⚙️", text: "Settings", badge: null, alertMsg: "Settings coming soon" },
       ],
       userName: "Admin",
       userAvatar: "A",
@@ -435,14 +509,14 @@ export default function BorrowerDashboard() {
           </div>
           <div className="sb-section">{currentPersona.sidebarLabel}</div>
           {currentPersona.navItems.map((item: any, idx: number) => (
-            <a key={idx} className={`sb-item ${item.active ? 'active' : ''}`} href="#" onClick={(e) => e.preventDefault()}>
+            <a key={idx} className={`sb-item ${item.route === location ? 'active' : ''}`} href="#" onClick={(e) => { e.preventDefault(); handleNavClick(item, true); }}>
               <span>{item.icon}</span>{item.text}
               {item.badge && <span className="sb-badge">{item.badge}</span>}
             </a>
           ))}
           <div className="sb-section">ACCOUNT</div>
           {currentPersona.accountItems.map((item: any, idx: number) => (
-            <a key={idx} className="sb-item" href="#" onClick={(e) => e.preventDefault()}>
+            <a key={idx} className={`sb-item ${item.route === location ? 'active' : ''}`} href="#" onClick={(e) => { e.preventDefault(); handleNavClick(item, true); }}>
               <span>{item.icon}</span>{item.text}
             </a>
           ))}
@@ -494,7 +568,7 @@ export default function BorrowerDashboard() {
             </div>
           </div>
 
-          <div>
+          <div id="deals">
             <div className="section-head">
               <div className="section-title">My Deals</div>
               <button className="section-link" onClick={() => setLocation('/marketplace')}>View All</button>
@@ -528,7 +602,7 @@ export default function BorrowerDashboard() {
             )}
           </div>
 
-          <div>
+          <div id="bids">
             <div className="section-head">
               <div className="section-title">Recent Bids</div>
               <button className="section-link" onClick={() => setLocation('/marketplace')}>View All</button>
@@ -579,10 +653,11 @@ export default function BorrowerDashboard() {
             )}
           </div>
 
-          <div>
+          <div id="documents">
+            <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileUpload} />
             <div className="section-head">
               <div className="section-title">Uploaded Documents</div>
-              <button className="section-link" onClick={() => setLocation('/onboarding')}>Upload New</button>
+              <button className="section-link" onClick={() => fileInputRef.current?.click()} disabled={uploading}>{uploading ? "Uploading..." : "Upload New"}</button>
             </div>
             {documents.length === 0 ? (
               <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", padding: "24px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>
@@ -591,12 +666,13 @@ export default function BorrowerDashboard() {
             ) : (
               documents.map((doc) => (
                 <div key={doc.id} className="doc-card">
-                  <div className="doc-icon">{getDocIcon(doc.document_type)}</div>
+                  <div className="doc-icon">{getDocIcon(doc.file_type)}</div>
                   <div className="doc-info">
-                    <div className="doc-name">{doc.name}</div>
-                    <div className="doc-meta">{doc.document_type} · {formatDate(doc.created_at)}</div>
+                    <div className="doc-name">{doc.file_name}</div>
+                    <div className="doc-meta">{doc.file_type} · {formatDate(doc.created_at)}</div>
                   </div>
-                  <button className="doc-view" onClick={() => alert("Document preview not available in demo mode.")}>View</button>
+                  <button className="doc-view" onClick={() => handleViewDocument(doc)}>View</button>
+                  <button className="doc-view" style={{ marginLeft: "6px", color: "#dc2626", borderColor: "#dc2626" }} onClick={() => handleDeleteDocument(doc)}>Delete</button>
                 </div>
               ))
             )}
@@ -728,14 +804,14 @@ export default function BorrowerDashboard() {
         </div>
         <div className="d-sb-section">{currentPersona.sidebarLabel}</div>
         {currentPersona.navItems.map((item: any, idx: number) => (
-          <button key={idx} className={`d-sb-item ${item.active ? 'active' : ''}`}>
+          <button key={idx} className={`d-sb-item ${item.route === location ? 'active' : ''}`} onClick={() => handleNavClick(item, false)}>
             <span>{item.icon}</span>{item.text}
             {item.badge && <span className="d-sb-badge">{item.badge}</span>}
           </button>
         ))}
         <div className="d-sb-section">ACCOUNT</div>
         {currentPersona.accountItems.map((item: any, idx: number) => (
-          <button key={idx} className="d-sb-item">
+          <button key={idx} className={`d-sb-item ${item.route === location ? 'active' : ''}`} onClick={() => handleNavClick(item, false)}>
             <span>{item.icon}</span>{item.text}
           </button>
         ))}
@@ -807,7 +883,7 @@ export default function BorrowerDashboard() {
         </div>
 
         {/* MY DEALS */}
-        <div className="d-section">
+        <div id="deals" className="d-section">
           <div className="d-section-head">
             <div className="d-section-title">My Deals</div>
             <button className="d-section-link" onClick={() => setLocation('/marketplace')}>View All</button>
@@ -840,7 +916,7 @@ export default function BorrowerDashboard() {
         </div>
 
         {/* RECENT BIDS */}
-        <div className="d-section">
+        <div id="bids" className="d-section">
           <div className="d-section-head">
             <div className="d-section-title">Recent Bids</div>
             <button className="d-section-link" onClick={() => setLocation('/marketplace')}>View All</button>
@@ -887,10 +963,11 @@ export default function BorrowerDashboard() {
         </div>
 
         {/* DOCUMENTS */}
-        <div className="d-section">
+        <div id="documents" className="d-section">
+          <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileUpload} />
           <div className="d-section-head">
             <div className="d-section-title">Uploaded Documents</div>
-            <button className="d-section-link" onClick={() => setLocation('/onboarding')}>Upload New</button>
+            <button className="d-section-link" onClick={() => fileInputRef.current?.click()} disabled={uploading}>{uploading ? "Uploading..." : "Upload New Document"}</button>
           </div>
           <div className="d-doc-list">
             {documents.length === 0 ? (
@@ -901,15 +978,16 @@ export default function BorrowerDashboard() {
               documents.map((doc) => (
                 <div key={doc.id} className="d-doc-row">
                   <div className="d-doc-left">
-                    <div className="d-doc-icon">{getDocIcon(doc.document_type)}</div>
+                    <div className="d-doc-icon">{getDocIcon(doc.file_type)}</div>
                     <div>
-                      <div className="d-doc-name">{doc.name}</div>
-                      <div className="d-doc-type">{doc.document_type}</div>
+                      <div className="d-doc-name">{doc.file_name}</div>
+                      <div className="d-doc-type">{doc.file_type}</div>
                     </div>
                   </div>
                   <div className="d-doc-right">
                     <span className="d-doc-date">{formatDate(doc.created_at)}</span>
-                    <button className="d-doc-view" onClick={() => alert("Document preview not available in demo mode.")}>View</button>
+                    <button className="d-doc-view" onClick={() => handleViewDocument(doc)}>View</button>
+                    <button className="d-doc-view" style={{ color: "#dc2626", borderColor: "#dc2626" }} onClick={() => handleDeleteDocument(doc)}>Delete</button>
                   </div>
                 </div>
               ))
