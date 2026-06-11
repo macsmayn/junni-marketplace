@@ -92,6 +92,17 @@ function getDocIcon(fileType: string): string {
   return "📄";
 }
 
+function formatFileType(fileType: string): string {
+  if (!fileType) return "Document";
+  if (fileType.includes("pdf")) return "PDF";
+  if (fileType.startsWith("image/")) return "Image";
+  if (fileType.includes("spreadsheet") || fileType.includes("excel") || fileType.includes("csv")) return "Spreadsheet";
+  if (fileType.includes("word") || fileType.includes("wordprocessingml")) return "Word Document";
+  if (fileType.includes("presentation") || fileType.includes("powerpoint")) return "Presentation";
+  if (fileType.includes("text/plain")) return "Text File";
+  return "Document";
+}
+
 function formatLenderId(lenderId: string): string {
   const parts = lenderId.split("-");
   return `Lender #${(parts[parts.length - 1] || lenderId).toUpperCase().slice(0, 6)}`;
@@ -669,7 +680,7 @@ export default function BorrowerDashboard() {
                   <div className="doc-icon">{getDocIcon(doc.file_type)}</div>
                   <div className="doc-info">
                     <div className="doc-name">{doc.file_name}</div>
-                    <div className="doc-meta">{doc.file_type} · {formatDate(doc.created_at)}</div>
+                    <div className="doc-meta">{formatFileType(doc.file_type)} · {formatDate(doc.created_at)}</div>
                   </div>
                   <button className="doc-view" onClick={() => handleViewDocument(doc)}>View</button>
                   <button className="doc-view" style={{ marginLeft: "6px", color: "#dc2626", borderColor: "#dc2626" }} onClick={() => handleDeleteDocument(doc)}>Delete</button>
@@ -981,7 +992,7 @@ export default function BorrowerDashboard() {
                     <div className="d-doc-icon">{getDocIcon(doc.file_type)}</div>
                     <div>
                       <div className="d-doc-name">{doc.file_name}</div>
-                      <div className="d-doc-type">{doc.file_type}</div>
+                      <div className="d-doc-type">{formatFileType(doc.file_type)}</div>
                     </div>
                   </div>
                   <div className="d-doc-right">
