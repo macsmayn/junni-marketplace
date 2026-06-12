@@ -1,4 +1,7 @@
-﻿import { useState } from "react";
+﻿import { useState, useEffect } from "react";
+import { useAuth0 } from "@auth0/auth0-react";
+import { supabase } from "../lib/supabase";
+import { useParams } from "wouter";
 
 const LOGO_BEIGE = "/junni-logo-beige.png";
 
@@ -194,17 +197,66 @@ const ADDITIONAL_BIDS = [
 ];
 
 export default function DealDetail() {
+  const params = useParams<{ id: string }>();
+  const dealId = params.id;
+
+  const { user, isAuthenticated } = useAuth0();
+  const [deal, setDeal] = useState<any>(null);
+  const [dealBids, setDealBids] = useState<any[]>([]);
+  const [dealDocs, setDealDocs] = useState<any[]>([]);
+  const [dbUser, setDbUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [bidRate, setBidRate] = useState("");
   const [bidAmount, setBidAmount] = useState("");
+  const [bidTerm, setBidTerm] = useState("");
+  const [submittingBid, setSubmittingBid] = useState(false);
   const [showDocModal, setShowDocModal] = useState(false);
   const [expandedBids, setExpandedBids] = useState(false);
 
-  const handleBidSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    alert(`Bid placed: ${bidRate}% for $${bidAmount}`);
-    setBidRate("");
-    setBidAmount("");
+  useEffect(() => {
+    const fetchData = async () => {
+      const [dealRes, bidsRes, docsRes] = await Promise.all([
+        supabase.from('deals').select('*').eq('id', dealId).single(),
+        supabase.from('bids').select('*').eq('deal_id', dealId),
+        supabase.from('documents').select('*').eq('deal_id', dealId),
+      ]);
+      if (dealRes.data) setDeal(dealRes.data);
+      if (bidsRes.data) setDealBids(bidsRes.data);
+      if (docsRes.data) setDealDocs(docsRes.data);
+      if (isAuthenticated && user?.sub) {
+        const { data: userData } = await supabase.from('users').select('*').eq('auth0_id', user.sub).single();
+        if (userData) setDbUser(userData);
+      }
+      setLoading(false);
+    };
+    fetchData();
+  }, [dealId, isAuthenticated, user?.sub]);
+
+  const handleBidSubmit = async () => {
+    if (!dbUser) { alert("Please log in to place a bid."); return; }
+    if (!bidRate || !bidAmount) { alert("Please enter both a rate and an amount."); return; }
+    setSubmittingBid(true);
+    const { error } = await supabase.from('bids').insert({
+      deal_id: dealId,
+      lender_id: dbUser.id,
+      amount: parseFloat(bidAmount),
+      interest_rate: parseFloat(bidRate),
+      term_months: parseInt(bidTerm) || deal?.term_months || 36,
+      status: 'pending',
+    });
+    if (error) {
+      console.error('Bid error:', error);
+      alert("Error placing bid. Please try again.");
+    } else {
+      alert("Bid placed successfully!");
+      setBidRate("");
+      setBidAmount("");
+      setBidTerm("");
+      const { data } = await supabase.from('bids').select('*').eq('deal_id', dealId);
+      setDealBids(data || []);
+    }
+    setSubmittingBid(false);
   };
 
   const handleViewDocument = () => {
@@ -214,6 +266,14 @@ export default function DealDetail() {
   const handleExpandBids = () => {
     setExpandedBids(true);
   };
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#FAF8F4", fontFamily: "Inter, sans-serif", color: "#1B2B4B", fontSize: "16px", fontWeight: 600 }}>
+        Loading deal...
+      </div>
+    );
+  }
 
   return (
     <div className="deal-detail">
@@ -1012,13 +1072,13 @@ export default function DealDetail() {
         {/* Hero Section */}
         <div className="hero-section">
           <div className="hero-badge">✓ {DEAL.risk}</div>
-          <h1 className="hero-title">{DEAL.company}</h1>
+          <h1 className="hero-title">{deal?.title || DEAL.company}</h1>
           <div className="hero-meta">
-            <div className="hero-meta-item">🏭 {DEAL.industry}</div>
-            <div className="hero-meta-item">📍 {DEAL.location}</div>
-            <div className="hero-meta-item">{DEAL.yearsInBusiness}</div>
+            <div className="hero-meta-item">🏭 {deal?.industry || DEAL.industry}</div>
+            <div className="hero-meta-item">📍 {deal?.city && deal?.province ? `${deal.city}, ${deal.province}` : DEAL.location}</div>
+            <div className="hero-meta-item">{deal?.years_in_business ? `${deal.years_in_business} years in business` : DEAL.yearsInBusiness}</div>
           </div>
-          <p className="hero-desc">{DEAL.description}</p>
+          <p className="hero-desc">{deal?.ai_summary || DEAL.description}</p>
 
           {/* Deal Status */}
           <div className="deal-status">
@@ -1073,15 +1133,15 @@ export default function DealDetail() {
                   <div className="card-section">
                     <div className="card-item">
                       <div className="card-label">Loan Amount</div>
-                      <div className="card-value">{DEAL.loanAmount}</div>
+                      <div className="card-value">{deal?.amount_requested ? `$${Number(deal.amount_requested).toLocaleString()}` : DEAL.loanAmount}</div>
                     </div>
                     <div className="card-item">
                       <div className="card-label">Term</div>
-                      <div className="card-value-small">{DEAL.term}</div>
+                      <div className="card-value-small">{deal?.term_months ? `${deal.term_months} months` : DEAL.term}</div>
                     </div>
                     <div className="card-item">
                       <div className="card-label">Target Rate</div>
-                      <div className="card-value-small">{DEAL.targetRate}</div>
+                      <div className="card-value-small">{deal?.interest_rate ? `${deal.interest_rate}%` : DEAL.targetRate}</div>
                     </div>
                   </div>
                 </div>
@@ -1090,16 +1150,16 @@ export default function DealDetail() {
                   <div className="card-section">
                     <div className="card-item">
                       <div className="card-label">Annual Revenue</div>
-                      <div className="card-value">{DEAL.annualRevenue}</div>
+                      <div className="card-value">{deal?.annual_revenue ? `$${Number(deal.annual_revenue).toLocaleString()}` : DEAL.annualRevenue}</div>
                     </div>
                     <div className="card-item">
                       <div className="card-label">EBITDA</div>
-                      <div className="card-value-small">{DEAL.ebitda}</div>
+                      <div className="card-value-small">{deal?.ebitda ? `$${Number(deal.ebitda).toLocaleString()}` : DEAL.ebitda}</div>
                     </div>
                     <div className="card-item">
                       <div className="card-label">Years Operating</div>
                       <div className="card-value-small">
-                        {DEAL.yearsOperating}
+                        {deal?.years_in_business || DEAL.yearsOperating}
                       </div>
                     </div>
                   </div>
@@ -1224,63 +1284,24 @@ export default function DealDetail() {
           {/* Active Bids Tab */}
           {activeTab === "bids" && (
             <div className="tab-content active">
-              {BIDS.map((bid) => (
-                <div key={bid.id} className="bid-item">
-                  <div className="bid-lender">
-                    <div className="bid-lender-name">{bid.lender}</div>
-                    <div className="bid-lender-type">{bid.type}</div>
-                  </div>
-                  <div className="bid-right">
-                    <div className="bid-rate">{bid.rate}</div>
-                    <div className="bid-details">
-                      <span className="bid-amount">{bid.amount}</span>
-                      <span
-                        className={`bid-status ${bid.status.toLowerCase()}`}
-                      >
-                        {bid.status}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {expandedBids &&
-                ADDITIONAL_BIDS.map((bid) => (
+              {dealBids.length === 0 ? (
+                <div style={{ padding: "24px", textAlign: "center", color: "var(--text-muted)", fontSize: "14px" }}>No bids yet.</div>
+              ) : (
+                dealBids.map((bid) => (
                   <div key={bid.id} className="bid-item">
                     <div className="bid-lender">
-                      <div className="bid-lender-name">{bid.lender}</div>
-                      <div className="bid-lender-type">{bid.type}</div>
+                      <div className="bid-lender-name">Lender {String(bid.lender_id).slice(0, 8)}…</div>
+                      <div className="bid-lender-type">{bid.term_months ? `${bid.term_months} mo term` : ""}</div>
                     </div>
                     <div className="bid-right">
-                      <div className="bid-rate">{bid.rate}</div>
+                      <div className="bid-rate">{bid.interest_rate}%</div>
                       <div className="bid-details">
-                        <span className="bid-amount">{bid.amount}</span>
-                        <span
-                          className={`bid-status ${bid.status.toLowerCase()}`}
-                        >
-                          {bid.status}
-                        </span>
+                        <span className="bid-amount">${Number(bid.amount).toLocaleString()}</span>
+                        <span className={`bid-status ${bid.status?.toLowerCase()}`}>{bid.status}</span>
                       </div>
                     </div>
                   </div>
-                ))}
-              {!expandedBids && (
-                <button
-                  className="bids-more"
-                  onClick={handleExpandBids}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "16px",
-                    color: "var(--navy)",
-                    fontWeight: "600",
-                    fontSize: "13px",
-                    width: "100%",
-                    textAlign: "center",
-                  }}
-                >
-                  +8 more bids
-                </button>
+                ))
               )}
             </div>
           )}
@@ -1291,9 +1312,9 @@ export default function DealDetail() {
           {/* Bid Form */}
           <div className="sidebar-card">
             <div className="sidebar-card-title">Submit a Bid</div>
-            <form className="bid-form" onSubmit={handleBidSubmit}>
+            <div className="bid-form">
               <div className="form-group">
-                <label className="form-label">Interest Rate</label>
+                <label className="form-label">Interest Rate (%)</label>
                 <input
                   type="number"
                   className="form-input"
@@ -1315,11 +1336,26 @@ export default function DealDetail() {
                   onChange={(e) => setBidAmount(e.target.value)}
                 />
               </div>
-              <div className="form-hint">Rate range: 6.2% – 8.8%</div>
-              <button type="submit" className="btn-submit">
-                Place Bid
+              <div className="form-group">
+                <label className="form-label">Term (Months)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  placeholder={deal?.term_months ? String(deal.term_months) : "36"}
+                  value={bidTerm}
+                  onChange={(e) => setBidTerm(e.target.value)}
+                />
+              </div>
+              <div className="form-hint">Rate range: {deal?.interest_rate ? `${deal.interest_rate}%` : "6.2% – 8.8%"}</div>
+              <button
+                type="button"
+                className="btn-submit"
+                onClick={handleBidSubmit}
+                disabled={submittingBid}
+              >
+                {submittingBid ? "Submitting..." : "Place Bid"}
               </button>
-            </form>
+            </div>
           </div>
 
           {/* Deal Summary */}
@@ -1350,20 +1386,27 @@ export default function DealDetail() {
           {/* Documents */}
           <div className="sidebar-card">
             <div className="sidebar-card-title">Documents</div>
-            {DOCUMENTS.map((doc, idx) => (
-              <div key={idx} className="doc-item">
-                <div className="doc-icon-and-text">
-                  <span className="doc-icon">{doc.icon}</span>
-                  <div>
-                    <div className="doc-name">{doc.name}</div>
-                    <div className="doc-type">{doc.type}</div>
+            {dealDocs.length === 0 ? (
+              <div style={{ fontSize: "12px", color: "var(--text-muted)", padding: "8px 0" }}>No documents uploaded.</div>
+            ) : (
+              dealDocs.map((doc, idx) => (
+                <div key={idx} className="doc-item">
+                  <div className="doc-icon-and-text">
+                    <span className="doc-icon">📄</span>
+                    <div>
+                      <div className="doc-name">{doc.file_name}</div>
+                      <div className="doc-type">{doc.file_type}</div>
+                    </div>
                   </div>
+                  <button className="btn-view" onClick={async () => {
+                    const { data } = await supabase.storage.from("documents").createSignedUrl(doc.storage_path, 3600);
+                    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+                  }}>
+                    View
+                  </button>
                 </div>
-                <button className="btn-view" onClick={handleViewDocument}>
-                  View
-                </button>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
