@@ -1,5 +1,7 @@
 ﻿import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useAuth0 } from "@auth0/auth0-react";
+import { supabase } from "../lib/supabase";
 
 const LOGO_NAVY = "/junni-logo-navy.png";
 const LOGO_BEIGE = "/junni-logo-beige.png";
@@ -33,6 +35,51 @@ export default function LenderDashboard() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const { user, isAuthenticated, isLoading: auth0Loading } = useAuth0();
+  const [dbUser, setDbUser] = useState<any>(null);
+  const [lenderBids, setLenderBids] = useState<any[]>([]);
+  const [savedDeals, setSavedDeals] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (auth0Loading) return;
+    if (!isAuthenticated || !user?.sub) { setLoading(false); return; }
+    const fetchData = async () => {
+      const { data: userData } = await supabase
+        .from('users').select('*').eq('auth0_id', user.sub).single();
+      if (!userData) { setLoading(false); return; }
+      setDbUser(userData);
+      const [bidsRes, savedRes] = await Promise.all([
+        supabase.from('bids')
+          .select('*, deals(id, title, industry, amount_requested, term_months, status, city, province, ai_score)')
+          .eq('lender_id', userData.id),
+        supabase.from('saved_deals')
+          .select('*, deals(id, title, industry, amount_requested, term_months, interest_rate, ai_score)')
+          .eq('lender_id', userData.id),
+      ]);
+      if (bidsRes.data) setLenderBids(bidsRes.data);
+      if (savedRes.data) setSavedDeals(savedRes.data);
+      setLoading(false);
+    };
+    fetchData();
+  }, [isAuthenticated, user?.sub, auth0Loading]);
+
+  const formatCurrency = (n: number): string => {
+    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+    if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
+    return `$${n.toLocaleString()}`;
+  };
+
+  const activeBids = lenderBids.filter(b => b.status === 'pending' || b.status === 'countered');
+  const acceptedBids = lenderBids.filter(b => b.status === 'accepted');
+  const totalDeployed = acceptedBids.reduce((sum, b) => sum + Number(b.amount || 0), 0);
+  const avgRate = lenderBids.length > 0
+    ? (lenderBids.reduce((sum, b) => sum + Number(b.interest_rate || 0), 0) / lenderBids.length).toFixed(1)
+    : "—";
+  const dealsFunded = acceptedBids.length;
+  const lenderName = user?.name || dbUser?.full_name || "Lender";
+  const lenderInitials = lenderName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+
   const personas: Record<string, any> = {
     borrower: {
       sidebarLabel: "BORROWER",
@@ -56,7 +103,7 @@ export default function LenderDashboard() {
       navItems: [
         { icon: "◉", text: "Dashboard", badge: null, active: true },
         { icon: "🏪", text: "Marketplace", badge: null, active: false },
-        { icon: "💼", text: "My Bids", badge: "5", active: false },
+        { icon: "💼", text: "My Bids", badge: activeBids.length > 0 ? String(activeBids.length) : null, active: false },
         { icon: "📊", text: "Portfolio", badge: null, active: false },
         { icon: "❤️", text: "Saved Deals", badge: null, active: false },
         { icon: "🔔", text: "Notifications", badge: null, active: false },
@@ -64,8 +111,8 @@ export default function LenderDashboard() {
       accountItems: [
         { icon: "⚙️", text: "Settings", badge: null },
       ],
-      userName: "Jean Tremblay",
-      userAvatar: "JT",
+      userName: lenderName,
+      userAvatar: lenderInitials,
       userRole: "Lender",
     },
     admin: {
@@ -88,6 +135,14 @@ export default function LenderDashboard() {
   };
 
   const currentPersona = personas[persona] || personas.lender;
+
+  if (auth0Loading || loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#FAF8F4", fontFamily: "Inter, sans-serif", color: "#1B2B4B", fontSize: "16px", fontWeight: 600 }}>
+        Loading...
+      </div>
+    );
+  }
 
   // ─────────────────────────────────────────────
   // MOBILE LAYOUT
@@ -258,8 +313,8 @@ export default function LenderDashboard() {
 
         <div className="content">
           <div className="welcome">
-            <h2>Welcome back, Jean.</h2>
-            <p>You have 5 active bids and $142K deployed across 3 deals.</p>
+            <h2>Welcome back, {lenderName.split(" ")[0]}.</h2>
+            <p>{activeBids.length > 0 ? `You have ${activeBids.length} active bid${activeBids.length !== 1 ? "s" : ""}` : "You have no active bids yet"}{totalDeployed > 0 ? ` and ${formatCurrency(totalDeployed)} deployed` : ""}{ dealsFunded > 0 ? ` across ${dealsFunded} deal${dealsFunded !== 1 ? "s" : ""}` : ""}.</p>
             <div className="welcome-actions">
               <button className="btn btn-gold" onClick={() => setLocation('/marketplace')}>Browse Marketplace →</button>
               <button className="btn btn-ghost-white">View Portfolio</button>
@@ -267,55 +322,72 @@ export default function LenderDashboard() {
           </div>
 
           <div className="stats-grid">
-            <div className="stat-card"><div className="stat-label">Capital Deployed</div><div className="stat-num">$142K</div><div className="stat-change">↑ $40K this month</div></div>
-            <div className="stat-card"><div className="stat-label">Active Bids</div><div className="stat-num gold">5</div><div className="stat-sub">3 pending response</div></div>
-            <div className="stat-card"><div className="stat-label">Avg. Rate</div><div className="stat-num">7.2%</div><div className="stat-sub">weighted average</div></div>
-            <div className="stat-card"><div className="stat-label">Deals Funded</div><div className="stat-num">3</div><div className="stat-sub">all performing</div></div>
+            <div className="stat-card"><div className="stat-label">Capital Deployed</div><div className="stat-num">{formatCurrency(totalDeployed)}</div></div>
+            <div className="stat-card"><div className="stat-label">Active Bids</div><div className="stat-num gold">{activeBids.length}</div></div>
+            <div className="stat-card"><div className="stat-label">Avg. Rate</div><div className="stat-num">{avgRate !== "—" ? `${avgRate}%` : "—"}</div><div className="stat-sub">weighted average</div></div>
+            <div className="stat-card"><div className="stat-label">Deals Funded</div><div className="stat-num">{dealsFunded}</div></div>
           </div>
 
           <div>
-            <div className="section-head"><div className="section-title">My Active Bids</div><button className="section-link" onClick={() => alert('View All Bids')}>View All</button></div>
-            {[{company:'Maple Ridge Mfg.',industry:'Manufacturing',rate:'6.9%',best:true,amount:'$200K',term:'36 mo',risk:'Very Low',riskClass:'badge-green',status:'Pending',statusClass:'badge-amber'},{company:'Northern Harvest',industry:'Food & Bev',rate:'7.0%',best:false,amount:'$500K',term:'48 mo',risk:'Low',riskClass:'badge-blue',status:'Pending',statusClass:'badge-amber'},{company:'Prairie Health',industry:'Healthcare',rate:'7.3%',best:false,amount:'$150K',term:'36 mo',risk:'Very Low',riskClass:'badge-green',status:'Accepted',statusClass:'badge-green'}].map((bid,i) => (
-              <div key={i} className="bid-card">
-                <div className="bid-top">
-                  <div><div className="bid-company">{bid.company}</div><div className="bid-industry">{bid.industry}</div></div>
-                  <div className={`bid-rate${bid.best?' best':''}`}>{bid.rate}</div>
+            <div className="section-head"><div className="section-title">My Active Bids</div><button className="section-link" onClick={() => setLocation('/marketplace')}>Browse Deals</button></div>
+            {lenderBids.length === 0 ? (
+              <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "12px", padding: "24px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>No bids placed yet. Browse the marketplace to get started.</div>
+            ) : lenderBids.map((bid, i) => {
+              const deal = bid.deals || {};
+              const statusClass = bid.status === 'accepted' ? 'badge-green' : bid.status === 'countered' ? 'badge-amber' : 'badge-amber';
+              const statusLabel = bid.status ? bid.status.charAt(0).toUpperCase() + bid.status.slice(1) : 'Pending';
+              return (
+                <div key={i} className="bid-card">
+                  <div className="bid-top">
+                    <div><div className="bid-company">{deal.title || "—"}</div><div className="bid-industry">{deal.industry || "—"}</div></div>
+                    <div className="bid-rate">{bid.interest_rate ? `${bid.interest_rate}%` : "—"}</div>
+                  </div>
+                  <div className="bid-meta">
+                    <div className="bid-meta-item"><span className="bid-meta-label">Amount</span><span className="bid-meta-val">{formatCurrency(Number(bid.amount || 0))}</span></div>
+                    <div className="bid-meta-item"><span className="bid-meta-label">Term</span><span className="bid-meta-val">{bid.term_months ? `${bid.term_months} mo` : "—"}</span></div>
+                    {deal.ai_score != null && <div className="bid-meta-item"><span className="bid-meta-label">Score</span><span className="bid-meta-val">{deal.ai_score}/100</span></div>}
+                  </div>
+                  <div className="bid-bottom">
+                    <span className={`badge ${statusClass}`}>{statusLabel}</span>
+                    <button className="bid-action" onClick={() => setLocation(`/deals/${deal.id}`)}>{bid.status === 'accepted' ? 'View' : 'View Deal'}</button>
+                  </div>
                 </div>
-                <div className="bid-meta">
-                  <div className="bid-meta-item"><span className="bid-meta-label">Amount</span><span className="bid-meta-val">{bid.amount}</span></div>
-                  <div className="bid-meta-item"><span className="bid-meta-label">Term</span><span className="bid-meta-val">{bid.term}</span></div>
-                  <div className="bid-meta-item"><span className="bid-meta-label">Risk</span><span className={`badge ${bid.riskClass}`}>{bid.risk}</span></div>
-                </div>
-                <div className="bid-bottom">
-                  <span className={`badge ${bid.statusClass}`}>{bid.status}</span>
-                  <button className="bid-action" onClick={() => bid.status === 'Accepted' ? setLocation('/deals/1') : alert('Edit bid')}>{bid.status === 'Accepted' ? 'View' : 'Edit'}</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div>
-            <div className="section-head"><div className="section-title">Portfolio</div><button className="section-link" onClick={() => setLocation('/lender-portfolio')}>Full Portfolio →</button></div>
-            {[{company:'Prairie Health Clinics',industry:'Healthcare · Saskatchewan',invested:'$150K',rate:'7.3%',term:'29 mo remaining',status:'Active',statusClass:'badge-green'},{company:'Cascade Logistics',industry:'Logistics · Alberta',invested:'$80K',rate:'8.1%',term:'41 mo remaining',status:'Active',statusClass:'badge-green'},{company:'Riverdale Retail Group',industry:'Retail · Ontario',invested:'$50K',rate:'8.8%',term:'Completed',status:'Funded',statusClass:'badge-gold'}].map((p,i) => (
-              <div key={i} className="portfolio-card">
-                <div className="pc-company">{p.company}</div>
-                <div className="pc-industry">{p.industry}</div>
-                <div className="pc-row"><span className="pc-label">Invested</span><span className="pc-val">{p.invested}</span></div>
-                <div className="pc-row"><span className="pc-label">Rate</span><span className="pc-val">{p.rate}</span></div>
-                <div className="pc-row"><span className="pc-label">Term</span><span className="pc-val">{p.term}</span></div>
-                <div style={{marginTop:'8px'}}><span className={`badge ${p.statusClass}`}>{p.status}</span></div>
-              </div>
-            ))}
+            <div className="section-head"><div className="section-title">Portfolio</div></div>
+            {acceptedBids.length === 0 ? (
+              <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "12px", padding: "24px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>No accepted deals yet.</div>
+            ) : acceptedBids.map((bid, i) => {
+              const deal = bid.deals || {};
+              return (
+                <div key={i} className="portfolio-card">
+                  <div className="pc-company">{deal.title || "—"}</div>
+                  <div className="pc-industry">{[deal.industry, deal.province].filter(Boolean).join(" · ")}</div>
+                  <div className="pc-row"><span className="pc-label">Invested</span><span className="pc-val">{formatCurrency(Number(bid.amount || 0))}</span></div>
+                  <div className="pc-row"><span className="pc-label">Rate</span><span className="pc-val">{bid.interest_rate ? `${bid.interest_rate}%` : "—"}</span></div>
+                  <div className="pc-row"><span className="pc-label">Term</span><span className="pc-val">{bid.term_months ? `${bid.term_months} mo` : "—"}</span></div>
+                  <div style={{marginTop:'8px'}}><span className="badge badge-green">Active</span></div>
+                </div>
+              );
+            })}
           </div>
 
           <div>
             <div className="section-head"><div className="section-title">Saved Deals</div><button className="section-link" onClick={() => setLocation('/marketplace')}>Browse Marketplace</button></div>
-            {[{company:'Atlantic Energy Partners',meta:'Energy · Nova Scotia · 55% funded',amount:'$8.5M',rate:'6.2% proposed'},{company:'Volterra Tech Solutions',meta:'Technology · Québec · 41% funded',amount:'$1.8M',rate:'9.1% proposed'}].map((s,i) => (
-              <div key={i} className="saved-card">
-                <div><div className="sc-company">{s.company}</div><div className="sc-meta">{s.meta}</div></div>
-                <div><div className="sc-amount">{s.amount}</div><div className="sc-rate">{s.rate}</div></div>
-              </div>
-            ))}
+            {savedDeals.length === 0 ? (
+              <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "12px", padding: "24px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>No saved deals. Browse the marketplace to save deals you're interested in.</div>
+            ) : savedDeals.map((s, i) => {
+              const deal = s.deals || {};
+              return (
+                <div key={i} className="saved-card" style={{ cursor: "pointer" }} onClick={() => setLocation(`/deals/${deal.id}`)}>
+                  <div><div className="sc-company">{deal.title || "—"}</div><div className="sc-meta">{[deal.industry, deal.province].filter(Boolean).join(" · ")}</div></div>
+                  <div><div className="sc-amount">{formatCurrency(Number(deal.amount_requested || 0))}</div><div className="sc-rate">{deal.interest_rate ? `${deal.interest_rate}% proposed` : deal.ai_score != null ? `Score: ${deal.ai_score}/100` : ""}</div></div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -485,8 +557,8 @@ export default function LenderDashboard() {
         {/* WELCOME */}
         <div className="d-welcome">
           <div>
-            <h2>Welcome back, Jean.</h2>
-            <p>You have 5 active bids and $142K deployed across 3 deals.</p>
+            <h2>Welcome back, {lenderName.split(" ")[0]}.</h2>
+            <p>{activeBids.length > 0 ? `You have ${activeBids.length} active bid${activeBids.length !== 1 ? "s" : ""}` : "You have no active bids yet"}{totalDeployed > 0 ? ` and ${formatCurrency(totalDeployed)} deployed` : ""}{ dealsFunded > 0 ? ` across ${dealsFunded} deal${dealsFunded !== 1 ? "s" : ""}` : ""}.</p>
           </div>
           <div className="d-welcome-actions">
             <button className="d-btn d-btn-ghost-white">View Portfolio</button>
@@ -496,40 +568,48 @@ export default function LenderDashboard() {
 
         {/* STATS */}
         <div className="d-stats">
-          <div className="d-stat-card"><div className="d-stat-label">Capital Deployed</div><div className="d-stat-num">$142K</div><div className="d-stat-change">↑ $40K this month</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Active Bids</div><div className="d-stat-num gold">5</div><div className="d-stat-sub">3 pending response</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Avg. Rate</div><div className="d-stat-num">7.2%</div><div className="d-stat-sub">weighted average</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Deals Funded</div><div className="d-stat-num">3</div><div className="d-stat-sub">all performing</div></div>
+          <div className="d-stat-card"><div className="d-stat-label">Capital Deployed</div><div className="d-stat-num">{formatCurrency(totalDeployed)}</div></div>
+          <div className="d-stat-card"><div className="d-stat-label">Active Bids</div><div className="d-stat-num gold">{activeBids.length}</div></div>
+          <div className="d-stat-card"><div className="d-stat-label">Avg. Rate</div><div className="d-stat-num">{avgRate !== "—" ? `${avgRate}%` : "—"}</div><div className="d-stat-sub">weighted average</div></div>
+          <div className="d-stat-card"><div className="d-stat-label">Deals Funded</div><div className="d-stat-num">{dealsFunded}</div></div>
         </div>
 
         {/* ACTIVE BIDS */}
         <div className="d-section">
           <div className="d-section-head">
             <div className="d-section-title">My Active Bids</div>
-            <button className="d-btn d-btn-ghost" onClick={() => alert('View All Bids')}>View All</button>
+            <button className="d-btn d-btn-ghost" onClick={() => setLocation('/marketplace')}>Browse Deals</button>
           </div>
           <div className="d-bids-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Company</th><th>Industry</th><th>My Rate</th><th>My Amount</th><th>Term</th><th>Risk</th><th>Status</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {[{company:'Maple Ridge Mfg.',industry:'Manufacturing',rate:'6.9%',best:true,amount:'$200K',term:'36 mo',risk:'Very Low',riskClass:'badge-green',status:'Pending',statusClass:'badge-amber'},{company:'Northern Harvest',industry:'Food & Bev',rate:'7.0%',best:false,amount:'$500K',term:'48 mo',risk:'Low',riskClass:'badge-blue',status:'Pending',statusClass:'badge-amber'},{company:'Prairie Health',industry:'Healthcare',rate:'7.3%',best:false,amount:'$150K',term:'36 mo',risk:'Very Low',riskClass:'badge-green',status:'Accepted',statusClass:'badge-green'}].map((bid,i) => (
-                  <tr key={i}>
-                    <td style={{fontWeight:600}}>{bid.company}</td>
-                    <td style={{color:'var(--text-muted)'}}>{bid.industry}</td>
-                    <td className={bid.best ? 'd-rate-best' : ''} style={{fontWeight:700}}>{bid.rate}</td>
-                    <td>{bid.amount}</td>
-                    <td>{bid.term}</td>
-                    <td><span className={`badge ${bid.riskClass}`}>{bid.risk}</span></td>
-                    <td><span className={`badge ${bid.statusClass}`}>{bid.status}</span></td>
-                    <td><button className="d-btn d-btn-ghost" style={{fontSize:'11px',padding:'5px 10px'}} onClick={() => bid.status === 'Accepted' ? setLocation('/deals/1') : alert('Edit bid')}>{bid.status === 'Accepted' ? 'View' : 'Edit'}</button></td>
+            {lenderBids.length === 0 ? (
+              <div style={{ padding: "32px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>No bids placed yet. Browse the marketplace to get started.</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Company</th><th>Industry</th><th>My Rate</th><th>My Amount</th><th>Term</th><th>Status</th><th></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {lenderBids.map((bid, i) => {
+                    const deal = bid.deals || {};
+                    const statusClass = bid.status === 'accepted' ? 'badge-green' : 'badge-amber';
+                    const statusLabel = bid.status ? bid.status.charAt(0).toUpperCase() + bid.status.slice(1) : 'Pending';
+                    return (
+                      <tr key={i}>
+                        <td style={{fontWeight:600}}>{deal.title || "—"}</td>
+                        <td style={{color:'var(--text-muted)'}}>{deal.industry || "—"}</td>
+                        <td style={{fontWeight:700}}>{bid.interest_rate ? `${bid.interest_rate}%` : "—"}</td>
+                        <td>{formatCurrency(Number(bid.amount || 0))}</td>
+                        <td>{bid.term_months ? `${bid.term_months} mo` : "—"}</td>
+                        <td><span className={`badge ${statusClass}`}>{statusLabel}</span></td>
+                        <td><button className="d-btn d-btn-ghost" style={{fontSize:'11px',padding:'5px 10px'}} onClick={() => setLocation(`/deals/${deal.id}`)}>View</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 
@@ -537,20 +617,26 @@ export default function LenderDashboard() {
         <div className="d-section">
           <div className="d-section-head">
             <div className="d-section-title">Portfolio</div>
-            <button className="d-btn d-btn-ghost" onClick={() => setLocation('/lender-portfolio')}>Full Portfolio →</button>
           </div>
-          <div className="d-portfolio-grid">
-            {[{company:'Prairie Health Clinics',industry:'Healthcare · Saskatchewan',invested:'$150K',rate:'7.3%',term:'29 mo remaining',status:'Active',statusClass:'badge-green'},{company:'Cascade Logistics',industry:'Logistics · Alberta',invested:'$80K',rate:'8.1%',term:'41 mo remaining',status:'Active',statusClass:'badge-green'},{company:'Riverdale Retail Group',industry:'Retail · Ontario',invested:'$50K',rate:'8.8%',term:'Completed',status:'Funded',statusClass:'badge-gold'}].map((p,i) => (
-              <div key={i} className="d-portfolio-card">
-                <div className="d-pc-company">{p.company}</div>
-                <div className="d-pc-industry">{p.industry}</div>
-                <div className="d-pc-row"><span className="d-pc-label">Invested</span><span className="d-pc-val">{p.invested}</span></div>
-                <div className="d-pc-row"><span className="d-pc-label">Rate</span><span className="d-pc-val">{p.rate}</span></div>
-                <div className="d-pc-row"><span className="d-pc-label">Term</span><span className="d-pc-val">{p.term}</span></div>
-                <div style={{marginTop:'10px'}}><span className={`badge ${p.statusClass}`}>{p.status}</span></div>
-              </div>
-            ))}
-          </div>
+          {acceptedBids.length === 0 ? (
+            <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "12px", padding: "32px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>No accepted deals yet.</div>
+          ) : (
+            <div className="d-portfolio-grid">
+              {acceptedBids.map((bid, i) => {
+                const deal = bid.deals || {};
+                return (
+                  <div key={i} className="d-portfolio-card" style={{ cursor: "pointer" }} onClick={() => setLocation(`/deals/${deal.id}`)}>
+                    <div className="d-pc-company">{deal.title || "—"}</div>
+                    <div className="d-pc-industry">{[deal.industry, deal.province].filter(Boolean).join(" · ")}</div>
+                    <div className="d-pc-row"><span className="d-pc-label">Invested</span><span className="d-pc-val">{formatCurrency(Number(bid.amount || 0))}</span></div>
+                    <div className="d-pc-row"><span className="d-pc-label">Rate</span><span className="d-pc-val">{bid.interest_rate ? `${bid.interest_rate}%` : "—"}</span></div>
+                    <div className="d-pc-row"><span className="d-pc-label">Term</span><span className="d-pc-val">{bid.term_months ? `${bid.term_months} mo` : "—"}</span></div>
+                    <div style={{marginTop:'10px'}}><span className="badge badge-green">Active</span></div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* SAVED DEALS */}
@@ -559,14 +645,21 @@ export default function LenderDashboard() {
             <div className="d-section-title">Saved Deals</div>
             <button className="d-btn d-btn-ghost" onClick={() => setLocation('/marketplace')}>Browse Marketplace</button>
           </div>
-          <div className="d-saved-grid">
-            {[{company:'Atlantic Energy Partners',meta:'Energy · Nova Scotia · 55% funded',amount:'$8.5M',rate:'6.2% proposed'},{company:'Volterra Tech Solutions',meta:'Technology · Québec · 41% funded',amount:'$1.8M',rate:'9.1% proposed'}].map((s,i) => (
-              <div key={i} className="d-saved-card">
-                <div><div className="d-sc-company">{s.company}</div><div className="d-sc-meta">{s.meta}</div></div>
-                <div><div className="d-sc-amount">{s.amount}</div><div className="d-sc-rate">{s.rate}</div></div>
-              </div>
-            ))}
-          </div>
+          {savedDeals.length === 0 ? (
+            <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "12px", padding: "32px", textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>No saved deals. Browse the marketplace to save deals you're interested in.</div>
+          ) : (
+            <div className="d-saved-grid">
+              {savedDeals.map((s, i) => {
+                const deal = s.deals || {};
+                return (
+                  <div key={i} className="d-saved-card" style={{ cursor: "pointer" }} onClick={() => setLocation(`/deals/${deal.id}`)}>
+                    <div><div className="d-sc-company">{deal.title || "—"}</div><div className="d-sc-meta">{[deal.industry, deal.province].filter(Boolean).join(" · ")}</div></div>
+                    <div><div className="d-sc-amount">{formatCurrency(Number(deal.amount_requested || 0))}</div><div className="d-sc-rate">{deal.interest_rate ? `${deal.interest_rate}% proposed` : deal.ai_score != null ? `Score: ${deal.ai_score}/100` : ""}</div></div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
       </div>
