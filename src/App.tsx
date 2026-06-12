@@ -9,6 +9,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import RoleSelect from "./pages/RoleSelect";
 import BorrowerOnboarding from "./pages/BorrowerOnboarding";
+import LenderOnboarding from "./pages/LenderOnboarding";
 import BorrowerDashboard from "./pages/BorrowerDashboard";
 import Marketplace from "./pages/Marketplace";
 import DealDetail from "./pages/DealDetail";
@@ -33,6 +34,11 @@ function Router() {
       <Route path={"/onboarding"}>
         <ProtectedRoute>
           <BorrowerOnboarding />
+        </ProtectedRoute>
+      </Route>
+      <Route path={"/lender-onboarding"}>
+        <ProtectedRoute>
+          <LenderOnboarding />
         </ProtectedRoute>
       </Route>
       <Route path={"/borrower-dashboard"}>

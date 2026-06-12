@@ -35,7 +35,7 @@ export default function RoleSelect() {
   const handleLenderClick = async () => {
     setActiveRole("lender");
     await upsertUser("lender");
-    setLocation("/lender-dashboard");
+    setLocation("/lender-onboarding");
   };
 
   return (
