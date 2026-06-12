@@ -270,6 +270,21 @@ export default function DealDetail() {
     setExpandedBids(true);
   };
 
+  const formatCurrency = (n: number): string => {
+    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+    if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
+    return `$${n.toLocaleString()}`;
+  };
+
+  const toParas = (text: string): string[] => {
+    const sentences = text.match(/[^.!?]+[.!?]+["']?\s*/g) || [text];
+    const chunks: string[] = [];
+    for (let i = 0; i < sentences.length; i += 2) {
+      chunks.push(sentences.slice(i, i + 2).join("").trim());
+    }
+    return chunks.filter(Boolean);
+  };
+
   if (loading) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#FAF8F4", fontFamily: "Inter, sans-serif", color: "#1B2B4B", fontSize: "16px", fontWeight: 600 }}>
@@ -1081,23 +1096,34 @@ export default function DealDetail() {
             <div className="hero-meta-item">📍 {deal?.city && deal?.province ? `${deal.city}, ${deal.province}` : DEAL.location}</div>
             <div className="hero-meta-item">{deal?.years_in_business ? `${deal.years_in_business} years in business` : DEAL.yearsInBusiness}</div>
           </div>
-          <p className="hero-desc">{deal?.ai_summary || DEAL.description}</p>
+          <div className="hero-desc">
+            {toParas(deal?.ai_summary || DEAL.description).map((chunk, i, arr) => (
+              <p key={i} style={{ marginBottom: i < arr.length - 1 ? "12px" : "0" }}>{chunk}</p>
+            ))}
+          </div>
 
           {/* Deal Status */}
-          <div className="deal-status">
-            <div className="deal-status-label">Deal Status</div>
-            <div className="deal-status-amount">{DEAL.funded}% Funded</div>
-            <div className="progress-bar">
-              <div
-                className="progress-fill"
-                style={{ width: `${DEAL.funded}%` }}
-              ></div>
-            </div>
-            <div className="deal-status-footer">
-              <span>{DEAL.fundedAmount} funded</span>
-              <span>{DEAL.remaining} remaining</span>
-            </div>
-          </div>
+          {(() => {
+            const funded = deal?.amount_funded ?? 0;
+            const requested = deal?.amount_requested ?? 0;
+            const pct = requested > 0 ? Math.round((funded / requested) * 100) : 0;
+            const remaining = requested - funded;
+            return (
+              <div className="deal-status">
+                <div className="deal-status-label">Deal Status</div>
+                <div className="deal-status-amount">
+                  {pct === 0 ? "0% Funded · Open for bids" : `${pct}% Funded`}
+                </div>
+                <div className="progress-bar">
+                  <div className="progress-fill" style={{ width: `${pct}%` }}></div>
+                </div>
+                <div className="deal-status-footer">
+                  <span>{formatCurrency(funded)} funded</span>
+                  <span>{formatCurrency(remaining > 0 ? remaining : requested)} remaining</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Tabs */}
           <div className="tabs">
@@ -1172,25 +1198,18 @@ export default function DealDetail() {
               <div className="card">
                 <div className="card-title">Key Financial Ratios</div>
                 <div className="metrics-grid">
-                  <div className="metric-item">
-                    <div className="metric-label">Debt-to-Equity</div>
-                    <div className="metric-value" style={{ color: "#059669" }}>
-                      {DEAL.debtToEquity}
+                  {deal?.ebitda && deal?.amount_requested ? (
+                    <div className="metric-item">
+                      <div className="metric-label">Debt / EBITDA</div>
+                      <div className="metric-value" style={{ color: (deal.amount_requested / deal.ebitda) <= 4 ? "#059669" : "#D97706" }}>
+                        {(deal.amount_requested / deal.ebitda).toFixed(2)}x
+                      </div>
                     </div>
-                  </div>
-                  <div className="metric-item">
-                    <div className="metric-label">DSCR</div>
-                    <div className="metric-value" style={{ color: "#059669" }}>
-                      {DEAL.dscr}x
-                    </div>
-                  </div>
-                  <div className="metric-item">
-                    <div className="metric-label">Current Ratio</div>
-                    <div className="metric-value" style={{ color: "#059669" }}>
-                      {DEAL.currentRatio}
-                    </div>
-                  </div>
+                  ) : null}
                 </div>
+                <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "14px", fontStyle: "italic" }}>
+                  Detailed ratio analysis available in the Credit Analysis tab.
+                </p>
               </div>
             </div>
           )}
@@ -1198,56 +1217,24 @@ export default function DealDetail() {
           {/* Sources & Uses Tab */}
           {activeTab === "sources" && (
             <div className="tab-content active">
-              <div className="overview-grid">
-                <div>
-                  <div className="card">
-                    <div className="card-title">Sources of Funds</div>
-                    <div className="card-section">
-                      <div className="card-item">
-                        <div className="card-label">New Debt (Junni)</div>
-                        <div className="card-value">$3.2M</div>
-                      </div>
-                      <div className="card-item">
-                        <div className="card-label">Existing Bank Lines</div>
-                        <div className="card-value">$1.5M</div>
-                      </div>
-                      <div className="card-item">
-                        <div className="card-label">Owner Equity</div>
-                        <div className="card-value">$800K</div>
-                      </div>
+              <div className="card">
+                <div className="card-title">Sources & Uses</div>
+                <p style={{ fontSize: "14px", color: "var(--text-muted)", lineHeight: 1.7, marginBottom: "24px", fontStyle: "italic" }}>
+                  Sources & Uses breakdown will be available once detailed financial documentation is processed.
+                </p>
+                <div className="card-section">
+                  <div className="card-item">
+                    <div className="card-label">Requested Amount</div>
+                    <div className="card-value">
+                      {deal?.amount_requested ? `$${Number(deal.amount_requested).toLocaleString()}` : "—"}
                     </div>
                   </div>
-                  <div className="card-total">
-                    <div className="card-total-label">Total Sources</div>
-                    <div className="card-total-value">$5.5M</div>
-                  </div>
-                </div>
-                <div>
-                  <div className="card">
-                    <div className="card-title">Uses of Funds</div>
-                    <div className="card-section">
-                      <div className="card-item">
-                        <div className="card-label">New Equipment</div>
-                        <div className="card-value">$2.8M</div>
-                      </div>
-                      <div className="card-item">
-                        <div className="card-label">Facility Upgrade</div>
-                        <div className="card-value">$1.2M</div>
-                      </div>
-                      <div className="card-item">
-                        <div className="card-label">Working Capital</div>
-                        <div className="card-value">$900K</div>
-                      </div>
-                      <div className="card-item">
-                        <div className="card-label">Transaction Costs</div>
-                        <div className="card-value">$600K</div>
-                      </div>
+                  {deal?.ai_summary && (
+                    <div className="card-item">
+                      <div className="card-label">Use of Funds</div>
+                      <div className="card-value-small" style={{ lineHeight: 1.65, marginTop: "4px" }}>{deal.ai_summary}</div>
                     </div>
-                  </div>
-                  <div className="card-total">
-                    <div className="card-total-label">Total Uses</div>
-                    <div className="card-total-value">$5.5M</div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1281,7 +1268,11 @@ export default function DealDetail() {
                         }}>{creditScore.risk_label} Risk</div>
                       </div>
                     </div>
-                    <p style={{ fontSize: "14px", lineHeight: 1.7, color: "var(--text-secondary)" }}>{creditScore.summary}</p>
+                    <div style={{ fontSize: "14px", lineHeight: 1.7, color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: "12px" }}>
+                      {toParas(creditScore.summary).map((chunk, i) => (
+                        <p key={i}>{chunk}</p>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Strengths & Risks */}
