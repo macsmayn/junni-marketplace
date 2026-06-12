@@ -211,19 +211,22 @@ export default function DealDetail() {
   const [bidAmount, setBidAmount] = useState("");
   const [bidTerm, setBidTerm] = useState("");
   const [submittingBid, setSubmittingBid] = useState(false);
+  const [creditScore, setCreditScore] = useState<any>(null);
   const [showDocModal, setShowDocModal] = useState(false);
   const [expandedBids, setExpandedBids] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
-      const [dealRes, bidsRes, docsRes] = await Promise.all([
+      const [dealRes, bidsRes, docsRes, scoreRes] = await Promise.all([
         supabase.from('deals').select('*').eq('id', dealId).single(),
         supabase.from('bids').select('*').eq('deal_id', dealId),
         supabase.from('documents').select('*').eq('deal_id', dealId),
+        supabase.from('credit_scores').select('*').eq('deal_id', dealId).single(),
       ]);
       if (dealRes.data) setDeal(dealRes.data);
       if (bidsRes.data) setDealBids(bidsRes.data);
       if (docsRes.data) setDealDocs(docsRes.data);
+      setCreditScore(scoreRes.data || null);
       if (isAuthenticated && user?.sub) {
         const { data: userData } = await supabase.from('users').select('*').eq('auth0_id', user.sub).single();
         if (userData) setDbUser(userData);
@@ -1071,7 +1074,7 @@ export default function DealDetail() {
       <div className="container">
         {/* Hero Section */}
         <div className="hero-section">
-          <div className="hero-badge">✓ {DEAL.risk}</div>
+          <div className="hero-badge">✓ {creditScore?.risk_label || DEAL.risk}{creditScore?.overall_score != null ? ` · ${creditScore.overall_score}/100` : ""}</div>
           <h1 className="hero-title">{deal?.title || DEAL.company}</h1>
           <div className="hero-meta">
             <div className="hero-meta-item">🏭 {deal?.industry || DEAL.industry}</div>
@@ -1253,31 +1256,110 @@ export default function DealDetail() {
           {/* Credit Analysis Tab */}
           {activeTab === "credit" && (
             <div className="tab-content active">
-              <div className="card">
-                <div className="card-title">15 Principal Credit Metrics</div>
-                <div className="metrics-grid">
-                  {CREDIT_METRICS_PRIMARY.map((metric, idx) => (
-                    <div key={idx} className="metric-item">
-                      <div className="metric-label">{metric.label}</div>
-                      <div className="metric-value">{metric.value}</div>
-                      <div className="metric-score">Junni Score: {metric.score}/10</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="metrics-divider">Additional Metrics</div>
-                <div className="metrics-secondary-grid">
-                  {CREDIT_METRICS_SECONDARY.map((metric, idx) => (
-                    <div key={idx} className="metric-item-secondary">
-                      <div className="metric-label-secondary">
-                        {metric.label}
+              {creditScore ? (
+                <>
+                  {/* AI Score Header */}
+                  <div className="card" style={{ marginBottom: "20px" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "24px", marginBottom: "20px" }}>
+                      <div>
+                        <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "6px" }}>✦ Junni AI Credit Score</div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+                          <span style={{ fontFamily: "'Fraunces', serif", fontSize: "56px", fontWeight: 800, color: "var(--navy)", lineHeight: 1, letterSpacing: "-2px" }}>{creditScore.overall_score}</span>
+                          <span style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-muted)" }}>/100</span>
+                        </div>
                       </div>
-                      <div className="metric-value-secondary">{metric.value}</div>
-                      <div className="metric-score-secondary">Junni Score: {metric.score}/10</div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <div style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "8px" }}>Risk Assessment</div>
+                        <div style={{
+                          display: "inline-block",
+                          padding: "6px 16px",
+                          borderRadius: "100px",
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          background: creditScore.risk_label === "Very Low" || creditScore.risk_label === "Low" ? "rgba(5,150,105,0.1)" : creditScore.risk_label === "Moderate" ? "rgba(217,119,6,0.1)" : "rgba(220,38,38,0.1)",
+                          color: creditScore.risk_label === "Very Low" || creditScore.risk_label === "Low" ? "var(--success)" : creditScore.risk_label === "Moderate" ? "var(--warning)" : "var(--danger)",
+                        }}>{creditScore.risk_label} Risk</div>
+                      </div>
                     </div>
-                  ))}
+                    <p style={{ fontSize: "14px", lineHeight: 1.7, color: "var(--text-secondary)" }}>{creditScore.summary}</p>
+                  </div>
+
+                  {/* Strengths & Risks */}
+                  <div className="overview-grid" style={{ marginBottom: "20px" }}>
+                    <div className="card">
+                      <div className="card-title" style={{ color: "var(--success)", fontSize: "15px" }}>✓ Strengths</div>
+                      <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "10px" }}>
+                        {creditScore.strengths.map((s: string, i: number) => (
+                          <li key={i} style={{ display: "flex", gap: "10px", fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                            <span style={{ color: "var(--success)", fontWeight: 700, flexShrink: 0 }}>✓</span>
+                            {s}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="card">
+                      <div className="card-title" style={{ color: "var(--danger)", fontSize: "15px" }}>⚠ Risks</div>
+                      <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "10px" }}>
+                        {creditScore.risks.map((r: string, i: number) => (
+                          <li key={i} style={{ display: "flex", gap: "10px", fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                            <span style={{ color: "var(--warning)", fontWeight: 700, flexShrink: 0 }}>⚠</span>
+                            {r}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Metric Score Bars */}
+                  <div className="card">
+                    <div className="card-title">Credit Factor Scores</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                      {Object.entries(creditScore.metrics).map(([key, val]: [string, any]) => {
+                        const label = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                        const pct = Math.min(100, Math.max(0, Number(val)));
+                        const barColor = pct >= 70 ? "var(--success)" : pct >= 45 ? "var(--gold)" : "var(--danger)";
+                        return (
+                          <div key={key}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 600, color: "var(--navy)", marginBottom: "6px" }}>
+                              <span>{label}</span>
+                              <span style={{ color: barColor }}>{pct}/100</span>
+                            </div>
+                            <div style={{ height: "6px", background: "rgba(27,43,75,0.08)", borderRadius: "4px", overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${pct}%`, background: barColor, borderRadius: "4px", transition: "width 0.4s ease" }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="card">
+                  <div style={{ textAlign: "center", padding: "12px 0 20px", color: "var(--text-muted)", fontSize: "13px", fontWeight: 600, marginBottom: "20px" }}>
+                    ✦ AI scoring in progress...
+                  </div>
+                  <div className="card-title">15 Principal Credit Metrics</div>
+                  <div className="metrics-grid">
+                    {CREDIT_METRICS_PRIMARY.map((metric, idx) => (
+                      <div key={idx} className="metric-item">
+                        <div className="metric-label">{metric.label}</div>
+                        <div className="metric-value">{metric.value}</div>
+                        <div className="metric-score">Junni Score: {metric.score}/10</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="metrics-divider">Additional Metrics</div>
+                  <div className="metrics-secondary-grid">
+                    {CREDIT_METRICS_SECONDARY.map((metric, idx) => (
+                      <div key={idx} className="metric-item-secondary">
+                        <div className="metric-label-secondary">{metric.label}</div>
+                        <div className="metric-value-secondary">{metric.value}</div>
+                        <div className="metric-score-secondary">Junni Score: {metric.score}/10</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 

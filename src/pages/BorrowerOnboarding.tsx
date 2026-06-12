@@ -79,7 +79,7 @@ export default function BorrowerOnboarding() {
 
       const termMonths = parseInt(formData.loanTerm.split(' ')[0]) || 36;
 
-      const { error: dealError } = await supabase.from('deals').insert({
+      const { data: dealData, error: dealError } = await supabase.from('deals').insert({
         borrower_id: userData.id,
         title: formData.companyName + ' — ' + formData.industry + ' Financing',
         industry: formData.industry,
@@ -93,14 +93,23 @@ export default function BorrowerOnboarding() {
         ebitda: parseFloat(formData.ebitda2024) || null,
         years_in_business: parseInt(formData.yearsOperating) || null,
         ai_summary: formData.useOfFunds,
-      });
+      }).select().single();
 
-      if (dealError) {
+      if (dealError || !dealData) {
         console.error('Deal insert error:', dealError);
         alert("Error submitting application. Please try again.");
         setIsSubmitting(false);
         return;
       }
+
+      const newDealId = dealData.id;
+
+      // Trigger AI scoring in the background — does not block the redirect
+      fetch("https://sypqecydiqdpruarkrvy.supabase.co/functions/v1/score-deal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deal_id: newDealId }),
+      }).catch(err => console.error("Scoring trigger failed:", err));
 
       setLocation("/borrower-dashboard");
     } catch (err) {
