@@ -92,7 +92,7 @@ export default function LenderOnboarding() {
         return;
       }
 
-      const { error: profileError } = await supabase.from('lender_profiles').insert({
+      const { error: profileError } = await supabase.from('lender_profiles').upsert({
         user_id: userData.id,
         title: formData.title,
         company_name: formData.company_name,
@@ -104,7 +104,7 @@ export default function LenderOnboarding() {
         preferred_provinces: formData.preferred_provinces,
         target_yield_min: parseFloat(formData.target_yield_min) || null,
         target_yield_max: parseFloat(formData.target_yield_max) || null,
-      });
+      }, { onConflict: 'user_id' });
 
       if (profileError) {
         console.error('Lender profile insert error:', profileError);
@@ -864,10 +864,10 @@ export default function LenderOnboarding() {
                 <label>Preferred Industries</label>
                 <div className="checkbox-grid" style={{ marginTop: "6px" }}>
                   {INDUSTRIES.map(industry => (
-                    <div
+                    <label
                       key={industry}
                       className={`checkbox-item ${formData.preferred_industries.includes(industry) ? "checked" : ""}`}
-                      onClick={() => handleCheckboxChange("preferred_industries", industry)}
+                      style={{ cursor: "pointer" }}
                     >
                       <input
                         type="checkbox"
@@ -875,7 +875,7 @@ export default function LenderOnboarding() {
                         onChange={() => handleCheckboxChange("preferred_industries", industry)}
                       />
                       <span className="checkbox-label">{industry}</span>
-                    </div>
+                    </label>
                   ))}
                 </div>
                 <div className="field-hint">Select all that apply. Leave blank to see all industries.</div>
@@ -885,10 +885,10 @@ export default function LenderOnboarding() {
                 <label>Preferred Provinces</label>
                 <div className="checkbox-grid" style={{ marginTop: "6px" }}>
                   {PROVINCES.map(province => (
-                    <div
+                    <label
                       key={province}
                       className={`checkbox-item ${formData.preferred_provinces.includes(province) ? "checked" : ""}`}
-                      onClick={() => handleCheckboxChange("preferred_provinces", province)}
+                      style={{ cursor: "pointer" }}
                     >
                       <input
                         type="checkbox"
@@ -896,7 +896,7 @@ export default function LenderOnboarding() {
                         onChange={() => handleCheckboxChange("preferred_provinces", province)}
                       />
                       <span className="checkbox-label">{province}</span>
-                    </div>
+                    </label>
                   ))}
                 </div>
                 <div className="field-hint">Select all that apply. Leave blank to see all provinces.</div>
