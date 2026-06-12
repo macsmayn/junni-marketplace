@@ -277,10 +277,12 @@ export default function DealDetail() {
   };
 
   const toParas = (text: string): string[] => {
-    const sentences = text.match(/[^.!?]+[.!?]+["']?\s*/g) || [text];
+    if (!text) return [];
+    // Split only on sentence boundaries: period/!/? followed by space, not inside numbers
+    const sentences = text.split(/(?<=[.!?])\s+(?=[A-Z])/);
     const chunks: string[] = [];
     for (let i = 0; i < sentences.length; i += 2) {
-      chunks.push(sentences.slice(i, i + 2).join("").trim());
+      chunks.push(sentences.slice(i, i + 2).join(" ").trim());
     }
     return chunks.filter(Boolean);
   };
@@ -1436,23 +1438,31 @@ export default function DealDetail() {
             <div className="sidebar-card-title">Deal Summary</div>
             <div className="sidebar-stat">
               <span className="sidebar-stat-label">Funded</span>
-              <span className="sidebar-stat-val">{DEAL.funded}%</span>
+              <span className="sidebar-stat-val">
+                {deal?.amount_requested > 0
+                  ? `${Math.round(((deal.amount_funded ?? 0) / deal.amount_requested) * 100)}%`
+                  : "0%"}
+              </span>
             </div>
             <div className="sidebar-stat">
               <span className="sidebar-stat-label">Remaining</span>
-              <span className="sidebar-stat-val">{DEAL.remainingAmount}</span>
+              <span className="sidebar-stat-val">
+                {deal?.amount_requested
+                  ? formatCurrency(deal.amount_requested - (deal.amount_funded ?? 0))
+                  : "—"}
+              </span>
             </div>
             <div className="sidebar-stat">
               <span className="sidebar-stat-label">Active Bids</span>
-              <span className="sidebar-stat-val">{DEAL.activeBids}</span>
+              <span className="sidebar-stat-val">{dealBids.length}</span>
             </div>
             <div className="sidebar-stat">
               <span className="sidebar-stat-label">Best Rate</span>
-              <span className="sidebar-stat-val">{DEAL.bestRate}</span>
-            </div>
-            <div className="sidebar-stat">
-              <span className="sidebar-stat-label">Closes In</span>
-              <span className="sidebar-stat-val">{DEAL.closesIn}</span>
+              <span className="sidebar-stat-val">
+                {dealBids.length > 0
+                  ? `${Math.min(...dealBids.map((b) => b.interest_rate))}%`
+                  : "—"}
+              </span>
             </div>
           </div>
 
