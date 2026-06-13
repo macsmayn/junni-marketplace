@@ -224,7 +224,21 @@ export default function DealDetail() {
         supabase.from('credit_scores').select('*').eq('deal_id', dealId).single(),
       ]);
       if (dealRes.data) setDeal(dealRes.data);
-      if (bidsRes.data) setDealBids(bidsRes.data);
+      if (bidsRes.data) {
+        const bids = bidsRes.data;
+        const lenderIds = [...new Set(bids.map((b: any) => b.lender_id))];
+        if (lenderIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from('lender_profiles')
+            .select('user_id, lender_number')
+            .in('user_id', lenderIds);
+          const profileMap: Record<string, number | null> = {};
+          (profiles || []).forEach((p: any) => { profileMap[p.user_id] = p.lender_number; });
+          setDealBids(bids.map((b: any) => ({ ...b, lender_number: profileMap[b.lender_id] ?? null })));
+        } else {
+          setDealBids(bids);
+        }
+      }
       if (docsRes.data) setDealDocs(docsRes.data);
       setCreditScore(scoreRes.data || null);
       if (isAuthenticated && user?.sub) {
@@ -276,7 +290,8 @@ export default function DealDetail() {
     return `$${n.toLocaleString()}`;
   };
 
-  const formatLenderId = (id: string): string => {
+  const formatLenderId = (id: string, lenderNumber?: number | null): string => {
+    if (lenderNumber != null) return `Lender #${lenderNumber}`;
     const hash = id.replace(/-/g, "");
     const letter = String.fromCharCode(65 + (parseInt(hash.slice(0, 4), 16) % 26));
     const num = parseInt(hash.slice(4, 8), 16) % 100;
@@ -1372,7 +1387,7 @@ export default function DealDetail() {
                 dealBids.map((bid) => (
                   <div key={bid.id} className="bid-item">
                     <div className="bid-lender">
-                      <div className="bid-lender-name">{formatLenderId(String(bid.lender_id))}</div>
+                      <div className="bid-lender-name">{formatLenderId(String(bid.lender_id), bid.lender_number)}</div>
                       <div className="bid-lender-type">{bid.term_months ? `${bid.term_months} mo term` : ""}</div>
                     </div>
                     <div className="bid-right">
