@@ -65,6 +65,7 @@ export default function LenderDashboard() {
   }, [isAuthenticated, user?.sub, auth0Loading]);
 
   const formatCurrency = (n: number): string => {
+    if (n == null || isNaN(n)) return "$0";
     if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
     if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
     return `$${n.toLocaleString()}`;

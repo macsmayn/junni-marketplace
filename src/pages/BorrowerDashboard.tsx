@@ -29,7 +29,7 @@ interface Bid {
   deal_id: string;
   lender_id: string;
   interest_rate: number;
-  amount_offered: number;
+  amount: number;
   term_months: number;
   status: string;
   created_at: string;
@@ -48,6 +48,7 @@ interface DocRecord {
 }
 
 function formatCurrency(amount: number): string {
+  if (amount == null || isNaN(amount)) return "$0";
   if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
   if (amount >= 1_000) return `$${(amount / 1_000).toFixed(0)}K`;
   return `$${amount.toLocaleString()}`;
@@ -653,12 +654,12 @@ export default function BorrowerDashboard() {
                         <div className="bid-lender">{formatLenderId(bid.lender_id)}</div>
                         <div className="bid-deal">{getDealName(bid.deal_id)}</div>
                       </div>
-                      <div className={`bid-rate${isBest ? " best" : ""}`}>{bid.interest_rate.toFixed(1)}%</div>
+                      <div className={`bid-rate${isBest ? " best" : ""}`}>{(bid.interest_rate != null ? bid.interest_rate.toFixed(1) : "—")}%</div>
                     </div>
                     <div className="bid-meta">
                       <div className="bid-meta-item">
                         <span className="bid-meta-label">Amount</span>
-                        <span className="bid-meta-val">{formatCurrency(bid.amount_offered)}</span>
+                        <span className="bid-meta-val">{formatCurrency(bid.amount)}</span>
                       </div>
                       <div className="bid-meta-item">
                         <span className="bid-meta-label">Term</span>
@@ -999,8 +1000,8 @@ export default function BorrowerDashboard() {
                       <tr key={bid.id}>
                         <td style={{ fontWeight: 600 }}>{formatLenderId(bid.lender_id)}</td>
                         <td style={{ color: "var(--text-muted)" }}>{getDealName(bid.deal_id)}</td>
-                        <td className={isBest ? "d-rate-best" : ""} style={{ fontWeight: 700 }}>{bid.interest_rate.toFixed(1)}%</td>
-                        <td>{formatCurrency(bid.amount_offered)}</td>
+                        <td className={isBest ? "d-rate-best" : ""} style={{ fontWeight: 700 }}>{(bid.interest_rate != null ? bid.interest_rate.toFixed(1) : "—")}%</td>
+                        <td>{formatCurrency(bid.amount)}</td>
                         <td>{bid.term_months} mo</td>
                         <td><span className="d-status d-status-review">{bid.status.charAt(0).toUpperCase() + bid.status.slice(1)}</span></td>
                         <td>
