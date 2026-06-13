@@ -10,6 +10,7 @@ export default function BorrowerOnboarding() {
   const { user } = useAuth0();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [financialFiles, setFinancialFiles] = useState<File[]>([]);
   const [formData, setFormData] = useState({
     // Step 1
     companyName: "Maple Ridge Manufacturing Inc.",
@@ -53,7 +54,9 @@ export default function BorrowerOnboarding() {
   const handleFinancialFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    const newNames = Array.from(files).map(f => f.name);
+    const newFiles = Array.from(files);
+    const newNames = newFiles.map(f => f.name);
+    setFinancialFiles(prev => [...prev, ...newFiles]);
     setFormData(prev => ({
       ...prev,
       financialStatementFiles: [...prev.financialStatementFiles, ...newNames],
@@ -62,6 +65,7 @@ export default function BorrowerOnboarding() {
   };
 
   const removeFinancialFile = (index: number) => {
+    setFinancialFiles(prev => prev.filter((_, i) => i !== index));
     setFormData(prev => ({
       ...prev,
       financialStatementFiles: prev.financialStatementFiles.filter((_, i) => i !== index),
@@ -119,7 +123,35 @@ export default function BorrowerOnboarding() {
 
       const newDealId = dealData.id;
 
-      // Trigger AI scoring in the background — does not block the redirect
+      // Upload financial statement files and insert documents rows before scoring
+      for (const file of financialFiles) {
+        try {
+          const storagePath = `${userData.id}/${Date.now()}_${file.name}`;
+          const { error: uploadError } = await supabase.storage
+            .from("documents")
+            .upload(storagePath, file, { contentType: file.type });
+          if (uploadError) {
+            console.error(`Upload failed for "${file.name}":`, uploadError);
+            continue;
+          }
+          const { error: docError } = await supabase.from("documents").insert({
+            deal_id: newDealId,
+            uploaded_by: userData.id,
+            file_name: file.name,
+            file_type: file.type,
+            size_bytes: file.size,
+            storage_path: storagePath,
+            doc_category: "Financial Statement",
+          });
+          if (docError) {
+            console.error(`Document row insert failed for "${file.name}":`, docError);
+          }
+        } catch (uploadErr) {
+          console.error(`Unhandled upload error for "${file.name}":`, uploadErr);
+        }
+      }
+
+      // Trigger AI scoring — fires after uploads so extraction finds the documents
       fetch("https://sypqecydiqdpruarkrvy.supabase.co/functions/v1/score-deal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
