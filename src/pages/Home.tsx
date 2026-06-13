@@ -13,7 +13,7 @@ import { useLocation } from "wouter";
 
 const LOGO_BEIGE = "/junni-logo-beige.png";
 const LOGO_NAVY = "/junni-logo-navy.png";
-const DASHBOARD_MOCKUP = "/manus-storage/dashboard-mockup_c1546dbf.png";
+const DASHBOARD_MOCKUP = "/dashboard-mockup.png";
 
 export default function Home() {
   const { loginWithRedirect, isAuthenticated } = useAuth0();
