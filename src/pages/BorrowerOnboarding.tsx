@@ -21,6 +21,7 @@ export default function BorrowerOnboarding() {
     province: "Ontario, Canada",
     description: "Maple Ridge Manufacturing produces precision industrial components for the automotive and aerospace sectors across Ontario and Quebec. Founded in 2012, we serve 40+ OEM clients with ISO 9001-certified manufacturing processes.",
     // Step 2
+    financialStatementFile: null,
     revenue2023: "14200000",
     ebitda2023: "2900000",
     revenue2024: "16800000",
@@ -31,10 +32,6 @@ export default function BorrowerOnboarding() {
     taxId: null,
     bankStatement: null,
     // Step 4
-    financialStatements: null,
-    businessPlan: null,
-    taxReturns: null,
-    // Step 5
     loanAmount: "3200000",
     loanTerm: "36 months (3.0 yr)",
     interestRate: "7.4",
@@ -119,7 +116,7 @@ export default function BorrowerOnboarding() {
     }
   };
 
-  const progressPercent = Math.max(17, Math.round(((currentStep - 1) / 5) * 100));
+  const progressPercent = Math.max(20, Math.round(((currentStep - 1) / 4) * 100));
 
   return (
     <div className="borrower-onboarding">
@@ -658,7 +655,7 @@ export default function BorrowerOnboarding() {
       {/* Mobile Progress Bar */}
       <div className="mobile-progress">
         <div className="mobile-progress-header">
-          <span>Step {currentStep} of 6</span>
+          <span>Step {currentStep} of 5</span>
           <span>{progressPercent}%</span>
         </div>
         <div className="mobile-progress-track">
@@ -667,9 +664,8 @@ export default function BorrowerOnboarding() {
         <div className="mobile-step-name">
           {[
             "Business Profile",
-            "Financial Data",
+            "Financial Data & Documents",
             "KYC Verification",
-            "Documents",
             "Loan Request",
             "Review & Submit",
           ][currentStep - 1]}
@@ -697,7 +693,7 @@ export default function BorrowerOnboarding() {
 
           <div className="progress-wrap">
             <div className="progress-label">
-              <span>Step {currentStep} of 6</span>
+              <span>Step {currentStep} of 5</span>
               <span>{progressPercent}%</span>
             </div>
             <div className="progress-track">
@@ -708,11 +704,10 @@ export default function BorrowerOnboarding() {
           <div className="step-nav">
             {[
               { num: 1, title: "Business Profile", sub: "Company info & description" },
-              { num: 2, title: "Financial Data", sub: "Revenue & EBITDA history" },
+              { num: 2, title: "Financial Data & Documents", sub: "Financials & statement upload" },
               { num: 3, title: "KYC Verification", sub: "Identity & business docs" },
-              { num: 4, title: "Documents", sub: "Financial statements" },
-              { num: 5, title: "Loan Request", sub: "Amount, term & use of funds" },
-              { num: 6, title: "Review & Submit", sub: "Final check before scoring" },
+              { num: 4, title: "Loan Request", sub: "Amount, term & use of funds" },
+              { num: 5, title: "Review & Submit", sub: "Final check before scoring" },
             ].map((step, idx) => (
               <div key={step.num}>
                 <div
@@ -725,7 +720,7 @@ export default function BorrowerOnboarding() {
                     <div className="step-sub">{step.sub}</div>
                   </div>
                 </div>
-                {idx < 5 && <div className={`step-connector ${currentStep > step.num ? "done" : ""}`}></div>}
+                {idx < 4 && <div className={`step-connector ${currentStep > step.num ? "done" : ""}`}></div>}
               </div>
             ))}
           </div>
@@ -741,7 +736,7 @@ export default function BorrowerOnboarding() {
           {/* STEP 1 */}
           <div className={`step-content ${currentStep === 1 ? "active" : ""}`}>
             <div className="step-header">
-              <div className="step-eyebrow">Step 1 of 6</div>
+              <div className="step-eyebrow">Step 1 of 5</div>
               <h1>Business Profile</h1>
               <p>Tell us about your company. This information helps lenders understand your business and market position.</p>
             </div>
@@ -804,10 +799,28 @@ export default function BorrowerOnboarding() {
           {/* STEP 2 */}
           <div className={`step-content ${currentStep === 2 ? "active" : ""}`}>
             <div className="step-header">
-              <div className="step-eyebrow">Step 2 of 6</div>
-              <h1>Financial Data</h1>
-              <p>Provide 3 years of financials. This drives your AI credit score — accuracy here matters.</p>
+              <div className="step-eyebrow">Step 2 of 5</div>
+              <h1>Financial Data & Documents</h1>
+              <p>Upload your financial statements for AI credit analysis, then confirm or enter key figures below.</p>
             </div>
+
+            <div className="form-grid cols-1">
+              <div className="field">
+                <label>Upload Financial Statements <span style={{ color: "var(--green)", fontSize: "11px", fontWeight: 500 }}>(Recommended)</span></label>
+                <input type="file" accept=".pdf,.xlsx,.xls" onChange={(e) => handleFileChange(e, "financialStatementFile")} />
+                <div className="field-hint">Upload your financial statements and we'll use them for AI credit analysis. You can also enter figures manually below.</div>
+                {formData.financialStatementFile && (
+                  <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--green)", fontWeight: 600 }}>✓ {formData.financialStatementFile}</div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", margin: "4px 0 22px" }}>
+              <div style={{ flex: 1, height: "1px", background: "var(--border)" }}></div>
+              <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500, whiteSpace: "nowrap" }}>or enter figures manually</span>
+              <div style={{ flex: 1, height: "1px", background: "var(--border)" }}></div>
+            </div>
+
             <div className="form-grid cols-1">
               <div className="field">
                 <label>Revenue 2023 (CAD) <span className="req">*</span></label>
@@ -831,6 +844,7 @@ export default function BorrowerOnboarding() {
                 <div className="field-hint">Total of all current loans, credit lines, and debt obligations.</div>
               </div>
             </div>
+
             <div className="nav-buttons">
               <button className="btn btn-back" onClick={() => goToStep(1)}>← Back</button>
               <button className="btn btn-next" onClick={() => goToStep(3)}>Continue →</button>
@@ -840,7 +854,7 @@ export default function BorrowerOnboarding() {
           {/* STEP 3 */}
           <div className={`step-content ${currentStep === 3 ? "active" : ""}`}>
             <div className="step-header">
-              <div className="step-eyebrow">Step 3 of 6</div>
+              <div className="step-eyebrow">Step 3 of 5</div>
               <h1>KYC Verification</h1>
               <p>Upload identity and business verification documents. Required before your deal goes live on the marketplace.</p>
             </div>
@@ -870,37 +884,7 @@ export default function BorrowerOnboarding() {
           {/* STEP 4 */}
           <div className={`step-content ${currentStep === 4 ? "active" : ""}`}>
             <div className="step-header">
-              <div className="step-eyebrow">Step 4 of 6</div>
-              <h1>Supporting Documents</h1>
-              <p>Upload additional documents to strengthen your application. Deals with full documentation receive 40% more lender bids.</p>
-            </div>
-            <div className="form-grid cols-1">
-              <div className="field">
-                <label>Financial Statements (Optional)</label>
-                <input type="file" accept=".pdf,.xlsx,.xls,.csv,.doc,.docx" onChange={(e) => handleFileChange(e, "financialStatements")} />
-                <div className="field-hint">PDF, Excel, Word · up to 10MB · Optional but recommended</div>
-              </div>
-              <div className="field">
-                <label>Business Plan (Optional)</label>
-                <input type="file" accept=".pdf,.doc,.docx" onChange={(e) => handleFileChange(e, "businessPlan")} />
-                <div className="field-hint">Investor deck or business plan</div>
-              </div>
-              <div className="field">
-                <label>Tax Returns (Optional)</label>
-                <input type="file" accept=".pdf" onChange={(e) => handleFileChange(e, "taxReturns")} />
-                <div className="field-hint">CRA T2 or corporate tax returns</div>
-              </div>
-            </div>
-            <div className="nav-buttons">
-              <button className="btn btn-back" onClick={() => goToStep(3)}>← Back</button>
-              <button className="btn btn-next" onClick={() => goToStep(5)}>Continue →</button>
-            </div>
-          </div>
-
-          {/* STEP 5 */}
-          <div className={`step-content ${currentStep === 5 ? "active" : ""}`}>
-            <div className="step-header">
-              <div className="step-eyebrow">Step 5 of 6</div>
+              <div className="step-eyebrow">Step 4 of 5</div>
               <h1>Loan Request</h1>
               <p>Define the terms of your financing. Lenders will see these details and submit competitive bids.</p>
             </div>
@@ -932,15 +916,15 @@ export default function BorrowerOnboarding() {
               </div>
             </div>
             <div className="nav-buttons">
-              <button className="btn btn-back" onClick={() => goToStep(4)}>← Back</button>
-              <button className="btn btn-next" onClick={() => goToStep(6)}>Review Application →</button>
+              <button className="btn btn-back" onClick={() => goToStep(3)}>← Back</button>
+              <button className="btn btn-next" onClick={() => goToStep(5)}>Review Application →</button>
             </div>
           </div>
 
-          {/* STEP 6 */}
-          <div className={`step-content ${currentStep === 6 ? "active" : ""}`}>
+          {/* STEP 5 */}
+          <div className={`step-content ${currentStep === 5 ? "active" : ""}`}>
             <div className="step-header">
-              <div className="step-eyebrow">Step 6 of 6</div>
+              <div className="step-eyebrow">Step 5 of 5</div>
               <h1>Review & Submit</h1>
               <p>Review your application before submitting for AI credit scoring.</p>
             </div>
@@ -983,7 +967,7 @@ export default function BorrowerOnboarding() {
               </div>
             </div>
             <div className="nav-buttons">
-              <button className="btn btn-back" onClick={() => goToStep(5)}>← Back</button>
+              <button className="btn btn-back" onClick={() => goToStep(4)}>← Back</button>
               <button className="btn btn-next" style={{ background: "var(--gold)", color: "#fff" }} onClick={submitApplication} disabled={isSubmitting}>{isSubmitting ? "Submitting..." : "✦ Submit Application"}</button>
             </div>
           </div>
