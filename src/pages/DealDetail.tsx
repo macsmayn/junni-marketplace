@@ -276,6 +276,13 @@ export default function DealDetail() {
     return `$${n.toLocaleString()}`;
   };
 
+  const formatLenderId = (id: string): string => {
+    const hash = id.replace(/-/g, "");
+    const letter = String.fromCharCode(65 + (parseInt(hash.slice(0, 4), 16) % 26));
+    const num = parseInt(hash.slice(4, 8), 16) % 100;
+    return `Lender ${letter}${String(num).padStart(2, "0")}`;
+  };
+
   const toParas = (text: string): string[] => {
     if (!text) return [];
     // Split only on sentence boundaries: period/!/? followed by space, not inside numbers
@@ -1365,7 +1372,7 @@ export default function DealDetail() {
                 dealBids.map((bid) => (
                   <div key={bid.id} className="bid-item">
                     <div className="bid-lender">
-                      <div className="bid-lender-name">Lender {String(bid.lender_id).slice(0, 8)}…</div>
+                      <div className="bid-lender-name">{formatLenderId(String(bid.lender_id))}</div>
                       <div className="bid-lender-type">{bid.term_months ? `${bid.term_months} mo term` : ""}</div>
                     </div>
                     <div className="bid-right">
