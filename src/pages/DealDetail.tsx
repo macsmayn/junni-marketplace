@@ -271,7 +271,19 @@ export default function DealDetail() {
       setBidAmount("");
       setBidTerm("");
       const { data } = await supabase.from('bids').select('*').eq('deal_id', dealId);
-      setDealBids(data || []);
+      const bids = data || [];
+      const lenderIds = [...new Set(bids.map((b: any) => b.lender_id))];
+      if (lenderIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('lender_profiles')
+          .select('user_id, lender_number')
+          .in('user_id', lenderIds);
+        const profileMap: Record<string, number | null> = {};
+        (profiles || []).forEach((p: any) => { profileMap[p.user_id] = p.lender_number; });
+        setDealBids(bids.map((b: any) => ({ ...b, lender_number: profileMap[b.lender_id] ?? null })));
+      } else {
+        setDealBids(bids);
+      }
     }
     setSubmittingBid(false);
   };
