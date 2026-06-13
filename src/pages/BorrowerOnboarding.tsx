@@ -21,7 +21,7 @@ export default function BorrowerOnboarding() {
     province: "Ontario, Canada",
     description: "Maple Ridge Manufacturing produces precision industrial components for the automotive and aerospace sectors across Ontario and Quebec. Founded in 2012, we serve 40+ OEM clients with ISO 9001-certified manufacturing processes.",
     // Step 2
-    financialStatementFile: null,
+    financialStatementFiles: [] as string[],
     revenue2023: "14200000",
     ebitda2023: "2900000",
     revenue2024: "16800000",
@@ -48,6 +48,24 @@ export default function BorrowerOnboarding() {
     if (file) {
       setFormData(prev => ({ ...prev, [fieldName]: file.name }));
     }
+  };
+
+  const handleFinancialFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const newNames = Array.from(files).map(f => f.name);
+    setFormData(prev => ({
+      ...prev,
+      financialStatementFiles: [...prev.financialStatementFiles, ...newNames],
+    }));
+    e.target.value = "";
+  };
+
+  const removeFinancialFile = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      financialStatementFiles: prev.financialStatementFiles.filter((_, i) => i !== index),
+    }));
   };
 
   const goToStep = (step: number) => {
@@ -807,10 +825,17 @@ export default function BorrowerOnboarding() {
             <div className="form-grid cols-1">
               <div className="field">
                 <label>Upload Financial Statements <span style={{ color: "var(--green)", fontSize: "11px", fontWeight: 500 }}>(Recommended)</span></label>
-                <input type="file" accept=".pdf,.xlsx,.xls" onChange={(e) => handleFileChange(e, "financialStatementFile")} />
-                <div className="field-hint">Upload your financial statements and we'll use them for AI credit analysis. You can also enter figures manually below.</div>
-                {formData.financialStatementFile && (
-                  <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--green)", fontWeight: 600 }}>✓ {formData.financialStatementFile}</div>
+                <input type="file" multiple accept=".pdf,.xlsx,.xls" onChange={handleFinancialFilesChange} />
+                <div className="field-hint">Upload 2–3 years of financial statements for the most accurate AI credit analysis. We'll analyze trends across all uploaded statements.</div>
+                {formData.financialStatementFiles.length > 0 && (
+                  <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {formData.financialStatementFiles.map((name, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(5,150,105,0.05)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "6px", padding: "6px 10px" }}>
+                        <span style={{ fontSize: "12px", color: "var(--green)", fontWeight: 600 }}>✓ {name}</span>
+                        <button type="button" onClick={() => removeFinancialFile(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: "16px", lineHeight: 1, padding: "0 2px", fontFamily: "Inter, sans-serif" }} aria-label="Remove file">×</button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
