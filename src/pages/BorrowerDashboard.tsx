@@ -44,6 +44,7 @@ interface DocRecord {
   size_bytes: number;
   storage_path: string;
   created_at: string;
+  doc_category?: string | null;
 }
 
 function formatCurrency(amount: number): string {
@@ -125,6 +126,9 @@ export default function BorrowerDashboard() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [docCategory, setDocCategory] = useState("Financial Statement");
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 900);
@@ -265,23 +269,32 @@ export default function BorrowerDashboard() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !dbUser) return;
+    setPendingFile(file);
+    setShowCategoryModal(true);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleUploadConfirm = async () => {
+    if (!pendingFile || !dbUser) return;
+    setShowCategoryModal(false);
     setUploading(true);
     try {
-      const path = `${dbUser.id}/${Date.now()}_${file.name}`;
+      const path = `${dbUser.id}/${Date.now()}_${pendingFile.name}`;
       const { error: uploadError } = await supabase.storage
         .from("documents")
-        .upload(path, file);
+        .upload(path, pendingFile);
       if (uploadError) throw uploadError;
       const { error: insertError } = await supabase.from("documents").insert({
-        file_name: file.name,
-        file_type: file.type,
-        size_bytes: file.size,
+        file_name: pendingFile.name,
+        file_type: pendingFile.type,
+        size_bytes: pendingFile.size,
         storage_path: path,
         uploaded_by: dbUser.id,
         deal_id: deals[0]?.id ?? null,
+        doc_category: docCategory,
       });
       if (insertError) throw insertError;
       const { data: docsData } = await supabase
@@ -294,8 +307,15 @@ export default function BorrowerDashboard() {
       console.error("Error uploading document:", err);
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setPendingFile(null);
+      setDocCategory("Financial Statement");
     }
+  };
+
+  const handleUploadCancel = () => {
+    setShowCategoryModal(false);
+    setPendingFile(null);
+    setDocCategory("Financial Statement");
   };
 
   const personas: Record<string, any> = {
@@ -466,6 +486,7 @@ export default function BorrowerDashboard() {
           .doc-name { font-size: 13px; font-weight: 600; color: var(--navy); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .doc-meta { font-size: 11px; color: var(--text-muted); }
           .doc-view { background: none; border: 1px solid var(--border); color: var(--navy); font-size: 11px; font-weight: 600; padding: 6px 12px; border-radius: 7px; cursor: pointer; font-family: 'Inter', sans-serif; flex-shrink: 0; }
+          .doc-category-badge { display: inline-block; font-size: 10px; font-weight: 600; background: rgba(212,148,10,0.1); color: var(--gold); padding: 2px 7px; border-radius: 100px; margin-left: 6px; }
 
           .overlay { position: fixed; inset: 0; background: rgba(15,27,48,0.5); z-index: 400; opacity: 0; visibility: hidden; transition: opacity 0.22s; }
           .overlay.open { opacity: 1; visibility: visible; }
@@ -680,7 +701,7 @@ export default function BorrowerDashboard() {
                   <div className="doc-icon">{getDocIcon(doc.file_type)}</div>
                   <div className="doc-info">
                     <div className="doc-name">{doc.file_name}</div>
-                    <div className="doc-meta">{formatFileType(doc.file_type)} · {formatDate(doc.created_at)}</div>
+                    <div className="doc-meta">{formatFileType(doc.file_type)} · {formatDate(doc.created_at)}{doc.doc_category && <span className="doc-category-badge">{doc.doc_category}</span>}</div>
                   </div>
                   <button className="doc-view" onClick={() => handleViewDocument(doc)}>View</button>
                   <button className="doc-view" style={{ marginLeft: "6px", color: "#dc2626", borderColor: "#dc2626" }} onClick={() => handleDeleteDocument(doc)}>Delete</button>
@@ -689,6 +710,31 @@ export default function BorrowerDashboard() {
             )}
           </div>
         </div>
+
+        {showCategoryModal && pendingFile && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,27,48,0.55)", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+            <div style={{ background: "#FAF8F4", borderRadius: "16px", padding: "28px 24px", width: "100%", maxWidth: "380px", boxShadow: "0 20px 60px rgba(0,0,0,0.25)", fontFamily: "'Inter', sans-serif" }}>
+              <div style={{ fontSize: "17px", fontWeight: 700, color: "#1B2B4B", marginBottom: "6px" }}>What type of document is this?</div>
+              <div style={{ fontSize: "12px", color: "#7A7060", marginBottom: "20px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pendingFile.name}</div>
+              <select
+                value={docCategory}
+                onChange={(e) => setDocCategory(e.target.value)}
+                style={{ width: "100%", padding: "11px 12px", border: "1px solid #E8E2D9", borderRadius: "8px", fontSize: "14px", color: "#1B2B4B", background: "#fff", fontFamily: "'Inter', sans-serif", marginBottom: "10px", appearance: "none", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237A7060' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
+              >
+                <option>Financial Statement</option>
+                <option>Tax Return / T2</option>
+                <option>Bank Statement</option>
+                <option>Business License</option>
+                <option>Other</option>
+              </select>
+              <div style={{ fontSize: "11px", color: "#7A7060", marginBottom: "22px", lineHeight: 1.5 }}>Financial Statements and Tax Returns are used for AI credit analysis. Other documents are stored for reference.</div>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button onClick={handleUploadCancel} style={{ flex: 1, padding: "11px", border: "1px solid #E8E2D9", borderRadius: "8px", background: "none", color: "#1B2B4B", fontSize: "13px", fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Cancel</button>
+                <button onClick={handleUploadConfirm} style={{ flex: 1, padding: "11px", border: "none", borderRadius: "8px", background: "#D4940A", color: "#fff", fontSize: "13px", fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Upload</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -992,7 +1038,10 @@ export default function BorrowerDashboard() {
                     <div className="d-doc-icon">{getDocIcon(doc.file_type)}</div>
                     <div>
                       <div className="d-doc-name">{doc.file_name}</div>
-                      <div className="d-doc-type">{formatFileType(doc.file_type)}</div>
+                      <div className="d-doc-type">
+                        {formatFileType(doc.file_type)}
+                        {doc.doc_category && <span style={{ display: "inline-block", fontSize: "10px", fontWeight: 600, background: "rgba(212,148,10,0.1)", color: "#D4940A", padding: "2px 7px", borderRadius: "100px", marginLeft: "7px" }}>{doc.doc_category}</span>}
+                      </div>
                     </div>
                   </div>
                   <div className="d-doc-right">
@@ -1007,6 +1056,31 @@ export default function BorrowerDashboard() {
         </div>
 
       </div>
+
+      {showCategoryModal && pendingFile && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,27,48,0.55)", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div style={{ background: "#FAF8F4", borderRadius: "16px", padding: "32px 28px", width: "100%", maxWidth: "420px", boxShadow: "0 20px 60px rgba(0,0,0,0.25)", fontFamily: "'Inter', sans-serif" }}>
+            <div style={{ fontSize: "18px", fontWeight: 700, color: "#1B2B4B", marginBottom: "6px" }}>What type of document is this?</div>
+            <div style={{ fontSize: "12px", color: "#7A7060", marginBottom: "22px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pendingFile.name}</div>
+            <select
+              value={docCategory}
+              onChange={(e) => setDocCategory(e.target.value)}
+              style={{ width: "100%", padding: "11px 12px", border: "1px solid #E8E2D9", borderRadius: "8px", fontSize: "14px", color: "#1B2B4B", background: "#fff", fontFamily: "'Inter', sans-serif", marginBottom: "10px", appearance: "none", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237A7060' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center" }}
+            >
+              <option>Financial Statement</option>
+              <option>Tax Return / T2</option>
+              <option>Bank Statement</option>
+              <option>Business License</option>
+              <option>Other</option>
+            </select>
+            <div style={{ fontSize: "11px", color: "#7A7060", marginBottom: "24px", lineHeight: 1.5 }}>Financial Statements and Tax Returns are used for AI credit analysis. Other documents are stored for reference.</div>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button onClick={handleUploadCancel} style={{ flex: 1, padding: "12px", border: "1px solid #E8E2D9", borderRadius: "8px", background: "none", color: "#1B2B4B", fontSize: "14px", fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Cancel</button>
+              <button onClick={handleUploadConfirm} style={{ flex: 1, padding: "12px", border: "none", borderRadius: "8px", background: "#D4940A", color: "#fff", fontSize: "14px", fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Upload</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
