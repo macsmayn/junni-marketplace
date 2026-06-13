@@ -917,7 +917,7 @@ export default function BorrowerOnboarding() {
               <div className="field">
                 <label>Requested Amount (CAD) <span className="req">*</span></label>
                 <input type="number" name="loanAmount" value={formData.loanAmount} onChange={handleInputChange} placeholder="3200000" />
-                <div className="field-hint">Minimum $500,000 · Maximum $20,000,000+</div>
+                <div className="field-hint">Minimum $50,000 · No maximum</div>
               </div>
               <div className="field">
                 <label>Loan Term <span className="req">*</span></label>
@@ -979,7 +979,7 @@ export default function BorrowerOnboarding() {
               <div className="review-grid">
                 <div className="review-item">
                   <div className="review-label">Amount</div>
-                  <div className="review-value">${parseInt(formData.loanAmount).toLocaleString()}</div>
+                  <div className="review-value">${(parseInt(formData.loanAmount) || 0).toLocaleString()}</div>
                 </div>
                 <div className="review-item">
                   <div className="review-label">Term</div>
