@@ -16,11 +16,13 @@ interface DbUser {
 interface Deal {
   id: string;
   borrower_id: string;
+  title: string;
   company_name: string;
   sector: string;
   province: string;
   amount_requested: number;
   status: string;
+  financials_status: string | null;
   created_at: string;
 }
 
@@ -221,6 +223,8 @@ export default function BorrowerDashboard() {
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
   const newBidsThisWeek = bids.filter((b) => new Date(b.created_at) > oneWeekAgo).length;
+
+  const dealsNeedingReview = deals.filter(d => d.financials_status === "extracted");
 
   const displayName = user?.name || dbUser?.name || "there";
   const firstName = displayName.split(" ")[0];
@@ -505,6 +509,16 @@ export default function BorrowerDashboard() {
           .sb-avatar { width: 38px; height: 38px; border-radius: 50%; background: rgba(212,148,10,0.2); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #F5C842; }
           .sb-name { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.85); }
           .sb-role { font-size: 11px; color: rgba(255,255,255,0.4); }
+
+          .review-banner { background: rgba(212,148,10,0.08); border: 1px solid rgba(212,148,10,0.3); border-left: 4px solid var(--gold); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 0; }
+          .review-banner-header { margin-bottom: 12px; }
+          .review-banner-title { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+          .review-banner-text { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+          .review-banner-deals { border-top: 1px solid rgba(212,148,10,0.2); display: flex; flex-direction: column; }
+          .review-banner-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 0; border-bottom: 1px solid rgba(212,148,10,0.15); }
+          .review-banner-row:last-child { border-bottom: none; }
+          .review-deal-name { font-size: 13px; font-weight: 600; color: var(--navy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+          .review-btn { background: var(--gold); border: none; color: #fff; font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-family: 'Inter', sans-serif; white-space: nowrap; flex-shrink: 0; }
         `}</style>
 
         <div className="demo-banner">
@@ -577,6 +591,23 @@ export default function BorrowerDashboard() {
               <button className="btn btn-ghost-white">View Deals</button>
             </div>
           </div>
+
+          {dealsNeedingReview.length > 0 && (
+            <div className="review-banner">
+              <div className="review-banner-header">
+                <div className="review-banner-title">Action needed: Review your financials</div>
+                <div className="review-banner-text">We've extracted financial data from your uploaded statements for {dealsNeedingReview.length} deal{dealsNeedingReview.length !== 1 ? "s" : ""}. Review and confirm the figures to finalize your credit analysis.</div>
+              </div>
+              <div className="review-banner-deals">
+                {dealsNeedingReview.map(deal => (
+                  <div key={deal.id} className="review-banner-row">
+                    <span className="review-deal-name">{deal.title || deal.company_name}</span>
+                    <button className="review-btn" onClick={() => setLocation(`/deals/${deal.id}/review-financials`)}>Review →</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="stats-grid">
             <div className="stat-card">
@@ -839,6 +870,16 @@ export default function BorrowerDashboard() {
         .d-doc-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
         .d-doc-date { font-size: 12px; color: var(--text-muted); }
         .d-doc-view { background: none; border: 1px solid var(--border); color: var(--navy); font-size: 11px; font-weight: 600; padding: 6px 12px; border-radius: 7px; cursor: pointer; font-family: 'Inter', sans-serif; }
+
+        .d-review-banner { background: rgba(212,148,10,0.08); border: 1px solid rgba(212,148,10,0.3); border-left: 4px solid var(--gold); border-radius: 12px; padding: 20px 24px; margin-bottom: 24px; }
+        .d-review-title { font-size: 15px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+        .d-review-text { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 14px; }
+        .d-review-deals { border-top: 1px solid rgba(212,148,10,0.2); display: flex; flex-direction: column; }
+        .d-review-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 0; border-bottom: 1px solid rgba(212,148,10,0.15); }
+        .d-review-row:last-child { border-bottom: none; }
+        .d-review-deal-name { font-size: 14px; font-weight: 600; color: var(--navy); }
+        .d-review-btn { background: var(--gold); border: none; color: #fff; font-size: 13px; font-weight: 600; padding: 8px 18px; border-radius: 8px; cursor: pointer; font-family: 'Inter', sans-serif; white-space: nowrap; transition: opacity 0.15s; }
+        .d-review-btn:hover { opacity: 0.88; }
       `}</style>
 
       {/* DEMO BANNER */}
@@ -915,6 +956,22 @@ export default function BorrowerDashboard() {
             <button className="d-btn d-btn-gold" onClick={() => setLocation('/onboarding')}>+ Submit New Deal</button>
           </div>
         </div>
+
+        {/* FINANCIALS REVIEW BANNER */}
+        {dealsNeedingReview.length > 0 && (
+          <div className="d-review-banner">
+            <div className="d-review-title">Action needed: Review your financials</div>
+            <div className="d-review-text">We've extracted financial data from your uploaded statements for {dealsNeedingReview.length} deal{dealsNeedingReview.length !== 1 ? "s" : ""}. Review and confirm the figures to finalize your credit analysis.</div>
+            <div className="d-review-deals">
+              {dealsNeedingReview.map(deal => (
+                <div key={deal.id} className="d-review-row">
+                  <span className="d-review-deal-name">{deal.title || deal.company_name}</span>
+                  <button className="d-review-btn" onClick={() => setLocation(`/deals/${deal.id}/review-financials`)}>Review →</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* STATS */}
         <div className="d-stats">

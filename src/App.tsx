@@ -15,6 +15,7 @@ import Marketplace from "./pages/Marketplace";
 import DealDetail from "./pages/DealDetail";
 import LenderDashboard from "./pages/LenderDashboard";
 import LenderPortfolio from "./pages/LenderPortfolio";
+import FinancialReview from "./pages/FinancialReview";
 import AdminPanel from "./pages/AdminPanel";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
@@ -29,6 +30,11 @@ function Router() {
       <Route path={"/role-select"} component={RoleSelect} />
       <Route path={"/marketplace"} component={Marketplace} />
       <Route path={"/deals/:id"} component={DealDetail} />
+      <Route path={"/deals/:id/review-financials"}>
+        <ProtectedRoute>
+          <FinancialReview />
+        </ProtectedRoute>
+      </Route>
       <Route path={"/privacy"} component={PrivacyPolicy} />
       <Route path={"/terms"} component={TermsOfService} />
       <Route path={"/onboarding"}>
