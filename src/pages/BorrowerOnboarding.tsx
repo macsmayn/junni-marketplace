@@ -14,7 +14,7 @@ export default function BorrowerOnboarding() {
   const [formData, setFormData] = useState({
     // Step 1
     companyName: "Maple Ridge Manufacturing Inc.",
-    industry: "Manufacturing",
+    industry: "",
     yearsOperating: "12",
     employees: "87",
     website: "https://mapleridge.ca",
@@ -798,20 +798,20 @@ export default function BorrowerOnboarding() {
               <div className="field">
                 <label>Industry <span className="req">*</span></label>
                 <select name="industry" value={formData.industry} onChange={handleInputChange}>
-                  <option>Select industry</option>
-                  <option>Technology</option>
-                  <option>Healthcare</option>
-                  <option>Manufacturing</option>
-                  <option>Retail</option>
-                  <option>Real Estate</option>
-                  <option>Food & Beverage</option>
-                  <option>Logistics & Transportation</option>
-                  <option>Financial Services</option>
-                  <option>Education</option>
-                  <option>Energy</option>
-                  <option>Construction</option>
-                  <option>Media & Entertainment</option>
-                  <option>Other</option>
+                  <option value="" disabled>Select your industry</option>
+                  <option value="Technology & Telecommunications">Technology & Telecommunications</option>
+                  <option value="Healthcare & Life Sciences">Healthcare & Life Sciences</option>
+                  <option value="Manufacturing">Manufacturing</option>
+                  <option value="Retail & Consumer">Retail & Consumer</option>
+                  <option value="Real Estate">Real Estate</option>
+                  <option value="Food & Beverage">Food & Beverage</option>
+                  <option value="Transportation & Logistics">Transportation & Logistics</option>
+                  <option value="Financial Services">Financial Services</option>
+                  <option value="Education">Education</option>
+                  <option value="Energy">Energy</option>
+                  <option value="Construction">Construction</option>
+                  <option value="Media & Entertainment">Media & Entertainment</option>
+                  <option value="Other">Other</option>
                 </select>
               </div>
               <div className="field">
