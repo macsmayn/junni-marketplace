@@ -212,18 +212,24 @@ export default function DealDetail() {
   const [bidTerm, setBidTerm] = useState("");
   const [submittingBid, setSubmittingBid] = useState(false);
   const [creditScore, setCreditScore] = useState<any>(null);
+  const [computedMetrics, setComputedMetrics] = useState<any[]>([]);
   const [showDocModal, setShowDocModal] = useState(false);
   const [expandedBids, setExpandedBids] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
-      const [dealRes, bidsRes, docsRes, scoreRes] = await Promise.all([
+      const [dealRes, bidsRes, docsRes, scoreRes, metricsRes] = await Promise.all([
         supabase.from('deals').select('*').eq('id', dealId).single(),
         supabase.from('bids').select('*').eq('deal_id', dealId),
         supabase.from('documents').select('*').eq('deal_id', dealId),
         supabase.from('credit_scores').select('*').eq('deal_id', dealId).single(),
+        supabase.from('computed_metrics')
+          .select('metric_key, metric_label, value, unit, benchmark_status, industry_tier, fiscal_year')
+          .eq('deal_id', dealId)
+          .order('fiscal_year', { ascending: false, nullsFirst: false }),
       ]);
       if (dealRes.data) setDeal(dealRes.data);
+      if (metricsRes.data) setComputedMetrics(metricsRes.data);
       if (bidsRes.data) {
         const bids = bidsRes.data;
         const lenderIds = [...new Set(bids.map((b: any) => b.lender_id))];
@@ -750,6 +756,52 @@ export default function DealDetail() {
           color: var(--navy);
         }
 
+        .ratio-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 0;
+          border-bottom: 1px solid var(--border);
+        }
+        .ratio-row:last-child { border-bottom: none; }
+        .ratio-label { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+        .ratio-right { display: flex; align-items: center; gap: 8px; }
+        .ratio-subhead {
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: var(--text-muted);
+          margin: 16px 0 8px;
+        }
+        .badge-strong {
+          background: rgba(5,150,105,0.1);
+          color: var(--success);
+          font-size: 10px;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 100px;
+          white-space: nowrap;
+        }
+        .badge-adequate {
+          background: rgba(212,148,10,0.1);
+          color: var(--gold);
+          font-size: 10px;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 100px;
+          white-space: nowrap;
+        }
+        .badge-weak {
+          background: rgba(220,38,38,0.08);
+          color: var(--danger);
+          font-size: 10px;
+          font-weight: 700;
+          padding: 2px 8px;
+          border-radius: 100px;
+          white-space: nowrap;
+        }
+
         .bid-item {
           background: var(--white);
           border: 1px solid var(--border);
@@ -1234,19 +1286,56 @@ export default function DealDetail() {
 
               <div className="card">
                 <div className="card-title">Key Financial Ratios</div>
-                <div className="metrics-grid">
-                  {deal?.ebitda && deal?.amount_requested ? (
-                    <div className="metric-item">
-                      <div className="metric-label">Debt / EBITDA</div>
-                      <div className="metric-value" style={{ color: (deal.amount_requested / deal.ebitda) <= 4 ? "#059669" : "#D97706" }}>
-                        {(deal.amount_requested / deal.ebitda).toFixed(2)}x
+                {computedMetrics.length > 0 ? (() => {
+                  const pit = computedMetrics.filter(m => m.fiscal_year != null);
+                  const growth = computedMetrics.filter(m => m.fiscal_year == null);
+                  const fyLabel = pit[0]?.fiscal_year ? ` — FY${pit[0].fiscal_year}` : "";
+                  return (
+                    <>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>
+                        From confirmed financial statements{fyLabel}
                       </div>
-                    </div>
-                  ) : null}
-                </div>
-                <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "14px", fontStyle: "italic" }}>
-                  Detailed ratio analysis available in the Credit Analysis tab.
-                </p>
+                      {pit.map(m => (
+                        <div key={m.metric_key} className="ratio-row">
+                          <span className="ratio-label">{m.metric_label}</span>
+                          <div className="ratio-right">
+                            <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--navy)" }}>{m.value}{m.unit}</span>
+                            {m.benchmark_status === "strong" && <span className="badge-strong">Strong</span>}
+                            {m.benchmark_status === "adequate" && <span className="badge-adequate">Adequate</span>}
+                            {m.benchmark_status === "weak" && <span className="badge-weak">Weak</span>}
+                          </div>
+                        </div>
+                      ))}
+                      {growth.length > 0 && (
+                        <>
+                          <div className="ratio-subhead">Year-over-Year</div>
+                          {growth.map(m => (
+                            <div key={m.metric_key} className="ratio-row">
+                              <span className="ratio-label">{m.metric_label}</span>
+                              <div className="ratio-right">
+                                <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--navy)" }}>{m.value}{m.unit}</span>
+                                {m.benchmark_status === "strong" && <span className="badge-strong">Strong</span>}
+                                {m.benchmark_status === "adequate" && <span className="badge-adequate">Adequate</span>}
+                                {m.benchmark_status === "weak" && <span className="badge-weak">Weak</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  );
+                })() : (
+                  <div className="metrics-grid">
+                    {deal?.ebitda && deal?.amount_requested ? (
+                      <div className="metric-item">
+                        <div className="metric-label">Debt / EBITDA</div>
+                        <div className="metric-value" style={{ color: (deal.amount_requested / deal.ebitda) <= 4 ? "#059669" : "#D97706" }}>
+                          {(deal.amount_requested / deal.ebitda).toFixed(2)}x
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1360,6 +1449,45 @@ export default function DealDetail() {
                       })}
                     </div>
                   </div>
+
+                  {/* Financial Ratios */}
+                  {computedMetrics.length > 0 && (() => {
+                    const pit = computedMetrics.filter(m => m.fiscal_year != null);
+                    const growth = computedMetrics.filter(m => m.fiscal_year == null);
+                    const fyLabel = pit[0]?.fiscal_year ? ` — FY${pit[0].fiscal_year}` : "";
+                    return (
+                      <div className="card" style={{ marginTop: "20px" }}>
+                        <div className="card-title">Financial Ratios{fyLabel}</div>
+                        {pit.map(m => (
+                          <div key={m.metric_key} className="ratio-row">
+                            <span className="ratio-label">{m.metric_label}</span>
+                            <div className="ratio-right">
+                              <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--navy)" }}>{m.value}{m.unit}</span>
+                              {m.benchmark_status === "strong" && <span className="badge-strong">Strong</span>}
+                              {m.benchmark_status === "adequate" && <span className="badge-adequate">Adequate</span>}
+                              {m.benchmark_status === "weak" && <span className="badge-weak">Weak</span>}
+                            </div>
+                          </div>
+                        ))}
+                        {growth.length > 0 && (
+                          <>
+                            <div className="ratio-subhead">Year-over-Year</div>
+                            {growth.map(m => (
+                              <div key={m.metric_key} className="ratio-row">
+                                <span className="ratio-label">{m.metric_label}</span>
+                                <div className="ratio-right">
+                                  <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--navy)" }}>{m.value}{m.unit}</span>
+                                  {m.benchmark_status === "strong" && <span className="badge-strong">Strong</span>}
+                                  {m.benchmark_status === "adequate" && <span className="badge-adequate">Adequate</span>}
+                                  {m.benchmark_status === "weak" && <span className="badge-weak">Weak</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </>
               ) : (
                 <div className="card">
