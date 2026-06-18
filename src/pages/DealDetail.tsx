@@ -32,61 +32,6 @@ const DEAL = {
   remainingAmount: "$704K",
 };
 
-const CREDIT_METRICS_PRIMARY = [
-  { label: "Revenue Stability", value: "$28.5M", score: 8.7 },
-  { label: "Profitability", value: "18%", score: 8.4 },
-  { label: "Liquidity", value: "2.1x", score: 8.2 },
-  { label: "Leverage", value: "3.2x", score: 8.9 },
-  { label: "Interest Coverage", value: "1.42x", score: 8.6 },
-  { label: "Asset Quality", value: "92%", score: 8.3 },
-  { label: "Cash Flow", value: "$4.2M", score: 8.5 },
-  { label: "Working Capital", value: "1.8x", score: 8.1 },
-  { label: "Debt Service", value: "2.8x", score: 8.0 },
-  { label: "Debt Maturity", value: "5 yrs", score: 7.9 },
-  { label: "Covenant Compliance", value: "100%", score: 9.1 },
-  { label: "Revenue Growth", value: "14%", score: 8.1 },
-  { label: "EBITDA Growth", value: "12%", score: 7.8 },
-  { label: "Cap Expenditure", value: "$2.8M", score: 8.2 },
-  { label: "Research & Dev", value: "3.2%", score: 7.4 },
-];
-
-const CREDIT_METRICS_SECONDARY = [
-  { label: "Employee Retention", value: "94%", score: 8.5 },
-  { label: "Customer Satisfaction", value: "4.7/5", score: 8.6 },
-  { label: "Brand Reputation", value: "Strong", score: 8.3 },
-  { label: "Supply Chain Risk", value: "Low", score: 7.7 },
-  { label: "Geographic Diversification", value: "3 regions", score: 8.0 },
-  { label: "Product Diversification", value: "8 lines", score: 8.1 },
-  { label: "Technology Infrastructure", value: "Modern", score: 8.2 },
-  { label: "Regulatory Risk", value: "Minimal", score: 8.4 },
-  { label: "Insurance Coverage", value: "$15M", score: 8.7 },
-  { label: "Environmental Compliance", value: "100%", score: 8.5 },
-  { label: "Social Responsibility", value: "Certified", score: 8.3 },
-  { label: "Governance Structure", value: "Robust", score: 8.6 },
-  { label: "Audit Findings", value: "Clean", score: 9.0 },
-  { label: "Litigation History", value: "None", score: 8.8 },
-  { label: "Credit History", value: "Excellent", score: 8.9 },
-  { label: "Payment Behavior", value: "On-time", score: 8.9 },
-  { label: "Covenant Breaches", value: "0", score: 9.1 },
-  { label: "Market Position", value: "Top 3", score: 8.4 },
-  { label: "Competitive Advantage", value: "IP+Scale", score: 8.2 },
-  { label: "Innovation Capacity", value: "6 patents", score: 7.9 },
-  { label: "Management Quality", value: "Experienced", score: 8.7 },
-  { label: "Board Expertise", value: "15 yrs avg", score: 8.5 },
-  { label: "Succession Planning", value: "In place", score: 7.6 },
-  { label: "Customer Concentration", value: "12%", score: 7.8 },
-  { label: "Supplier Concentration", value: "8%", score: 7.9 },
-  { label: "Geographic Risk", value: "Low", score: 8.1 },
-  { label: "Currency Exposure", value: "5%", score: 7.5 },
-  { label: "Interest Rate Risk", value: "Hedged", score: 8.0 },
-  { label: "Commodity Risk", value: "Moderate", score: 7.7 },
-  { label: "Operational Efficiency", value: "87%", score: 8.3 },
-  { label: "Cost Control", value: "Strict", score: 8.4 },
-  { label: "Margin Stability", value: "±2%", score: 8.2 },
-  { label: "Capital Efficiency", value: "1.9x", score: 8.1 },
-  { label: "Return on Assets", value: "15%", score: 8.0 },
-  { label: "Return on Equity", value: "22%", score: 8.2 },
-];
 
 const BIDS = [
   {
@@ -1489,33 +1434,7 @@ export default function DealDetail() {
                     );
                   })()}
                 </>
-              ) : (
-                <div className="card">
-                  <div style={{ textAlign: "center", padding: "12px 0 20px", color: "var(--text-muted)", fontSize: "13px", fontWeight: 600, marginBottom: "20px" }}>
-                    ✦ AI scoring in progress...
-                  </div>
-                  <div className="card-title">15 Principal Credit Metrics</div>
-                  <div className="metrics-grid">
-                    {CREDIT_METRICS_PRIMARY.map((metric, idx) => (
-                      <div key={idx} className="metric-item">
-                        <div className="metric-label">{metric.label}</div>
-                        <div className="metric-value">{metric.value}</div>
-                        <div className="metric-score">Junni Score: {metric.score}/10</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="metrics-divider">Additional Metrics</div>
-                  <div className="metrics-secondary-grid">
-                    {CREDIT_METRICS_SECONDARY.map((metric, idx) => (
-                      <div key={idx} className="metric-item-secondary">
-                        <div className="metric-label-secondary">{metric.label}</div>
-                        <div className="metric-value-secondary">{metric.value}</div>
-                        <div className="metric-score-secondary">Junni Score: {metric.score}/10</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              ) : null}
             </div>
           )}
 
