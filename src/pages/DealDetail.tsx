@@ -1229,59 +1229,46 @@ export default function DealDetail() {
                 </div>
               </div>
 
-              <div className="card">
-                <div className="card-title">Key Financial Ratios</div>
-                {computedMetrics.length > 0 ? (() => {
-                  const pit = computedMetrics.filter(m => m.fiscal_year != null);
-                  const growth = computedMetrics.filter(m => m.fiscal_year == null);
-                  const fyLabel = pit[0]?.fiscal_year ? ` — FY${pit[0].fiscal_year}` : "";
-                  return (
-                    <>
-                      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>
-                        From confirmed financial statements{fyLabel}
-                      </div>
-                      {pit.map(m => (
-                        <div key={m.metric_key} className="ratio-row">
-                          <span className="ratio-label">{m.metric_label}</span>
-                          <div className="ratio-right">
-                            <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--navy)" }}>{m.value}{m.unit}</span>
-                            {m.benchmark_status === "strong" && <span className="badge-strong">Strong</span>}
-                            {m.benchmark_status === "adequate" && <span className="badge-adequate">Adequate</span>}
-                            {m.benchmark_status === "weak" && <span className="badge-weak">Weak</span>}
-                          </div>
+              {computedMetrics.length > 0 && (() => {
+                const pit = computedMetrics.filter(m => m.fiscal_year != null);
+                const growth = computedMetrics.filter(m => m.fiscal_year == null);
+                const fyLabel = pit[0]?.fiscal_year ? ` — FY${pit[0].fiscal_year}` : "";
+                return (
+                  <div className="card">
+                    <div className="card-title">Key Financial Ratios</div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>
+                      From confirmed financial statements{fyLabel}
+                    </div>
+                    {pit.map(m => (
+                      <div key={m.metric_key} className="ratio-row">
+                        <span className="ratio-label">{m.metric_label}</span>
+                        <div className="ratio-right">
+                          <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--navy)" }}>{m.value}{m.unit}</span>
+                          {m.benchmark_status === "strong" && <span className="badge-strong">Strong</span>}
+                          {m.benchmark_status === "adequate" && <span className="badge-adequate">Adequate</span>}
+                          {m.benchmark_status === "weak" && <span className="badge-weak">Weak</span>}
                         </div>
-                      ))}
-                      {growth.length > 0 && (
-                        <>
-                          <div className="ratio-subhead">Year-over-Year</div>
-                          {growth.map(m => (
-                            <div key={m.metric_key} className="ratio-row">
-                              <span className="ratio-label">{m.metric_label}</span>
-                              <div className="ratio-right">
-                                <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--navy)" }}>{m.value}{m.unit}</span>
-                                {m.benchmark_status === "strong" && <span className="badge-strong">Strong</span>}
-                                {m.benchmark_status === "adequate" && <span className="badge-adequate">Adequate</span>}
-                                {m.benchmark_status === "weak" && <span className="badge-weak">Weak</span>}
-                              </div>
+                      </div>
+                    ))}
+                    {growth.length > 0 && (
+                      <>
+                        <div className="ratio-subhead">Year-over-Year</div>
+                        {growth.map(m => (
+                          <div key={m.metric_key} className="ratio-row">
+                            <span className="ratio-label">{m.metric_label}</span>
+                            <div className="ratio-right">
+                              <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--navy)" }}>{m.value}{m.unit}</span>
+                              {m.benchmark_status === "strong" && <span className="badge-strong">Strong</span>}
+                              {m.benchmark_status === "adequate" && <span className="badge-adequate">Adequate</span>}
+                              {m.benchmark_status === "weak" && <span className="badge-weak">Weak</span>}
                             </div>
-                          ))}
-                        </>
-                      )}
-                    </>
-                  );
-                })() : (
-                  <div className="metrics-grid">
-                    {deal?.ebitda && deal?.amount_requested ? (
-                      <div className="metric-item">
-                        <div className="metric-label">Debt / EBITDA</div>
-                        <div className="metric-value" style={{ color: (deal.amount_requested / deal.ebitda) <= 4 ? "#059669" : "#D97706" }}>
-                          {(deal.amount_requested / deal.ebitda).toFixed(2)}x
-                        </div>
-                      </div>
-                    ) : null}
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
             </div>
           )}
 
