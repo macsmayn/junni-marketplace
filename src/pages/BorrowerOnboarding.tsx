@@ -27,7 +27,8 @@ export default function BorrowerOnboarding() {
     ebitda2023: "2900000",
     revenue2024: "16800000",
     ebitda2024: "3600000",
-    existingDebt: "820000",
+    existingDebt: "",
+    existingDebtService: "",
     // Step 3
     businessLicense: null,
     taxId: null,
@@ -111,6 +112,8 @@ export default function BorrowerOnboarding() {
         annual_revenue: parseFloat(formData.revenue2024) || null,
         ebitda: parseFloat(formData.ebitda2024) || null,
         years_in_business: parseInt(formData.yearsOperating) || null,
+        existing_debt: formData.existingDebt.trim() === "" ? null : parseFloat(formData.existingDebt),
+        existing_debt_service: formData.existingDebtService.trim() === "" ? null : parseFloat(formData.existingDebtService),
         ai_summary: formData.useOfFunds,
       }).select().single();
 
@@ -896,9 +899,14 @@ export default function BorrowerOnboarding() {
                 <input type="number" name="ebitda2024" value={formData.ebitda2024} onChange={handleInputChange} placeholder="3600000" />
               </div>
               <div className="field">
-                <label>Existing Debt Outstanding (CAD) <span className="req">*</span></label>
-                <input type="number" name="existingDebt" value={formData.existingDebt} onChange={handleInputChange} placeholder="820000" />
-                <div className="field-hint">Total of all current loans, credit lines, and debt obligations.</div>
+                <label>Total existing business debt — optional</label>
+                <input type="number" name="existingDebt" value={formData.existingDebt} onChange={handleInputChange} placeholder="e.g. 820000" />
+                <div className="field-hint">Outstanding balance on all current loans, lines of credit, and leases. An estimate is fine.</div>
+              </div>
+              <div className="field">
+                <label>Current annual debt payments — optional</label>
+                <input type="number" name="existingDebtService" value={formData.existingDebtService} onChange={handleInputChange} placeholder="e.g. 120000" />
+                <div className="field-hint">Approximate total yearly principal + interest you pay on existing debt. An estimate is fine.</div>
               </div>
             </div>
 
