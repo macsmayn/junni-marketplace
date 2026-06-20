@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -30,7 +31,7 @@ Deno.serve(async (req: Request) => {
     const { data: deal, error: dealError } = await supabase
       .from("deals")
       .select(
-        "title, industry, amount_requested, term_months, interest_rate, annual_revenue, ebitda, years_in_business, province, ai_summary"
+        "title, industry, amount_requested, term_months, interest_rate, annual_revenue, ebitda, years_in_business, province, ai_summary, financials_status, existing_debt, existing_debt_service"
       )
       .eq("id", deal_id)
       .single();
@@ -57,37 +58,12 @@ Deno.serve(async (req: Request) => {
     if (!financialDocs || financialDocs.length === 0) {
       console.log(`[score-deal] No financial statements — using structured data.`);
     } else {
-      console.log(`[score-deal] ${financialDocs.length} financial statement document(s) found — beginning extraction.`);
+      console.log(`[score-deal] ${financialDocs.length} financial statement document(s) found — beginning Phase 2a extraction.`);
 
-      for (const doc of financialDocs) {
-        try {
-          // a. PDFs only for now
-          if (!doc.file_type?.includes("pdf")) {
-            console.log(`[score-deal] Skipped "${doc.file_name}" (non-PDF, Excel support coming)`);
-            continue;
-          }
+      // Extraction prompt — used by both consolidated and per-document fallback paths
+      const extractionPrompt = `You are a financial analyst extracting structured data from financial statements for SME credit analysis.
 
-          // b. Download from Supabase Storage
-          const { data: blob, error: downloadError } = await supabase.storage
-            .from("documents")
-            .download(doc.storage_path);
-
-          if (downloadError || !blob) {
-            console.error(`[score-deal] Download failed for "${doc.file_name}":`, downloadError);
-            continue;
-          }
-
-          // c. Convert blob to base64
-          const arrayBuffer = await blob.arrayBuffer();
-          const uint8Array = new Uint8Array(arrayBuffer);
-          let binary = "";
-          for (let i = 0; i < uint8Array.byteLength; i++) {
-            binary += String.fromCharCode(uint8Array[i]);
-          }
-          const base64Data = btoa(binary);
-
-          // d & e. Call Claude with PDF document block + extraction prompt
-          const extractionPrompt = `You are a financial analyst extracting structured data from financial statements for SME credit analysis.
+You may be receiving one or more financial statement documents for the SAME company (for example, a separate income statement, balance sheet, and cash flow statement, possibly across multiple fiscal years). If multiple documents are provided, consolidate them into ONE set of figures per fiscal year: combine income-statement figures (revenue, COGS, EBITDA, net income), balance-sheet figures (assets, liabilities, debt, equity), and cash-flow figures for the same fiscal year into a single entry for that year. Extract EVERY fiscal year that appears across ALL the documents, not just the most recent two. If a figure for a year appears in one document but not another, use the value where it appears.
 
 Read this ENTIRE document including ALL notes to the financial statements. Do not stop at the primary statements — the notes contain critical information about debt terms, maturities, covenants, contingencies, and off-balance-sheet items.
 
@@ -143,107 +119,195 @@ Return ONLY valid JSON with no markdown fences or commentary. Use this exact sha
 
 All monetary values must be plain numbers (not strings), scaled to FULL actual dollar amounts. Use null for any field not present in the document.`;
 
-          const extractionRes = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: {
-              "x-api-key": ANTHROPIC_API_KEY,
-              "anthropic-version": "2023-06-01",
-              "content-type": "application/json",
+      // Shared upsert helper — used by both consolidated and per-document paths
+      const upsertStatements = async (statements: any[], sourceDocId: string | null) => {
+        for (const stmt of statements) {
+          if (!stmt.fiscal_year) continue;
+          const { error: upsertErr } = await supabase.from("extracted_financials").upsert(
+            {
+              deal_id,
+              source_document_id: sourceDocId,
+              fiscal_year: stmt.fiscal_year,
+              fiscal_year_end: stmt.fiscal_year_end ?? null,
+              currency: stmt.currency ?? null,
+              statement_type: stmt.statement_type ?? null,
+              preparing_firm: stmt.preparing_firm ?? null,
+              revenue: stmt.revenue ?? null,
+              cogs: stmt.cogs ?? null,
+              gross_profit: stmt.gross_profit ?? null,
+              operating_expenses: stmt.operating_expenses ?? null,
+              ebitda: stmt.ebitda ?? null,
+              net_income: stmt.net_income ?? null,
+              total_assets: stmt.total_assets ?? null,
+              current_assets: stmt.current_assets ?? null,
+              total_liabilities: stmt.total_liabilities ?? null,
+              current_liabilities: stmt.current_liabilities ?? null,
+              total_debt: stmt.total_debt ?? null,
+              equity: stmt.equity ?? null,
+              interest_expense: stmt.interest_expense ?? null,
+              debt_detail: stmt.debt_detail ?? null,
+              notes_summary: stmt.notes_summary ?? null,
+              extraction_confidence: stmt.extraction_confidence ?? null,
+              raw_notes: stmt.raw_notes ?? null,
             },
-            body: JSON.stringify({
-              model: "claude-opus-4-8",
-              max_tokens: 4000,
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    {
-                      type: "document",
-                      source: {
-                        type: "base64",
-                        media_type: "application/pdf",
-                        data: base64Data,
-                      },
-                    },
-                    {
-                      type: "text",
-                      text: extractionPrompt,
-                    },
-                  ],
-                },
-              ],
-            }),
-          });
+            { onConflict: "deal_id,fiscal_year" }
+          );
+          if (upsertErr) {
+            console.error(`[score-deal] extracted_financials upsert error (FY${stmt.fiscal_year}):`, upsertErr);
+          } else {
+            totalYearsExtracted++;
+          }
+        }
+      };
 
-          if (!extractionRes.ok) {
-            const errText = await extractionRes.text();
-            console.error(`[score-deal] Anthropic extraction error for "${doc.file_name}":`, errText);
+      // Shared Claude call + parse helper
+      const callExtractionApi = async (messages: any[], label: string): Promise<any[]> => {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 8000, messages }),
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          console.error(`[score-deal] Anthropic extraction error (${label}):`, errText);
+          return [];
+        }
+        const data = await res.json();
+        const raw: string = data.content[0].text;
+        const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+        try {
+          const parsed = JSON.parse(cleaned);
+          return parsed.statements ?? [];
+        } catch (_e) {
+          console.error(`[score-deal] JSON parse failed (${label}). Raw:`, raw.slice(0, 300));
+          return [];
+        }
+      };
+
+      // STEP 1 — Download and prepare all documents into memory
+      const preparedDocs: { docId: string; fileName: string; isPDF: boolean; content: string; size: number }[] = [];
+      let totalPayloadSize = 0;
+
+      for (const doc of financialDocs) {
+        try {
+          const isPDF =
+            doc.file_type?.includes("pdf") ||
+            doc.file_name?.toLowerCase().endsWith(".pdf");
+          const isExcel =
+            doc.file_type?.includes("xlsx") ||
+            doc.file_type?.includes("xls") ||
+            doc.file_type?.includes("spreadsheetml") ||
+            doc.file_type?.includes("ms-excel") ||
+            doc.file_name?.toLowerCase().endsWith(".xlsx") ||
+            doc.file_name?.toLowerCase().endsWith(".xls");
+
+          if (!isPDF && !isExcel) {
+            console.log(`[score-deal] Skipped "${doc.file_name}" (unsupported type: ${doc.file_type})`);
             continue;
           }
 
-          const extractionData = await extractionRes.json();
-          const rawExtractionText: string = extractionData.content[0].text;
-
-          // f. Strip markdown fences, parse JSON
-          const cleanedExtraction = rawExtractionText
-            .replace(/^```(?:json)?\s*/i, "")
-            .replace(/\s*```\s*$/i, "")
-            .trim();
-
-          let extracted: { statements: any[] };
-          try {
-            extracted = JSON.parse(cleanedExtraction);
-          } catch (_parseErr) {
-            console.error(`[score-deal] JSON parse failed for "${doc.file_name}". Raw:`, rawExtractionText.slice(0, 300));
+          const { data: blob, error: downloadError } = await supabase.storage
+            .from("documents")
+            .download(doc.storage_path);
+          if (downloadError || !blob) {
+            console.error(`[score-deal] Download failed for "${doc.file_name}":`, downloadError);
             continue;
           }
 
-          // Upsert each fiscal year — later document wins on conflict
-          for (const stmt of extracted.statements ?? []) {
-            if (!stmt.fiscal_year) continue;
-            const { error: upsertErr } = await supabase.from("extracted_financials").upsert(
-              {
-                deal_id,
-                source_document_id: doc.id,
-                fiscal_year: stmt.fiscal_year,
-                fiscal_year_end: stmt.fiscal_year_end ?? null,
-                currency: stmt.currency ?? null,
-                statement_type: stmt.statement_type ?? null,
-                preparing_firm: stmt.preparing_firm ?? null,
-                revenue: stmt.revenue ?? null,
-                cogs: stmt.cogs ?? null,
-                gross_profit: stmt.gross_profit ?? null,
-                operating_expenses: stmt.operating_expenses ?? null,
-                ebitda: stmt.ebitda ?? null,
-                net_income: stmt.net_income ?? null,
-                total_assets: stmt.total_assets ?? null,
-                current_assets: stmt.current_assets ?? null,
-                total_liabilities: stmt.total_liabilities ?? null,
-                current_liabilities: stmt.current_liabilities ?? null,
-                total_debt: stmt.total_debt ?? null,
-                equity: stmt.equity ?? null,
-                interest_expense: stmt.interest_expense ?? null,
-                debt_detail: stmt.debt_detail ?? null,
-                notes_summary: stmt.notes_summary ?? null,
-                extraction_confidence: stmt.extraction_confidence ?? null,
-                raw_notes: stmt.raw_notes ?? null,
-              },
-              { onConflict: "deal_id,fiscal_year" }
-            );
-            if (upsertErr) {
-              console.error(`[score-deal] extracted_financials upsert error (FY${stmt.fiscal_year}):`, upsertErr);
-            } else {
-              totalYearsExtracted++;
+          const arrayBuffer = await blob.arrayBuffer();
+
+          if (isPDF) {
+            const uint8Array = new Uint8Array(arrayBuffer);
+            let binary = "";
+            for (let i = 0; i < uint8Array.byteLength; i++) binary += String.fromCharCode(uint8Array[i]);
+            const base64Data = btoa(binary);
+            preparedDocs.push({ docId: doc.id, fileName: doc.file_name, isPDF: true, content: base64Data, size: base64Data.length });
+            totalPayloadSize += base64Data.length;
+          } else {
+            // Excel: parse with SheetJS
+            try {
+              const uint8Array = new Uint8Array(arrayBuffer);
+              const workbook = XLSX.read(uint8Array, { type: "array" });
+              const sheetTexts: string[] = [];
+              for (const sheetName of workbook.SheetNames) {
+                const worksheet = workbook.Sheets[sheetName];
+                const csv = XLSX.utils.sheet_to_csv(worksheet);
+                if (csv.trim()) sheetTexts.push(`=== SHEET: ${sheetName} ===\n${csv}`);
+              }
+              if (sheetTexts.length === 0) {
+                console.log(`[score-deal] Excel "${doc.file_name}" contained no readable sheet data — skipped.`);
+                continue;
+              }
+              const combinedText = `=== DOCUMENT: ${doc.file_name} ===\n` + sheetTexts.join("\n\n");
+              preparedDocs.push({ docId: doc.id, fileName: doc.file_name, isPDF: false, content: combinedText, size: combinedText.length });
+              totalPayloadSize += combinedText.length;
+              console.log(`[score-deal] Excel parsed ${workbook.SheetNames.length} sheet(s) from "${doc.file_name}".`);
+            } catch (xlsErr) {
+              console.error(`[score-deal] Excel parse failed for "${doc.file_name}":`, xlsErr);
             }
           }
         } catch (docErr) {
-          console.error(`[score-deal] Unhandled error processing "${doc.file_name}":`, docErr);
+          console.error(`[score-deal] Error preparing "${doc.file_name}":`, docErr);
+        }
+      }
+
+      if (preparedDocs.length === 0) {
+        console.log(`[score-deal] No documents could be prepared — skipping extraction.`);
+
+      } else if (totalPayloadSize > 3_500_000) {
+        // TOKEN-LIMIT FALLBACK — process each document separately
+        console.log(`[score-deal] Consolidated extraction skipped (payload too large — ${totalPayloadSize} chars) — falling back to per-document extraction.`);
+
+        for (const doc of preparedDocs) {
+          try {
+            const messages = doc.isPDF
+              ? [{ role: "user", content: [
+                  { type: "document", source: { type: "base64", media_type: "application/pdf", data: doc.content } },
+                  { type: "text", text: extractionPrompt },
+                ] }]
+              : [{ role: "user", content: [
+                  { type: "text", text: extractionPrompt + "\n\nSPREADSHEET CONTENTS:\n" + doc.content },
+                ] }];
+            const statements = await callExtractionApi(messages, doc.fileName);
+            await upsertStatements(statements, doc.docId);
+          } catch (err) {
+            console.error(`[score-deal] Per-document extraction error for "${doc.fileName}":`, err);
+          }
+        }
+
+      } else {
+        // CONSOLIDATED PATH — all documents in one Claude call
+        console.log(`[score-deal] Sending ${preparedDocs.length} document(s) in one consolidated extraction call (${totalPayloadSize} chars).`);
+
+        const contentBlocks: any[] = [];
+        for (const doc of preparedDocs) {
+          if (doc.isPDF) {
+            contentBlocks.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: doc.content } });
+          } else {
+            contentBlocks.push({ type: "text", text: doc.content });
+          }
+        }
+        contentBlocks.push({ type: "text", text: extractionPrompt });
+
+        try {
+          const statements = await callExtractionApi(
+            [{ role: "user", content: contentBlocks }],
+            `consolidated (${preparedDocs.length} docs)`
+          );
+          const firstDocId = preparedDocs[0]?.docId ?? null;
+          await upsertStatements(statements, firstDocId);
+        } catch (consolidatedErr) {
+          console.error(`[score-deal] Consolidated extraction error:`, consolidatedErr);
         }
       }
 
       console.log(`[score-deal] Phase 2a complete — ${totalYearsExtracted} fiscal year(s) extracted.`);
 
-      if (totalYearsExtracted > 0) {
+      if (totalYearsExtracted > 0 && deal.financials_status !== "confirmed") {
         const { error: statusErr } = await supabase
           .from("deals")
           .update({ financials_status: "extracted" })
@@ -254,8 +318,619 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
       }
     }
     // ─────────────────────────────────────────────────────────────
+    // PHASE 2c PART 1: Compute financial ratios, benchmark against
+    // industry thresholds, store in computed_metrics.
+    //
+    // Ratios (10): debt_to_ebitda, debt_to_equity, interest_coverage,
+    //   current_ratio, gross_margin, ebitda_margin, net_margin,
+    //   revenue_growth, ebitda_growth, global_dscr
+    //
+    // NOTE: deal.interest_rate is stored as a PERCENTAGE number
+    //   (e.g. 6.50 means 6.5%). Divide by 100 before computing
+    //   the monthly decimal rate for debt service calculations.
+    // ─────────────────────────────────────────────────────────────
+
+    // ratioSummary and computedRatiosBlock are populated inside the Phase 2c else
+    // branch and consumed by the scoring prompt below — must be declared here for scope.
+    const ratioSummary: { label: string; value: number; unit: string; status: string | null }[] = [];
+    let computedRatiosBlock = "";
+
+    // STEP 1 — Check for confirmed financials
+    const { data: confirmedFinancials } = await supabase
+      .from("extracted_financials")
+      .select("*")
+      .eq("deal_id", deal_id)
+      .eq("borrower_confirmed", true)
+      .order("fiscal_year", { ascending: false });
+
+    if (deal.financials_status !== "confirmed" || !confirmedFinancials || confirmedFinancials.length === 0) {
+      console.log("[score-deal] Phase 2c: No confirmed financials — skipping ratio computation.");
+    } else {
+      // STEP 2 — Compute ratios
+      const primary = confirmedFinancials[0];
+      const prior = confirmedFinancials[1] ?? null;
+
+      const r2 = (v: number): number => Math.round(v * 100) / 100;
+      const safeDiv = (n: number | null, d: number | null): number | null => {
+        if (n == null || d == null || d === 0) return null;
+        return r2(n / d);
+      };
+
+      const ebitdaPositive = primary.ebitda != null && primary.ebitda > 0;
+      const debt_to_ebitda    = ebitdaPositive ? safeDiv(primary.total_debt, primary.ebitda) : null;
+      const debt_to_equity    = safeDiv(primary.total_debt, primary.equity);
+      const interest_coverage = ebitdaPositive ? safeDiv(primary.ebitda, primary.interest_expense) : null;
+      const current_ratio     = safeDiv(primary.current_assets, primary.current_liabilities);
+
+      const gross_margin = (primary.gross_profit != null && primary.revenue != null && primary.revenue !== 0)
+        ? r2(primary.gross_profit / primary.revenue * 100) : null;
+      const ebitda_margin = (primary.ebitda != null && primary.revenue != null && primary.revenue !== 0)
+        ? r2(primary.ebitda / primary.revenue * 100) : null;
+      const net_margin = (primary.net_income != null && primary.revenue != null && primary.revenue !== 0)
+        ? r2(primary.net_income / primary.revenue * 100) : null;
+
+      const revenue_growth = (prior != null && prior.revenue != null && prior.revenue > 0 && primary.revenue != null)
+        ? r2((primary.revenue - prior.revenue) / prior.revenue * 100) : null;
+      const ebitda_growth = (prior != null && prior.ebitda != null && prior.ebitda > 0 && primary.ebitda != null)
+        ? r2((primary.ebitda - prior.ebitda) / prior.ebitda * 100) : null;
+
+      // global_dscr — EBITDA / (existing annual debt service + new facility annual debt service)
+      let global_dscr: number | null = null;
+      let dscrNote = "";
+      if (deal.amount_requested != null && ebitdaPositive) {
+        const interestExp = primary.interest_expense ?? 0;
+        let currentPortion = 0;
+        if (primary.debt_detail && typeof primary.debt_detail === "object") {
+          const dd = primary.debt_detail as Record<string, any>;
+          const cp = dd.current_portion ?? dd.current_portion_ltd ?? 0;
+          currentPortion = (typeof cp === "number" && isFinite(cp)) ? cp : 0;
+        }
+        let existing_debt_service: number;
+        if (currentPortion > 0) {
+          // Tier 1: confirmed statement data — highest trust
+          existing_debt_service = interestExp + currentPortion;
+        } else if (typeof deal.existing_debt_service === "number" && deal.existing_debt_service > 0) {
+          // Tier 2: borrower-reported total annual debt service
+          existing_debt_service = deal.existing_debt_service;
+          dscrNote = "existing debt service from borrower-reported figure";
+        } else {
+          // Tier 3: interest only — principal unavailable
+          existing_debt_service = interestExp;
+          if (primary.total_debt != null && primary.total_debt > 0) {
+            dscrNote = "principal portion of existing debt unavailable";
+          }
+        }
+
+        // interest_rate is a percentage number (e.g. 6.50 = 6.5%) — divide by 100
+        const annualRatePct = deal.interest_rate ?? 0;
+        const r_monthly = (annualRatePct / 100) / 12;
+        const n = deal.term_months ?? 60;
+        const new_facility_debt_service = r_monthly === 0
+          ? (deal.amount_requested / n) * 12
+          : (deal.amount_requested * r_monthly / (1 - Math.pow(1 + r_monthly, -n))) * 12;
+
+        const total_annual_debt_service = existing_debt_service + new_facility_debt_service;
+        global_dscr = total_annual_debt_service > 0 ? r2(primary.ebitda / total_annual_debt_service) : null;
+      }
+
+      // STEP 3 — Benchmarking helpers
+      const parseBand = (bandText: string | null): ((v: number) => boolean) | null => {
+        if (!bandText) return null;
+        // Normalize: en-dash → hyphen, strip whitespace, strip unit chars (x, %, bps, $)
+        const s = bandText
+          .replace(/–/g, "-")
+          .replace(/\s/g, "")
+          .replace(/[x%]/gi, "")
+          .replace(/bps/gi, "")
+          .replace(/\$/g, "");
+        if (s.startsWith("≥")) { const n = parseFloat(s.slice(1)); if (!isNaN(n)) return (v) => v >= n; }
+        if (s.startsWith(">=")) { const n = parseFloat(s.slice(2)); if (!isNaN(n)) return (v) => v >= n; }
+        if (s.startsWith("≤")) { const n = parseFloat(s.slice(1)); if (!isNaN(n)) return (v) => v <= n; }
+        if (s.startsWith("<=")) { const n = parseFloat(s.slice(2)); if (!isNaN(n)) return (v) => v <= n; }
+        if (s.startsWith(">")) { const n = parseFloat(s.slice(1)); if (!isNaN(n)) return (v) => v > n; }
+        if (s.startsWith("<")) { const n = parseFloat(s.slice(1)); if (!isNaN(n)) return (v) => v < n; }
+        const rangeMatch = s.match(/^([\d.]+)-([\d.]+)$/);
+        if (rangeMatch) {
+          const lo = parseFloat(rangeMatch[1]), hi = parseFloat(rangeMatch[2]);
+          if (!isNaN(lo) && !isNaN(hi)) return (v) => v >= lo && v <= hi;
+        }
+        return null;
+      };
+
+      const NEGATIVE_GUARD_METRICS = new Set(["debt_to_ebitda", "interest_coverage", "global_dscr", "debt_to_equity"]);
+      const benchmarkStatus = (value: number, row: any, metric_key: string): "strong" | "adequate" | "weak" | null => {
+        if (value < 0 && NEGATIVE_GUARD_METRICS.has(metric_key)) return null;
+        const strongFn = parseBand(row.strong);
+        if (strongFn && strongFn(value)) return "strong";
+        const adequateFn = parseBand(row.adequate);
+        if (adequateFn && adequateFn(value)) return "adequate";
+        const weakFn = parseBand(row.weak);
+        if (weakFn && weakFn(value)) return "weak";
+        return null;
+      };
+
+      // Fetch thresholds for this deal's industry
+      const { data: thresholds } = await supabase
+        .from("metric_thresholds")
+        .select("metric_name, strong, adequate, weak, importance_tier")
+        .eq("industry_key", deal.industry ?? "");
+
+      const thresholdsByName: Record<string, any> = {};
+      for (const t of (thresholds ?? [])) thresholdsByName[t.metric_name] = t;
+
+      const METRIC_NAME_MAP: Record<string, string[]> = {
+        debt_to_ebitda:    ["Net Debt / EBITDA", "Debt / EBITDA"],
+        global_dscr:       ["DSCR", "DSCR (Project Finance)", "DSCR / MADS Coverage", "DSCR (Revenue / GO Bonds)"],
+        interest_coverage: ["Interest Coverage Ratio"],
+        current_ratio:     ["Current Ratio", "Working Capital / Current Ratio"],
+        gross_margin:      ["Gross Margin", "Gross Profit Margin"],
+        ebitda_margin:     ["EBITDA Margin"],
+        net_margin:        ["Net Profit Margin", "Net Margin"],
+        debt_to_equity:    ["Debt / Equity"],
+        revenue_growth:    ["Revenue Growth Rate", "Revenue Growth / Stability", "Revenue Growth"],
+        ebitda_growth:     ["EBITDA Growth"],
+      };
+
+      const METRIC_META: Record<string, { label: string; unit: string }> = {
+        debt_to_ebitda:    { label: "Debt / EBITDA",     unit: "x" },
+        debt_to_equity:    { label: "Debt / Equity",     unit: "x" },
+        interest_coverage: { label: "Interest Coverage", unit: "x" },
+        current_ratio:     { label: "Current Ratio",     unit: "x" },
+        gross_margin:      { label: "Gross Margin",      unit: "%" },
+        ebitda_margin:     { label: "EBITDA Margin",     unit: "%" },
+        net_margin:        { label: "Net Margin",        unit: "%" },
+        revenue_growth:    { label: "Revenue Growth",    unit: "%" },
+        ebitda_growth:     { label: "EBITDA Growth",     unit: "%" },
+        global_dscr:       { label: "DSCR (Global)",    unit: "x" },
+      };
+
+      const ratioValues: Record<string, number | null> = {
+        debt_to_ebitda, debt_to_equity, interest_coverage, current_ratio,
+        gross_margin, ebitda_margin, net_margin, revenue_growth, ebitda_growth, global_dscr,
+      };
+
+      // STEP 4 — Upsert into computed_metrics
+      let storedCount = 0;
+      let benchmarkedCount = 0;
+
+      for (const [metric_key, value] of Object.entries(ratioValues)) {
+        if (value == null) continue;
+        const meta = METRIC_META[metric_key];
+        const candidates = METRIC_NAME_MAP[metric_key] ?? [];
+        const threshRow = candidates.map((n) => thresholdsByName[n]).find(Boolean) ?? null;
+        const status = threshRow ? benchmarkStatus(value, threshRow, metric_key) : null;
+        const tier = threshRow?.importance_tier ?? null;
+        const fyForRatio = primary.fiscal_year;
+
+        ratioSummary.push({ label: meta.label, value, unit: meta.unit, status });
+
+        try {
+          const { error: upsertErr } = await supabase.from("computed_metrics").upsert(
+            {
+              deal_id,
+              fiscal_year: fyForRatio,
+              metric_key,
+              metric_label: meta.label,
+              value,
+              unit: meta.unit,
+              industry_tier: tier,
+              benchmark_status: status,
+              computable_from: "financials",
+            },
+            { onConflict: "deal_id,fiscal_year,metric_key" }
+          );
+          if (upsertErr) {
+            console.error(`[score-deal] computed_metrics upsert error (${metric_key}):`, upsertErr);
+          } else {
+            storedCount++;
+            if (status) benchmarkedCount++;
+          }
+        } catch (metricErr) {
+          console.error(`[score-deal] Unhandled error storing metric ${metric_key}:`, metricErr);
+        }
+      }
+
+      if (ratioSummary.length > 0) {
+        computedRatiosBlock =
+          `COMPUTED FINANCIAL RATIOS (from borrower-confirmed financial statements — fiscal year ${primary.fiscal_year}):\n` +
+          ratioSummary
+            .map(r => {
+              const tag = r.status ? ` (${r.status} for industry)` : "";
+              return `- ${r.label}: ${r.value}${r.unit}${tag}`;
+            })
+            .join("\n");
+      }
+
+      if (dscrNote) console.log(`[score-deal] Phase 2c DSCR note: ${dscrNote}`);
+      console.log(`[score-deal] Phase 2c computed ${storedCount} ratios, ${benchmarkedCount} benchmarked.`);
+
+      // ─────────────────────────────────────────────────────────────
+      // PHASE 2d: Rule-based anomaly detection (requires >= 2 confirmed years)
+      // ─────────────────────────────────────────────────────────────
+      if (prior !== null) {
+        const pctChange = (from: number | null, to: number | null): number | null => {
+          if (from == null || to == null || from === 0) return null;
+          return ((to - from) / Math.abs(from)) * 100;
+        };
+        const fmt = (n: number | null) => n != null ? `$${Number(n).toLocaleString()}` : "N/A";
+
+        let flagsDetected = 0;
+
+        const upsertFlag = async (flag: {
+          flag_key: string;
+          severity: "high" | "medium";
+          metric_label: string;
+          value_from: number | null;
+          value_to: number | null;
+          change_pct: number | null;
+          detail: string;
+        }) => {
+          try {
+            const { error } = await supabase.from("credit_flags").upsert(
+              {
+                deal_id,
+                flag_key: flag.flag_key,
+                flag_category: "quantitative",
+                severity: flag.severity,
+                fiscal_year_from: prior.fiscal_year,
+                fiscal_year_to: primary.fiscal_year,
+                metric_label: flag.metric_label,
+                value_from: flag.value_from,
+                value_to: flag.value_to,
+                change_pct: flag.change_pct,
+                detail: flag.detail,
+                detection_source: "rule",
+                status: "open",
+              },
+              { onConflict: "deal_id,flag_key,fiscal_year_to" }
+            );
+            if (error) console.error(`[score-deal] credit_flags upsert error (${flag.flag_key}):`, error);
+            else flagsDetected++;
+          } catch (flagErr) {
+            console.error(`[score-deal] Unhandled flag upsert error (${flag.flag_key}):`, flagErr);
+          }
+        };
+
+        // FLAG 1 — revenue_swing (>= 15% either direction)
+        const revChange = pctChange(prior.revenue, primary.revenue);
+        if (revChange !== null && Math.abs(revChange) >= 15) {
+          const absRev = Math.abs(revChange);
+          await upsertFlag({
+            flag_key: "revenue_swing",
+            severity: absRev >= 30 ? "high" : "medium",
+            metric_label: "Revenue",
+            value_from: prior.revenue,
+            value_to: primary.revenue,
+            change_pct: r2(revChange),
+            detail: `Revenue changed ${r2(revChange)}% year-over-year (FY${prior.fiscal_year} ${fmt(prior.revenue)} → FY${primary.fiscal_year} ${fmt(primary.revenue)}).`,
+          });
+        }
+
+        // FLAG 2 — ebitda_swing (>= 20% either direction; both values must be positive)
+        if (prior.ebitda != null && prior.ebitda > 0 && primary.ebitda != null && primary.ebitda > 0) {
+          const ebitdaChange = pctChange(prior.ebitda, primary.ebitda);
+          if (ebitdaChange !== null && Math.abs(ebitdaChange) >= 20) {
+            const absEbitda = Math.abs(ebitdaChange);
+            await upsertFlag({
+              flag_key: "ebitda_swing",
+              severity: absEbitda >= 40 ? "high" : "medium",
+              metric_label: "EBITDA",
+              value_from: prior.ebitda,
+              value_to: primary.ebitda,
+              change_pct: r2(ebitdaChange),
+              detail: `EBITDA changed ${r2(ebitdaChange)}% year-over-year (FY${prior.fiscal_year} ${fmt(prior.ebitda)} → FY${primary.fiscal_year} ${fmt(primary.ebitda)}).`,
+            });
+          }
+        }
+
+        // FLAG 3 — debt_increase (>= 30% increase only)
+        const debtChange = pctChange(prior.total_debt, primary.total_debt);
+        if (debtChange !== null && debtChange >= 30) {
+          await upsertFlag({
+            flag_key: "debt_increase",
+            severity: debtChange >= 60 ? "high" : "medium",
+            metric_label: "Total Debt",
+            value_from: prior.total_debt,
+            value_to: primary.total_debt,
+            change_pct: r2(debtChange),
+            detail: `Total debt increased ${r2(debtChange)}% year-over-year (FY${prior.fiscal_year} ${fmt(prior.total_debt)} → FY${primary.fiscal_year} ${fmt(primary.total_debt)}).`,
+          });
+        }
+
+        // FLAG 4 — leverage_shift (>= 1.0 turn either direction; both EBITDA values must be positive)
+        if (
+          prior.ebitda != null && prior.ebitda > 0 &&
+          primary.ebitda != null && primary.ebitda > 0 &&
+          prior.total_debt != null && primary.total_debt != null
+        ) {
+          const priorLev = r2(prior.total_debt / prior.ebitda);
+          const primaryLev = r2(primary.total_debt / primary.ebitda);
+          const shift = r2(Math.abs(primaryLev - priorLev));
+          if (shift >= 1.0) {
+            const direction = primaryLev > priorLev ? "increase of" : "decrease of";
+            await upsertFlag({
+              flag_key: "leverage_shift",
+              severity: shift >= 2.0 ? "high" : "medium",
+              metric_label: "Debt / EBITDA",
+              value_from: priorLev,
+              value_to: primaryLev,
+              change_pct: null,
+              detail: `Leverage shifted from ${priorLev}x to ${primaryLev}x (${direction} ${shift}x turn, FY${prior.fiscal_year} → FY${primary.fiscal_year}).`,
+            });
+          }
+        }
+
+        console.log(`[score-deal] Phase 2d detected ${flagsDetected} rule-based flag(s).`);
+
+        // ── Phase 2d Part 2 — Templated question generation from rule flags
+        const { data: ruleFlags } = await supabase
+          .from("credit_flags")
+          .select("flag_key, severity, value_from, value_to, change_pct, fiscal_year_from, fiscal_year_to")
+          .eq("deal_id", deal_id)
+          .eq("status", "open")
+          .eq("detection_source", "rule")
+          .eq("fiscal_year_to", primary.fiscal_year);
+
+        let questionsGenerated = 0;
+
+        for (const flag of ruleFlags ?? []) {
+          try {
+            // Skip if a pending_review or approved question already exists for this metric
+            const { data: existing } = await supabase
+              .from("credit_questions")
+              .select("id")
+              .eq("deal_id", deal_id)
+              .eq("related_metric", flag.flag_key)
+              .in("status", ["pending_review", "approved"])
+              .limit(1);
+
+            if (existing && existing.length > 0) continue;
+
+            const from = flag.fiscal_year_from;
+            const to = flag.fiscal_year_to;
+            const vFrom = flag.value_from != null ? `$${Number(flag.value_from).toLocaleString()}` : "N/A";
+            const vTo   = flag.value_to   != null ? `$${Number(flag.value_to).toLocaleString()}`   : "N/A";
+            const absPct = flag.change_pct != null ? Math.abs(flag.change_pct) : null;
+            const isIncrease = flag.change_pct != null
+              ? flag.change_pct > 0
+              : (flag.value_to ?? 0) > (flag.value_from ?? 0);
+
+            let questionText = "";
+
+            if (flag.flag_key === "revenue_swing") {
+              questionText = isIncrease
+                ? `Your revenue grew ${flag.change_pct}% from FY${from} to FY${to} (from ${vFrom} to ${vTo}). What specifically drove this growth — new customers, pricing, new products, or acquisitions? Is it organic and recurring, or partly one-time? How sustainable is this trajectory?`
+                : `Your revenue declined ${absPct}% from FY${from} to FY${to} (from ${vFrom} to ${vTo}). What caused the decline — lost customers, pricing pressure, a discontinued line, or market conditions? What have you done to stabilize or reverse it?`;
+            } else if (flag.flag_key === "ebitda_swing") {
+              questionText = isIncrease
+                ? `Your EBITDA improved ${flag.change_pct}% from FY${from} to FY${to}. Was this driven by revenue growth, margin improvement, cost reductions, or one-time items? Are these gains structural and repeatable?`
+                : `Your EBITDA fell ${absPct}% from FY${from} to FY${to}. What drove the compression — input costs, pricing, one-time expenses, or volume? What is being done to restore profitability?`;
+            } else if (flag.flag_key === "debt_increase") {
+              questionText = `Your total debt increased ${flag.change_pct}% from FY${from} to FY${to} (from ${vFrom} to ${vTo}). What was the purpose of the additional borrowing, what are the terms and maturities, and how does it affect your ability to service the requested facility?`;
+            } else if (flag.flag_key === "leverage_shift") {
+              const levFrom = flag.value_from != null ? `${flag.value_from}x` : "N/A";
+              const levTo   = flag.value_to   != null ? `${flag.value_to}x`   : "N/A";
+              const levUp   = (flag.value_to ?? 0) > (flag.value_from ?? 0);
+              questionText = levUp
+                ? `Your leverage rose from ${levFrom} to ${levTo} Debt/EBITDA between FY${from} and FY${to}. What drove the increase, and what is your plan to manage debt service at this higher level?`
+                : `Your leverage improved from ${levFrom} to ${levTo} Debt/EBITDA between FY${from} and FY${to}. What enabled the deleveraging — debt repayment, EBITDA growth, asset sales, or equity injection? Is it sustainable?`;
+            }
+
+            if (!questionText) continue;
+
+            const { error: qErr } = await supabase.from("credit_questions").insert({
+              deal_id,
+              question_type: "metric_anomaly",
+              source: "rule",
+              related_metric: flag.flag_key,
+              question_text: questionText,
+              priority: flag.severity,
+              status: "pending_review",
+              ai_reviewed: false,
+            });
+
+            if (qErr) {
+              console.error(`[score-deal] credit_questions insert error (${flag.flag_key}):`, qErr);
+            } else {
+              questionsGenerated++;
+            }
+          } catch (qGenErr) {
+            console.error(`[score-deal] Question generation error (${flag.flag_key}):`, qGenErr);
+          }
+        }
+
+        console.log(`[score-deal] Phase 2d Part 2 generated ${questionsGenerated} question(s) for review.`);
+      }
+
+      // ── Phase 2d Job B — AI qualitative notes analysis
+      const hasNotes = confirmedFinancials.some(row =>
+        (row.notes_summary && String(row.notes_summary).trim()) ||
+        (row.debt_detail && typeof row.debt_detail === "object" && Object.keys(row.debt_detail).length > 0) ||
+        (row.raw_notes && String(row.raw_notes).trim())
+      );
+
+      if (!hasNotes) {
+        console.log("[score-deal] Phase 2d Job B skipped (no notes to analyze).");
+      } else {
+        try {
+          // Build financial context across all confirmed years
+          let financialContext = "";
+          for (const row of confirmedFinancials) {
+            const fmtN = (n: number | null) => n != null ? `$${Number(n).toLocaleString()}` : "N/A";
+            financialContext += `\n--- FY${row.fiscal_year} ---\n`;
+            financialContext += `Revenue: ${fmtN(row.revenue)}  EBITDA: ${fmtN(row.ebitda)}  Net Income: ${fmtN(row.net_income)}\n`;
+            financialContext += `Total Assets: ${fmtN(row.total_assets)}  Total Debt: ${fmtN(row.total_debt)}  Equity: ${fmtN(row.equity)}\n`;
+            if (row.notes_summary) financialContext += `Notes Summary: ${row.notes_summary}\n`;
+            if (row.debt_detail && typeof row.debt_detail === "object") {
+              financialContext += `Debt Detail: ${JSON.stringify(row.debt_detail)}\n`;
+            }
+            if (row.raw_notes) financialContext += `Extraction Flags / Raw Notes: ${row.raw_notes}\n`;
+          }
+
+          const jobBPrompt =
+`You are a skeptical senior credit analyst reviewing the notes to a borrower's financial statements before approving a loan. Your job is to identify GENUINELY MATERIAL issues that a careful lender would want the borrower to explain — and to generate a specific question for each.
+
+CRITICAL RULES:
+1. GROUNDING: Every question MUST be grounded in a specific item actually present in the documents provided. Reference the specific note, figure, or disclosure that prompted it. Do NOT ask generic questions. Do NOT invent concerns that are not supported by the documents.
+2. MATERIALITY: Only ask about things that genuinely affect credit risk — things that would change how a lender views repayment ability, leverage, or risk. Ignore immaterial or boilerplate disclosures.
+3. IT IS CORRECT TO RETURN FEW OR ZERO QUESTIONS. If the notes contain nothing materially concerning, return an empty list. Do NOT manufacture questions to fill space. A clean set of notes should produce few or no questions. Quality over quantity, always.
+4. MAXIMUM 20 questions, but only ask as many as there are genuinely material issues. Most deals will have between 0 and 8. Going to 20 is rare and only justified when there are truly that many distinct material issues.
+
+Look specifically for (only if actually present in the documents):
+- Litigation, lawsuits, legal contingencies, or claims
+- Going-concern language or doubt about the entity's ability to continue
+- Debt maturities falling within or near the requested loan term (compare maturity dates to the loan term of ${deal.term_months} months) — a large maturity coming due soon is a refinancing risk
+- Covenant breaches, waivers, or tight covenant headroom
+- Related-party transactions or loans to/from owners
+- Off-balance-sheet obligations, guarantees, or contingent liabilities
+- Unusual, non-recurring, or one-time items affecting earnings
+- Significant subsequent events (after the statement date)
+- Customer/supplier concentration disclosed in notes
+- Changes in accounting policy or restatements
+- Pledged/encumbered assets affecting collateral availability
+- Optimistic forward projections or assumptions that warrant scrutiny
+
+For each genuine issue, write a specific, detail-oriented question in the same probing style a senior analyst would use — reference the specific item, and ask about cause, magnitude, and mitigation.
+
+Return ONLY valid JSON, no markdown, with this shape:
+{
+  "questions": [
+    {
+      "category": "<litigation | going_concern | debt_maturity | covenant | related_party | off_balance_sheet | non_recurring | subsequent_event | concentration | accounting_change | encumbered_assets | projection | other>",
+      "materiality": "<high | medium | low>",
+      "grounded_in": "<the specific note/figure/disclosure this question is based on — quote or closely reference it>",
+      "question": "<the question to ask the borrower>"
+    }
+  ]
+}
+If there are no material issues, return { "questions": [] }.
+
+DEAL CONTEXT:
+- Amount Requested: $${Number(deal.amount_requested ?? 0).toLocaleString()} CAD
+- Loan Term: ${deal.term_months ?? "N/A"} months
+
+FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
+
+          const jobBRes = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "x-api-key": ANTHROPIC_API_KEY,
+              "anthropic-version": "2023-06-01",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "claude-opus-4-8",
+              max_tokens: 4000,
+              messages: [{ role: "user", content: jobBPrompt }],
+            }),
+          });
+
+          if (!jobBRes.ok) {
+            const errText = await jobBRes.text();
+            console.error("[score-deal] Phase 2d Job B API error:", errText);
+          } else {
+            const jobBData = await jobBRes.json();
+            const rawJobB: string = jobBData.content[0].text;
+            const cleanedJobB = rawJobB
+              .replace(/^```(?:json)?\s*/i, "")
+              .replace(/\s*```\s*$/i, "")
+              .trim();
+
+            let parsedJobB: { questions: any[] } = { questions: [] };
+            try {
+              parsedJobB = JSON.parse(cleanedJobB);
+            } catch (_e) {
+              console.error("[score-deal] Phase 2d Job B JSON parse error. Raw:", rawJobB.slice(0, 300));
+            }
+
+            let jobBCount = 0;
+            const aiQuestions = (parsedJobB.questions ?? []).slice(0, 20);
+
+            for (const q of aiQuestions) {
+              try {
+                // Duplicate guard: skip if an AI question for this category already exists
+                const { data: existing } = await supabase
+                  .from("credit_questions")
+                  .select("id")
+                  .eq("deal_id", deal_id)
+                  .eq("related_metric", q.category)
+                  .eq("source", "ai")
+                  .in("status", ["pending_review", "approved"])
+                  .limit(1);
+
+                if (existing && existing.length > 0) continue;
+
+                const priority = q.materiality === "high" ? "high" : q.materiality === "low" ? "low" : "medium";
+
+                const { error: qErr } = await supabase.from("credit_questions").insert({
+                  deal_id,
+                  question_type: "qualitative_notes",
+                  source: "ai",
+                  related_metric: q.category,
+                  question_text: q.question,
+                  priority,
+                  status: "pending_review",
+                  ai_reviewed: false,
+                  input_fields: { grounded_in: q.grounded_in ?? null },
+                });
+
+                if (qErr) {
+                  console.error(`[score-deal] Phase 2d Job B insert error (${q.category}):`, qErr);
+                } else {
+                  jobBCount++;
+                }
+              } catch (qBErr) {
+                console.error(`[score-deal] Phase 2d Job B question error (${q.category}):`, qBErr);
+              }
+            }
+
+            console.log(`[score-deal] Phase 2d Job B generated ${jobBCount} qualitative question(s) for review.`);
+          }
+        } catch (jobBErr) {
+          console.error("[score-deal] Phase 2d Job B unhandled error:", jobBErr);
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Phase 1 scoring continues unchanged below
     // ─────────────────────────────────────────────────────────────
+
+    // Build self-reported leverage estimate for Phase 1 (no confirmed financials)
+    let selfReportedEstimate = "";
+    if (!computedRatiosBlock) {
+      const hasEbitda = typeof deal.ebitda === "number" && deal.ebitda > 0;
+      const hasExistingDebt = typeof deal.existing_debt === "number" && deal.existing_debt > 0;
+      const lines: string[] = [];
+
+      if (deal.annual_revenue && deal.ebitda) {
+        lines.push(`- EBITDA Margin: ${((deal.ebitda / deal.annual_revenue) * 100).toFixed(1)}%`);
+      }
+
+      if (hasEbitda && hasExistingDebt) {
+        const totalLeverage = (deal.existing_debt + deal.amount_requested) / deal.ebitda;
+        lines.push(
+          `- ROUGH LEVERAGE ESTIMATE (self-reported, unverified — no confirmed statements): total debt including requested facility ≈ ${totalLeverage.toFixed(2)}x self-reported EBITDA. (existing debt $${Number(deal.existing_debt).toLocaleString()} + requested $${Number(deal.amount_requested).toLocaleString()}) ÷ EBITDA $${Number(deal.ebitda).toLocaleString()}.`
+        );
+      } else if (hasEbitda) {
+        const newBorrowingRatio = deal.amount_requested / deal.ebitda;
+        lines.push(
+          `- ROUGH SIZING (self-reported, unverified): requested facility ≈ ${newBorrowingRatio.toFixed(2)}x self-reported EBITDA in NEW borrowing. Existing debt not provided, so total leverage cannot be assessed.`
+        );
+      }
+
+      const noDscrInstruction =
+        `\nIMPORTANT: No confirmed financial statements exist for this deal. Do NOT calculate, estimate, or cite any DSCR, debt-service-coverage ratio, or interest-coverage ratio — a reliable coverage ratio cannot be computed from self-reported summary figures, and presenting one would imply false precision. Use the ROUGH LEVERAGE ESTIMATE provided above as your debt-capacity anchor, and otherwise assess the borrower's ability to service debt qualitatively. You may reference the leverage estimate and EBITDA margin, but do not invent coverage ratios.`;
+
+      if (lines.length > 0) {
+        selfReportedEstimate =
+          `The figures below are self-reported and unverified (no confirmed financial statements). Treat them as rough sizing signals only, not as verified ratios.\n` +
+          lines.join("\n") +
+          noDscrInstruction;
+      } else {
+        selfReportedEstimate = noDscrInstruction.trimStart();
+      }
+    }
 
     // Build the credit scoring prompt
     const prompt = `You are a senior SME credit analyst at a Canadian debt marketplace. Score the following deal using the structured financial data provided.
@@ -272,12 +947,7 @@ DEAL DETAILS:
 - EBITDA: $${Number(deal.ebitda ?? 0).toLocaleString()} CAD
 - Use of Funds: ${deal.ai_summary ?? "Not specified"}
 
-DERIVED RATIOS (calculate where possible from data above):
-- EBITDA Margin: ${deal.annual_revenue && deal.ebitda ? ((deal.ebitda / deal.annual_revenue) * 100).toFixed(1) + "%" : "N/A"}
-- Debt / EBITDA: ${deal.ebitda && deal.amount_requested ? (deal.amount_requested / deal.ebitda).toFixed(2) + "x" : "N/A"}
-- Estimated DSCR: ${deal.ebitda && deal.amount_requested && deal.term_months ? (deal.ebitda / (deal.amount_requested / (deal.term_months / 12))).toFixed(2) + "x" : "N/A"}
-
-Return ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
+${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}Return ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
 
 {
   "overall_score": <integer 0-100>,

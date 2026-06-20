@@ -5,6 +5,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AdminRoute from "./components/AdminRoute";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import RoleSelect from "./pages/RoleSelect";
@@ -63,9 +64,9 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path={"/admin"}>
-        <ProtectedRoute>
+        <AdminRoute>
           <AdminPanel />
-        </ProtectedRoute>
+        </AdminRoute>
       </Route>
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}

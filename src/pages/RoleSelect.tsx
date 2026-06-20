@@ -10,32 +10,44 @@ export default function RoleSelect() {
   const { logout, user } = useAuth0();
   const [activeRole, setActiveRole] = useState<string | null>(null);
 
-  const upsertUser = async (role: 'borrower' | 'lender') => {
+  const upsertUser = async (role: 'borrower' | 'lender'): Promise<boolean> => {
     if (!user) {
       console.error('No Auth0 user found');
-      return;
+      return false;
     }
-    console.log('Attempting upsert for:', user.sub, user.email, user.name, role);
+
+    const normalizedEmail = (user.email ?? '').toLowerCase().trim();
+    const { data: adminRow } = await supabase
+      .from('admin_allowlist')
+      .select('email')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    const effectiveRole = adminRow ? 'admin' : role;
+
+    console.log('Attempting upsert for:', user.sub, user.email, user.name, effectiveRole);
     const { data, error } = await supabase.from('users').upsert({
       auth0_id: user.sub,
       email: user.email,
       full_name: user.name,
-      role: role,
+      role: effectiveRole,
     }, { onConflict: 'auth0_id' });
     console.log('Upsert result:', data, error);
     if (error) console.error('Supabase upsert error:', error);
+
+    return !!adminRow;
   };
 
   const handleBorrowerClick = async () => {
     setActiveRole("borrower");
-    await upsertUser("borrower");
-    setLocation("/onboarding");
+    const isAdmin = await upsertUser("borrower");
+    setLocation(isAdmin ? "/admin" : "/onboarding");
   };
 
   const handleLenderClick = async () => {
     setActiveRole("lender");
-    await upsertUser("lender");
-    setLocation("/lender-onboarding");
+    const isAdmin = await upsertUser("lender");
+    setLocation(isAdmin ? "/admin" : "/lender-onboarding");
   };
 
   return (
