@@ -21,6 +21,7 @@ interface Deal {
   sector: string;
   province: string;
   amount_requested: number;
+  amount_funded?: number | null;
   status: string;
   financials_status: string | null;
   created_at: string;
@@ -132,6 +133,7 @@ export default function BorrowerDashboard() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [docCategory, setDocCategory] = useState("Financial Statement");
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [selectedBidIds, setSelectedBidIds] = useState<Record<string, Set<string>>>({});
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 900);
@@ -226,6 +228,11 @@ export default function BorrowerDashboard() {
 
   const dealsNeedingReview = deals.filter(d => d.financials_status === "extracted");
 
+  const dealBidsMap = deals.reduce((acc, deal) => {
+    acc[deal.id] = bids.filter(b => b.deal_id === deal.id);
+    return acc;
+  }, {} as Record<string, Bid[]>);
+
   const displayName = user?.name || dbUser?.name || "there";
   const firstName = displayName.split(" ")[0];
   const userInitials = getInitials(displayName);
@@ -233,6 +240,71 @@ export default function BorrowerDashboard() {
   const getDealName = (dealId: string): string => {
     const deal = deals.find((d) => d.id === dealId);
     return deal?.company_name || "Unknown Deal";
+  };
+
+  const refetchDealsAndBids = async () => {
+    if (!dbUser) return;
+    const { data: dealsData } = await supabase
+      .from("deals")
+      .select("*")
+      .eq("borrower_id", dbUser.id)
+      .order("created_at", { ascending: false });
+    const fetchedDeals: Deal[] = dealsData || [];
+    setDeals(fetchedDeals);
+    if (fetchedDeals.length > 0) {
+      const dealIds = fetchedDeals.map((d) => d.id);
+      const { data: bidsData } = await supabase
+        .from("bids")
+        .select("*")
+        .in("deal_id", dealIds)
+        .order("created_at", { ascending: false });
+      setBids(bidsData || []);
+    } else {
+      setBids([]);
+    }
+  };
+
+  const handleAcceptBids = async (dealId: string, bidIds: string[]) => {
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal) return;
+    const currentAccepted = bids
+      .filter(b => b.deal_id === dealId && b.status === 'accepted')
+      .reduce((sum, b) => sum + b.amount, 0);
+    const newAmount = bids
+      .filter(b => bidIds.includes(b.id))
+      .reduce((sum, b) => sum + b.amount, 0);
+    const total = currentAccepted + newAmount;
+    if (total > deal.amount_requested) {
+      const ok = window.confirm(
+        `Accepting these bids brings your funding to ${formatCurrency(total)}, above your requested ${formatCurrency(deal.amount_requested)}. Continue with oversubscription?`
+      );
+      if (!ok) return;
+    }
+    const { error } = await supabase.rpc('accept_bids', { p_deal_id: dealId, p_bid_ids: bidIds });
+    if (error) { alert('Failed to accept bids: ' + error.message); return; }
+    setSelectedBidIds(prev => { const next = { ...prev }; delete next[dealId]; return next; });
+    await refetchDealsAndBids();
+  };
+
+  const handleUnacceptBid = async (dealId: string, bidId: string) => {
+    const { error } = await supabase.rpc('unaccept_bid', { p_deal_id: dealId, p_bid_id: bidId });
+    if (error) { alert('Failed to un-accept bid: ' + error.message); return; }
+    await refetchDealsAndBids();
+  };
+
+  const handleCloseDeal = async (dealId: string) => {
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal) return;
+    const acceptedTotal = bids
+      .filter(b => b.deal_id === dealId && b.status === 'accepted')
+      .reduce((sum, b) => sum + b.amount, 0);
+    const ok = window.confirm(
+      `Close this deal? It will be funded at ${formatCurrency(acceptedTotal)}, removed from the marketplace, and all remaining open bids will be rejected. This cannot be undone.`
+    );
+    if (!ok) return;
+    const { error } = await supabase.rpc('close_deal', { p_deal_id: dealId });
+    if (error) { alert('Failed to close deal: ' + error.message); return; }
+    await refetchDealsAndBids();
   };
 
   const handleNavClick = (item: any, closeSidebar: boolean) => {
@@ -519,6 +591,22 @@ export default function BorrowerDashboard() {
           .review-banner-row:last-child { border-bottom: none; }
           .review-deal-name { font-size: 13px; font-weight: 600; color: var(--navy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
           .review-btn { background: var(--gold); border: none; color: #fff; font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-family: 'Inter', sans-serif; white-space: nowrap; flex-shrink: 0; }
+
+          .status-bid-pending { background: rgba(217,119,6,0.1); color: var(--amber); }
+          .status-bid-accepted { background: rgba(5,150,105,0.08); color: var(--green); }
+          .status-bid-rejected { background: rgba(220,38,38,0.08); color: #DC2626; }
+          .status-bid-countered { background: rgba(212,148,10,0.12); color: var(--gold); }
+          .bid-action.unaccept { background: none; border: 1px solid #E8E2D9; color: #DC2626; }
+          .bid-action.close { background: var(--navy); color: #fff; }
+          .deal-bid-group { background: #fff; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+          .deal-bid-group:last-child { margin-bottom: 0; }
+          .dbg-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 15px 12px; border-bottom: 1px solid var(--border); }
+          .dbg-deal-name { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 3px; }
+          .dbg-tally { font-size: 11px; color: var(--text-muted); }
+          .dbg-oversub { color: #D97706; font-weight: 600; }
+          .dbg-bid-row { padding: 12px 15px; border-bottom: 1px solid var(--border); }
+          .dbg-bid-row:last-of-type { border-bottom: none; }
+          .dbg-footer { display: flex; gap: 8px; padding: 12px 15px; border-top: 1px solid var(--border); background: rgba(27,43,75,0.02); flex-wrap: wrap; }
         `}</style>
 
         <div className="demo-banner">
@@ -668,52 +756,100 @@ export default function BorrowerDashboard() {
 
           <div id="bids">
             <div className="section-head">
-              <div className="section-title">Recent Bids</div>
-              <button className="section-link" onClick={() => setLocation('/marketplace')}>View All</button>
+              <div className="section-title">Bids by Deal</div>
             </div>
-            {bids.length === 0 ? (
+            {deals.filter(d => (dealBidsMap[d.id] || []).length > 0).length === 0 ? (
               <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", padding: "24px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>
                 No bids received yet.
               </div>
             ) : (
-              bids.slice(0, 5).map((bid) => {
-                const isBest = bid.interest_rate === bestRate;
-                return (
-                  <div key={bid.id} className="bid-card">
-                    <div className="bid-top">
-                      <div>
-                        <div className="bid-lender">{formatLenderId(bid.lender_id)}</div>
-                        <div className="bid-deal">{getDealName(bid.deal_id)}</div>
+              deals
+                .filter(d => (dealBidsMap[d.id] || []).length > 0)
+                .map(deal => {
+                  const dealBids = dealBidsMap[deal.id] || [];
+                  const acceptedBids = dealBids.filter(b => b.status === 'accepted');
+                  const acceptedTotal = acceptedBids.reduce((sum, b) => sum + b.amount, 0);
+                  const oversubscribed = acceptedTotal > deal.amount_requested;
+                  const isClosed = deal.status === 'funded' || deal.status === 'closed';
+                  const selectedForDeal = selectedBidIds[deal.id] || new Set<string>();
+                  const hasPendingSelected = selectedForDeal.size > 0;
+                  const hasAcceptedBid = acceptedBids.length > 0;
+                  return (
+                    <div key={deal.id} className="deal-bid-group">
+                      <div className="dbg-header">
+                        <div>
+                          <div className="dbg-deal-name">{deal.company_name}</div>
+                          <div className="dbg-tally">
+                            Accepted: {formatCurrency(acceptedTotal)} of {formatCurrency(deal.amount_requested)}
+                            {oversubscribed && <span className="dbg-oversub"> (oversubscribed)</span>}
+                          </div>
+                        </div>
+                        {isClosed && <span className="status status-active" style={{ fontSize: "9px", letterSpacing: "0.05em" }}>CLOSED</span>}
                       </div>
-                      <div className={`bid-rate${isBest ? " best" : ""}`}>{(bid.interest_rate != null ? bid.interest_rate.toFixed(1) : "—")}%</div>
-                    </div>
-                    <div className="bid-meta">
-                      <div className="bid-meta-item">
-                        <span className="bid-meta-label">Amount</span>
-                        <span className="bid-meta-val">{formatCurrency(bid.amount)}</span>
-                      </div>
-                      <div className="bid-meta-item">
-                        <span className="bid-meta-label">Term</span>
-                        <span className="bid-meta-val">{bid.term_months} mo</span>
-                      </div>
-                      <div className="bid-meta-item">
-                        <span className="bid-meta-label">Status</span>
-                        <span className="status status-review" style={{ padding: "2px 8px" }}>
-                          {bid.status.charAt(0).toUpperCase() + bid.status.slice(1)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="bid-bottom">
-                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{isBest ? "Best rate offered" : ""}</span>
-                      {bid.status === "pending" ? (
-                        <button className="bid-action accept" onClick={() => alert("Bid accepted. Lender will be notified.")}>Accept</button>
-                      ) : (
-                        <button className="bid-action counter" onClick={() => alert("Counter offer flow coming soon.")}>Counter</button>
+                      {dealBids.map(bid => {
+                        const isBest = bid.interest_rate === bestRate;
+                        const isSelected = selectedForDeal.has(bid.id);
+                        return (
+                          <div key={bid.id} className="dbg-bid-row">
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
+                              <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                                {!isClosed && bid.status === 'pending' && (
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {
+                                      setSelectedBidIds(prev => {
+                                        const cur = new Set(prev[deal.id] || []);
+                                        if (cur.has(bid.id)) cur.delete(bid.id); else cur.add(bid.id);
+                                        return { ...prev, [deal.id]: cur };
+                                      });
+                                    }}
+                                    style={{ marginTop: "3px", accentColor: "var(--gold)", width: "16px", height: "16px", flexShrink: 0, cursor: "pointer" }}
+                                  />
+                                )}
+                                <div className="bid-lender">{formatLenderId(bid.lender_id)}</div>
+                              </div>
+                              <div className={`bid-rate${isBest ? " best" : ""}`}>{bid.interest_rate != null ? bid.interest_rate.toFixed(1) : "—"}%</div>
+                            </div>
+                            <div className="bid-meta" style={{ marginBottom: (!isClosed && bid.status === 'accepted') ? "10px" : 0 }}>
+                              <div className="bid-meta-item">
+                                <span className="bid-meta-label">Amount</span>
+                                <span className="bid-meta-val">{formatCurrency(bid.amount)}</span>
+                              </div>
+                              <div className="bid-meta-item">
+                                <span className="bid-meta-label">Term</span>
+                                <span className="bid-meta-val">{bid.term_months} mo</span>
+                              </div>
+                              <div className="bid-meta-item">
+                                <span className="bid-meta-label">Status</span>
+                                <span className={`status status-bid-${bid.status}`} style={{ padding: "2px 8px" }}>
+                                  {bid.status.charAt(0).toUpperCase() + bid.status.slice(1)}
+                                </span>
+                              </div>
+                            </div>
+                            {!isClosed && bid.status === 'accepted' && (
+                              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                <button className="bid-action unaccept" onClick={() => handleUnacceptBid(deal.id, bid.id)}>Un-accept</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {!isClosed && (hasPendingSelected || hasAcceptedBid) && (
+                        <div className="dbg-footer">
+                          {hasPendingSelected && (
+                            <button className="bid-action accept" onClick={() => handleAcceptBids(deal.id, Array.from(selectedForDeal))}>
+                              Accept Selected ({selectedForDeal.size})
+                            </button>
+                          )}
+                          {hasAcceptedBid && (
+                            <button className="bid-action close" onClick={() => handleCloseDeal(deal.id)}>Close Deal</button>
+                          )}
+                        </div>
                       )}
                     </div>
-                  </div>
-                );
-              })
+                  );
+                })
             )}
           </div>
 
@@ -880,6 +1016,18 @@ export default function BorrowerDashboard() {
         .d-review-deal-name { font-size: 14px; font-weight: 600; color: var(--navy); }
         .d-review-btn { background: var(--gold); border: none; color: #fff; font-size: 13px; font-weight: 600; padding: 8px 18px; border-radius: 8px; cursor: pointer; font-family: 'Inter', sans-serif; white-space: nowrap; transition: opacity 0.15s; }
         .d-review-btn:hover { opacity: 0.88; }
+
+        .status-bid-pending { background: rgba(217,119,6,0.1); color: var(--amber); }
+        .status-bid-accepted { background: rgba(5,150,105,0.08); color: var(--green); }
+        .status-bid-rejected { background: rgba(220,38,38,0.08); color: #DC2626; }
+        .status-bid-countered { background: rgba(212,148,10,0.12); color: var(--gold); }
+        .d-deal-bid-group { background: #fff; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+        .d-deal-bid-group:last-child { margin-bottom: 0; }
+        .d-dbg-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 14px; border-bottom: 1px solid var(--border); }
+        .d-dbg-deal-name { font-size: 15px; font-weight: 700; color: var(--navy); margin-bottom: 3px; }
+        .d-dbg-tally { font-size: 12px; color: var(--text-muted); }
+        .d-dbg-oversub { color: #D97706; font-weight: 600; }
+        .d-dbg-footer { display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border); background: rgba(27,43,75,0.02); }
       `}</style>
 
       {/* DEMO BANNER */}
@@ -1030,51 +1178,104 @@ export default function BorrowerDashboard() {
           </div>
         </div>
 
-        {/* RECENT BIDS */}
+        {/* BIDS BY DEAL */}
         <div id="bids" className="d-section">
           <div className="d-section-head">
-            <div className="d-section-title">Recent Bids</div>
-            <button className="d-section-link" onClick={() => setLocation('/marketplace')}>View All</button>
+            <div className="d-section-title">Bids by Deal</div>
           </div>
-          <div className="d-bids-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Lender</th><th>Deal</th><th>Rate Offered</th><th>Amount</th><th>Term</th><th>Status</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {bids.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: "center", color: "#7A7060", padding: "32px" }}>
-                      No bids received yet.
-                    </td>
-                  </tr>
-                ) : (
-                  bids.slice(0, 10).map((bid) => {
-                    const isBest = bid.interest_rate === bestRate;
-                    return (
-                      <tr key={bid.id}>
-                        <td style={{ fontWeight: 600 }}>{formatLenderId(bid.lender_id)}</td>
-                        <td style={{ color: "var(--text-muted)" }}>{getDealName(bid.deal_id)}</td>
-                        <td className={isBest ? "d-rate-best" : ""} style={{ fontWeight: 700 }}>{(bid.interest_rate != null ? bid.interest_rate.toFixed(1) : "—")}%</td>
-                        <td>{formatCurrency(bid.amount)}</td>
-                        <td>{bid.term_months} mo</td>
-                        <td><span className="d-status d-status-review">{bid.status.charAt(0).toUpperCase() + bid.status.slice(1)}</span></td>
-                        <td>
-                          {bid.status === "pending" ? (
-                            <button className="d-btn d-btn-gold" style={{ fontSize: "11px", padding: "6px 12px" }} onClick={() => alert("Bid accepted. Lender will be notified.")}>Accept</button>
-                          ) : (
-                            <button className="d-btn d-btn-ghost" style={{ fontSize: "11px", padding: "6px 12px" }} onClick={() => alert("Counter offer flow coming soon.")}>Counter</button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          {deals.filter(d => (dealBidsMap[d.id] || []).length > 0).length === 0 ? (
+            <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "12px", padding: "32px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>
+              No bids received yet.
+            </div>
+          ) : (
+            deals
+              .filter(d => (dealBidsMap[d.id] || []).length > 0)
+              .map(deal => {
+                const dealBids = dealBidsMap[deal.id] || [];
+                const acceptedBids = dealBids.filter(b => b.status === 'accepted');
+                const acceptedTotal = acceptedBids.reduce((sum, b) => sum + b.amount, 0);
+                const oversubscribed = acceptedTotal > deal.amount_requested;
+                const isClosed = deal.status === 'funded' || deal.status === 'closed';
+                const selectedForDeal = selectedBidIds[deal.id] || new Set<string>();
+                const hasPendingSelected = selectedForDeal.size > 0;
+                const hasAcceptedBid = acceptedBids.length > 0;
+                return (
+                  <div key={deal.id} className="d-deal-bid-group">
+                    <div className="d-dbg-header">
+                      <div>
+                        <div className="d-dbg-deal-name">{deal.company_name}</div>
+                        <div className="d-dbg-tally">
+                          Accepted: {formatCurrency(acceptedTotal)} of {formatCurrency(deal.amount_requested)}
+                          {oversubscribed && <span className="d-dbg-oversub"> (oversubscribed)</span>}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        {isClosed && <span className="d-status d-status-active" style={{ fontSize: "10px", letterSpacing: "0.05em" }}>CLOSED</span>}
+                        {!isClosed && hasAcceptedBid && (
+                          <button className="d-btn d-btn-ghost" style={{ fontSize: "12px", padding: "7px 14px" }}
+                            onClick={() => handleCloseDeal(deal.id)}>Close Deal</button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="d-bids-table" style={{ border: "none", borderRadius: 0 }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th style={{ width: "32px" }}></th>
+                            <th>Lender</th><th>Rate</th><th>Amount</th><th>Term</th><th>Status</th><th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dealBids.map(bid => {
+                            const isBest = bid.interest_rate === bestRate;
+                            const isSelected = selectedForDeal.has(bid.id);
+                            return (
+                              <tr key={bid.id}>
+                                <td style={{ paddingRight: 0 }}>
+                                  {!isClosed && bid.status === 'pending' && (
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => {
+                                        setSelectedBidIds(prev => {
+                                          const cur = new Set(prev[deal.id] || []);
+                                          if (cur.has(bid.id)) cur.delete(bid.id); else cur.add(bid.id);
+                                          return { ...prev, [deal.id]: cur };
+                                        });
+                                      }}
+                                      style={{ accentColor: "var(--gold)", cursor: "pointer" }}
+                                    />
+                                  )}
+                                </td>
+                                <td style={{ fontWeight: 600 }}>{formatLenderId(bid.lender_id)}</td>
+                                <td className={isBest ? "d-rate-best" : ""} style={{ fontWeight: 700 }}>{bid.interest_rate != null ? bid.interest_rate.toFixed(1) : "—"}%</td>
+                                <td>{formatCurrency(bid.amount)}</td>
+                                <td>{bid.term_months} mo</td>
+                                <td><span className={`d-status status-bid-${bid.status}`}>{bid.status.charAt(0).toUpperCase() + bid.status.slice(1)}</span></td>
+                                <td>
+                                  {!isClosed && bid.status === 'accepted' && (
+                                    <button className="d-btn d-btn-ghost" style={{ fontSize: "11px", padding: "6px 12px", color: "#DC2626", borderColor: "#DC2626" }}
+                                      onClick={() => handleUnacceptBid(deal.id, bid.id)}>Un-accept</button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {!isClosed && hasPendingSelected && (
+                      <div className="d-dbg-footer">
+                        <button className="d-btn d-btn-gold" style={{ fontSize: "12px", padding: "8px 16px" }}
+                          onClick={() => handleAcceptBids(deal.id, Array.from(selectedForDeal))}>
+                          Accept Selected ({selectedForDeal.size})
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+          )}
         </div>
 
         {/* DOCUMENTS */}
