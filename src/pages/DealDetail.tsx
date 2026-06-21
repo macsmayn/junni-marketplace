@@ -814,6 +814,16 @@ export default function DealDetail() {
           color: var(--warning);
         }
 
+        .bid-status.rejected {
+          background: rgba(220, 38, 38, 0.1);
+          color: #DC2626;
+        }
+
+        .bid-status.countered {
+          background: rgba(212, 148, 10, 0.12);
+          color: var(--gold);
+        }
+
         .bids-more {
           text-align: center;
           padding: 16px;
@@ -1136,24 +1146,56 @@ export default function DealDetail() {
             ))}
           </div>
 
+          {/* Deal Status Badge */}
+          {deal?.status && (() => {
+            const STATUS_LABEL: Record<string, string> = { active: "Active", pending: "Pending", funded: "Funded", closed: "Closed", rejected: "Rejected" };
+            const STATUS_STYLE: Record<string, { background: string; color: string }> = {
+              active:   { background: "rgba(5,150,105,0.12)", color: "#059669" },
+              pending:  { background: "rgba(217,119,6,0.1)",  color: "#D97706" },
+              funded:   { background: "#059669",              color: "#fff"    },
+              closed:   { background: "#4B5563",              color: "#fff"    },
+              rejected: { background: "rgba(220,38,38,0.1)",  color: "#DC2626" },
+            };
+            const s = STATUS_STYLE[deal.status] || { background: "rgba(27,43,75,0.08)", color: "#1B2B4B" };
+            return (
+              <div style={{ marginBottom: "12px" }}>
+                <span style={{ display: "inline-block", fontSize: "12px", fontWeight: 700, padding: "6px 14px", borderRadius: "100px", textTransform: "uppercase", letterSpacing: "0.06em", background: s.background, color: s.color }}>
+                  {STATUS_LABEL[deal.status] || deal.status}
+                </span>
+              </div>
+            );
+          })()}
+
           {/* Deal Status */}
           {(() => {
-            const funded = deal?.amount_funded ?? 0;
-            const requested = deal?.amount_requested ?? 0;
-            const pct = requested > 0 ? Math.round((funded / requested) * 100) : 0;
-            const remaining = requested - funded;
+            const funded       = deal?.amount_funded ?? 0;
+            const requested    = deal?.amount_requested ?? 0;
+            const pct          = requested > 0 ? Math.round((funded / requested) * 100) : 0;
+            const oversubscribed = funded > requested && requested > 0;
+            const overage      = funded - requested;
+            const amtLabel     = pct === 0
+              ? "0% Funded · Open for bids"
+              : oversubscribed
+              ? "Oversubscribed"
+              : pct >= 100
+              ? "100% Funded"
+              : `${pct}% Funded`;
             return (
               <div className="deal-status">
                 <div className="deal-status-label">Deal Status</div>
-                <div className="deal-status-amount">
-                  {pct === 0 ? "0% Funded · Open for bids" : `${pct}% Funded`}
-                </div>
+                <div className="deal-status-amount">{amtLabel}</div>
                 <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${pct}%` }}></div>
+                  <div className="progress-fill" style={{ width: `${Math.min(pct, 100)}%` }}></div>
                 </div>
                 <div className="deal-status-footer">
                   <span>{formatCurrency(funded)} funded</span>
-                  <span>{formatCurrency(remaining > 0 ? remaining : requested)} remaining</span>
+                  <span>
+                    {oversubscribed
+                      ? `${formatCurrency(overage)} over`
+                      : pct >= 100
+                      ? "$0 remaining"
+                      : `${formatCurrency(requested - funded)} remaining`}
+                  </span>
                 </div>
               </div>
             );
@@ -1183,7 +1225,7 @@ export default function DealDetail() {
               className={`tab ${activeTab === "bids" ? "active" : ""}`}
               onClick={() => setActiveTab("bids")}
             >
-              Active Bids
+              Bids
             </button>
           </div>
 
@@ -1454,53 +1496,61 @@ export default function DealDetail() {
         {/* Sidebar */}
         <div className="sidebar">
           {/* Bid Form */}
-          <div className="sidebar-card">
-            <div className="sidebar-card-title">Submit a Bid</div>
-            <div className="bid-form">
-              <div className="form-group">
-                <label className="form-label">Interest Rate (%)</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  placeholder="e.g. 7.2"
-                  step="0.1"
-                  min="5"
-                  max="12"
-                  value={bidRate}
-                  onChange={(e) => setBidRate(e.target.value)}
-                />
+          {(deal?.status === 'funded' || deal?.status === 'closed' || deal?.status === 'rejected') ? (
+            <div className="sidebar-card">
+              <div style={{ padding: "8px 0", textAlign: "center", color: "var(--text-muted)", fontSize: "13px", lineHeight: 1.6 }}>
+                This deal is closed and no longer accepting bids.
               </div>
-              <div className="form-group">
-                <label className="form-label">Amount ($)</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  placeholder="e.g. 250000"
-                  value={bidAmount}
-                  onChange={(e) => setBidAmount(e.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Term (Months)</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  placeholder={deal?.term_months ? String(deal.term_months) : "36"}
-                  value={bidTerm}
-                  onChange={(e) => setBidTerm(e.target.value)}
-                />
-              </div>
-              <div className="form-hint">Rate range: {deal?.interest_rate ? `${deal.interest_rate}%` : "6.2% – 8.8%"}</div>
-              <button
-                type="button"
-                className="btn-submit"
-                onClick={handleBidSubmit}
-                disabled={submittingBid}
-              >
-                {submittingBid ? "Submitting..." : "Place Bid"}
-              </button>
             </div>
-          </div>
+          ) : (
+            <div className="sidebar-card">
+              <div className="sidebar-card-title">Submit a Bid</div>
+              <div className="bid-form">
+                <div className="form-group">
+                  <label className="form-label">Interest Rate (%)</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    placeholder="e.g. 7.2"
+                    step="0.1"
+                    min="5"
+                    max="12"
+                    value={bidRate}
+                    onChange={(e) => setBidRate(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Amount ($)</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    placeholder="e.g. 250000"
+                    value={bidAmount}
+                    onChange={(e) => setBidAmount(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Term (Months)</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    placeholder={deal?.term_months ? String(deal.term_months) : "36"}
+                    value={bidTerm}
+                    onChange={(e) => setBidTerm(e.target.value)}
+                  />
+                </div>
+                <div className="form-hint">Rate range: {deal?.interest_rate ? `${deal.interest_rate}%` : "6.2% – 8.8%"}</div>
+                <button
+                  type="button"
+                  className="btn-submit"
+                  onClick={handleBidSubmit}
+                  disabled={submittingBid}
+                >
+                  {submittingBid ? "Submitting..." : "Place Bid"}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Deal Summary */}
           <div className="sidebar-card">
