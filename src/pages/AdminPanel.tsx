@@ -475,7 +475,7 @@ export default function AdminPanel() {
                           style={{ cursor: "pointer" }}
                         />
                       </td>
-                      <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B", maxWidth: mobile ? "100px" : "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B", maxWidth: mobile ? "140px" : "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {deal.title ?? "Untitled"}
                       </td>
                       <td style={{ padding: tdPad, color: "#7A7060" }}>{borrowerName}</td>
