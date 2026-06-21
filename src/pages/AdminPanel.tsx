@@ -1,16 +1,36 @@
-﻿import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
+import { supabase } from '../lib/supabase';
 
 const LOGO_NAVY = "/junni-logo-navy.png";
 
+const ADMIN_NAV_ITEMS = [
+  { icon: "◉", text: "Overview", badge: null },
+  { icon: "📋", text: "Deals", badge: "12" },
+  { icon: "👥", text: "Users", badge: null },
+  { icon: "🔍", text: "KYC Review", badge: "3" },
+  { icon: "💼", text: "Bids", badge: null },
+];
+const ADMIN_ACCOUNT_ITEMS = [
+  { icon: "📊", text: "Analytics", badge: null },
+  { icon: "⚙️", text: "Settings", badge: null },
+];
+
+const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
 export default function AdminPanel() {
   const [, setLocation] = useLocation();
-  const [persona, setPersona] = useState("admin");
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(0); // 0=Questions, 1=Deals, 2=Users, 3=KYC, 4=Bids
   const [topbarVisible, setTopbarVisible] = useState(true);
   const lastScrollY = useRef(0);
+
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [dealTitles, setDealTitles] = useState<Record<string, string>>({});
+  const [questionsLoading, setQuestionsLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 900);
@@ -32,62 +52,72 @@ export default function AdminPanel() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const personas: Record<string, any> = {
-    borrower: {
-      sidebarLabel: "BORROWER",
-      navItems: [
-        { icon: "◉", text: "Dashboard", badge: null, active: true },
-        { icon: "📋", text: "My Deals", badge: "2", active: false },
-        { icon: "💼", text: "Bids Received", badge: "8", active: false },
-        { icon: "📄", text: "Documents", badge: null, active: false },
-        { icon: "🔔", text: "Notifications", badge: null, active: false },
-      ],
-      accountItems: [
-        { icon: "🏪", text: "Marketplace", badge: null },
-        { icon: "⚙️", text: "Settings", badge: null },
-      ],
-      userName: "Marc Pellerin",
-      userAvatar: "MP",
-      userRole: "Borrower",
-    },
-    lender: {
-      sidebarLabel: "LENDER",
-      navItems: [
-        { icon: "◉", text: "Dashboard", badge: null, active: false },
-        { icon: "🏪", text: "Marketplace", badge: null, active: false },
-        { icon: "💼", text: "My Bids", badge: "5", active: false },
-        { icon: "📈", text: "Portfolio", badge: null, active: false },
-        { icon: "❤️", text: "Saved Deals", badge: null, active: false },
-        { icon: "🔔", text: "Notifications", badge: null, active: false },
-      ],
-      accountItems: [
-        { icon: "⚙️", text: "Settings", badge: null },
-      ],
-      userName: "Jean Tremblay",
-      userAvatar: "JT",
-      userRole: "Lender",
-    },
-    admin: {
-      sidebarLabel: "ADMIN",
-      navItems: [
-        { icon: "◉", text: "Overview", badge: null, active: true },
-        { icon: "📋", text: "Deals", badge: "12", active: false },
-        { icon: "👥", text: "Users", badge: null, active: false },
-        { icon: "🔍", text: "KYC Review", badge: "3", active: false },
-        { icon: "💼", text: "Bids", badge: null, active: false },
-      ],
-      accountItems: [
-        { icon: "📊", text: "Analytics", badge: null },
-        { icon: "⚙️", text: "Settings", badge: null },
-      ],
-      userName: "Admin",
-      userAvatar: "A",
-      userRole: "Full Access",
-    },
+  useEffect(() => {
+    (async () => {
+      setQuestionsLoading(true);
+      const [{ data: qData }, { data: dData }] = await Promise.all([
+        supabase
+          .from('credit_questions')
+          .select('*')
+          .eq('status', 'pending_review')
+          .order('deal_id'),
+        supabase.from('deals').select('id, title'),
+      ]);
+      const sorted = (qData ?? []).slice().sort((a, b) => {
+        if (a.deal_id < b.deal_id) return -1;
+        if (a.deal_id > b.deal_id) return 1;
+        return (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1);
+      });
+      setQuestions(sorted);
+      const map: Record<string, string> = {};
+      for (const d of (dData ?? [])) map[d.id] = d.title;
+      setDealTitles(map);
+      setQuestionsLoading(false);
+    })();
+  }, []);
+
+  const handleApprove = async (q: any) => {
+    const { error } = await supabase.from('credit_questions').update({ status: 'approved' }).eq('id', q.id);
+    if (!error) setQuestions(prev => prev.filter(x => x.id !== q.id));
   };
 
-  const currentPersona = personas[persona] || personas.admin;
+  const handleReject = async (q: any) => {
+    if (!window.confirm("Reject this question? It won't be shown to the borrower.")) return;
+    const { error } = await supabase.from('credit_questions').update({ status: 'dismissed' }).eq('id', q.id);
+    if (!error) setQuestions(prev => prev.filter(x => x.id !== q.id));
+  };
 
+  const handleEditStart = (q: any) => {
+    setEditingId(q.id);
+    setEditText(q.question_text);
+  };
+
+  const handleEditCancel = () => {
+    setEditingId(null);
+    setEditText("");
+  };
+
+  const handleEditSave = async (q: any) => {
+    const existing = q.input_fields ?? {};
+    const updatedFields = existing.original_question_text
+      ? existing
+      : { ...existing, original_question_text: q.question_text };
+    const { error } = await supabase.from('credit_questions').update({
+      question_text: editText,
+      input_fields: updatedFields,
+    }).eq('id', q.id);
+    if (!error) {
+      setQuestions(prev => prev.map(x =>
+        x.id === q.id ? { ...x, question_text: editText, input_fields: updatedFields } : x
+      ));
+      setEditingId(null);
+      setEditText("");
+    }
+  };
+
+  // ─────────────────────────────────────────────
+  // HARDCODED DATA (other tabs — to be replaced later)
+  // ─────────────────────────────────────────────
   const dealsData = [
     { company: "Maple Ridge Mfg.", borrower: "Marc Pellerin", amount: "$3.2M", risk: "Very Low", riskBadge: "b-active", score: "8.4", status: "Active", statusBadge: "b-active", submitted: "Mar 12" },
     { company: "Volterra Tech", borrower: "Sophie Bélanger", amount: "$1.8M", risk: "Medium", riskBadge: "b-review", score: "6.1", status: "Pending Review", statusBadge: "b-review", submitted: "Apr 14" },
@@ -107,9 +137,7 @@ export default function AdminPanel() {
 
   const kycData = [
     {
-      company: "Volterra Tech",
-      borrower: "Sophie Bélanger",
-      submitted: "Apr 14, 2025",
+      company: "Volterra Tech", borrower: "Sophie Bélanger", submitted: "Apr 14, 2025",
       docs: [
         { name: "Business License", status: "pending" },
         { name: "Tax ID / CRA Number", status: "uploaded" },
@@ -117,9 +145,7 @@ export default function AdminPanel() {
       ],
     },
     {
-      company: "Prairie Health",
-      borrower: "David Park",
-      submitted: "Apr 10, 2025",
+      company: "Prairie Health", borrower: "David Park", submitted: "Apr 10, 2025",
       docs: [
         { name: "Business License", status: "uploaded" },
         { name: "Tax ID / CRA Number", status: "uploaded" },
@@ -127,9 +153,7 @@ export default function AdminPanel() {
       ],
     },
     {
-      company: "Cascade Logistics",
-      borrower: "Alex Chen",
-      submitted: "Apr 8, 2025",
+      company: "Cascade Logistics", borrower: "Alex Chen", submitted: "Apr 8, 2025",
       docs: [
         { name: "Business License", status: "uploaded" },
         { name: "Tax ID / CRA Number", status: "pending" },
@@ -150,11 +174,87 @@ export default function AdminPanel() {
   // SHARED TAB CONTENT
   // ─────────────────────────────────────────────
   const renderTabContent = (mobile: boolean) => {
-    const tableStyle = mobile ? { fontSize: '11px' } : {};
     const thPad = mobile ? '10px 10px' : '12px 16px';
     const tdPad = mobile ? '10px 10px' : '12px 16px';
+    const tableStyle = mobile ? { fontSize: '11px' } : {};
 
-    if (activeTab === 0) return (
+    // ── Questions (tab 0) ──
+    if (activeTab === 0) {
+      if (questionsLoading) {
+        return <div className="q-empty">Loading questions…</div>;
+      }
+      if (questions.length === 0) {
+        return <div className="q-empty">No questions pending review.</div>;
+      }
+      const dealIds = [...new Set(questions.map(q => q.deal_id))];
+      return (
+        <>
+          {dealIds.map(dealId => {
+            const dealQs = questions.filter(q => q.deal_id === dealId);
+            const title = dealTitles[dealId] ?? `Deal ${String(dealId).slice(0, 8)}…`;
+            return (
+              <div key={dealId} className="q-deal-group">
+                <div className="q-deal-header">
+                  {title}
+                  <span className="q-deal-count">{dealQs.length} pending</span>
+                </div>
+                {dealQs.map(q => {
+                  const grounded = q.input_fields?.grounded_in;
+                  const isEditing = editingId === q.id;
+                  const priLabel = q.priority
+                    ? q.priority.charAt(0).toUpperCase() + q.priority.slice(1)
+                    : 'Medium';
+                  return (
+                    <div key={q.id} className="q-card">
+                      <div className="q-card-meta">
+                        <span className={q.source === 'ai' ? 'q-source-ai' : 'q-source-rule'}>
+                          {q.source === 'ai' ? 'AI' : 'Rule'}
+                        </span>
+                        <span className={`q-pri-${q.priority ?? 'medium'}`}>{priLabel}</span>
+                        {q.related_metric && (
+                          <span className="q-metric">{q.related_metric}</span>
+                        )}
+                      </div>
+
+                      {isEditing ? (
+                        <>
+                          <textarea
+                            className="q-textarea"
+                            value={editText}
+                            onChange={e => setEditText(e.target.value)}
+                          />
+                          <div className="q-actions">
+                            <button className="a-btn a-btn-navy" onClick={() => handleEditSave(q)}>Save</button>
+                            <button className="a-btn a-btn-ghost" onClick={handleEditCancel}>Cancel</button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="q-text">{q.question_text}</div>
+                          {q.source === 'ai' && grounded && (
+                            <div className="q-grounded">
+                              <strong>Grounded in:</strong> {grounded}
+                            </div>
+                          )}
+                          <div className="q-actions">
+                            <button className="a-btn a-btn-green" onClick={() => handleApprove(q)}>Approve</button>
+                            <button className="a-btn a-btn-ghost" onClick={() => handleEditStart(q)}>Edit</button>
+                            <button className="a-btn a-btn-red" onClick={() => handleReject(q)}>Reject</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </>
+      );
+    }
+
+    // ── Deals (tab 1) ──
+    if (activeTab === 1) return (
       <div style={{ background: '#fff', border: '1px solid #E8E2D9', borderRadius: '12px', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', ...tableStyle }}>
           <thead>
@@ -182,7 +282,8 @@ export default function AdminPanel() {
       </div>
     );
 
-    if (activeTab === 1) return (
+    // ── Users (tab 2) ──
+    if (activeTab === 2) return (
       <div style={{ background: '#fff', border: '1px solid #E8E2D9', borderRadius: '12px', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', ...tableStyle }}>
           <thead>
@@ -209,7 +310,8 @@ export default function AdminPanel() {
       </div>
     );
 
-    if (activeTab === 2) return (
+    // ── KYC Review (tab 3) ──
+    if (activeTab === 3) return (
       <div style={{ display:'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(3,1fr)', gap:'14px' }}>
         {kycData.map((kyc, idx) => (
           <div key={idx} style={{ background:'#fff', border:'1px solid #E8E2D9', borderRadius:'12px', padding:'20px' }}>
@@ -236,7 +338,8 @@ export default function AdminPanel() {
       </div>
     );
 
-    if (activeTab === 3) return (
+    // ── Bids (tab 4) ──
+    if (activeTab === 4) return (
       <div style={{ background: '#fff', border: '1px solid #E8E2D9', borderRadius: '12px', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', ...tableStyle }}>
           <thead>
@@ -276,18 +379,9 @@ export default function AdminPanel() {
           * { box-sizing: border-box; margin: 0; padding: 0; }
           :root { --cream: #FAF8F4; --navy: #1B2B4B; --gold: #D4940A; --border: #E8E2D9; --text-muted: #7A7060; --green: #059669; --red: #DC2626; }
           html, body { background: var(--cream); font-family: 'Inter', sans-serif; }
-          body { padding-top: 96px; }
+          body { padding-top: 56px; }
 
-          .demo-banner { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: var(--navy); z-index: 300; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; gap: 8px; }
-          .demo-left { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
-          .demo-dot { width: 7px; height: 7px; background: #F59E0B; border-radius: 50%; }
-          .demo-label { font-size: 9px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
-          .demo-pills { display: flex; gap: 3px; }
-          .demo-pill { background: transparent; color: rgba(255,255,255,0.5); border: none; padding: 4px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; white-space: nowrap; }
-          .demo-pill.active { background: var(--gold); color: #fff; }
-          .demo-exit { background: none; border: 1px solid rgba(255,255,255,0.45); color: #fff; padding: 4px 7px; border-radius: 5px; font-size: 9px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; white-space: nowrap; flex-shrink: 0; }
-
-          .navbar { position: fixed; top: 40px; left: 0; right: 0; height: 56px; background: #fff; border-bottom: 1px solid var(--border); z-index: 250; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; }
+          .navbar { position: fixed; top: 0; left: 0; right: 0; height: 56px; background: #fff; border-bottom: 1px solid var(--border); z-index: 250; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; }
           .nav-left { display: flex; align-items: center; gap: 10px; }
           .hamburger { background: none; border: none; cursor: pointer; padding: 4px; display: flex; flex-direction: column; gap: 4px; width: 30px; }
           .hamburger span { display: block; height: 2px; background: var(--navy); border-radius: 2px; }
@@ -337,24 +431,31 @@ export default function AdminPanel() {
           .sb-close { background: none; border: none; color: rgba(255,255,255,0.7); font-size: 22px; cursor: pointer; }
           .sb-section { padding: 16px 14px 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.3); }
           .sb-item { display: flex; align-items: center; gap: 11px; padding: 11px 14px; margin: 2px 10px; border-radius: 8px; font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.6); cursor: pointer; background: none; border: none; font-family: 'Inter', sans-serif; }
-          .sb-item.active { background: rgba(212,148,10,0.15); color: #F5C842; font-weight: 600; }
           .sb-badge { display: inline-flex; align-items: center; justify-content: center; background: var(--gold); color: var(--navy); font-size: 10px; font-weight: 700; width: 20px; height: 20px; border-radius: 50%; margin-left: auto; }
           .sb-bottom { margin-top: auto; padding: 16px; border-top: 1px solid rgba(255,255,255,0.08); }
           .sb-user { display: flex; align-items: center; gap: 11px; }
           .sb-avatar { width: 38px; height: 38px; border-radius: 50%; background: rgba(212,148,10,0.2); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #F5C842; }
           .sb-name { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.85); }
           .sb-role { font-size: 11px; color: rgba(255,255,255,0.4); }
-        `}</style>
 
-        <div className="demo-banner">
-          <div className="demo-left"><div className="demo-dot"></div><span className="demo-label">Demo Mode</span></div>
-          <div className="demo-pills">
-            <button className={`demo-pill ${persona === 'borrower' ? 'active' : ''}`} onClick={() => setPersona('borrower')}>Borrower</button>
-            <button className={`demo-pill ${persona === 'lender' ? 'active' : ''}`} onClick={() => setPersona('lender')}>Lender</button>
-            <button className={`demo-pill ${persona === 'admin' ? 'active' : ''}`} onClick={() => setPersona('admin')}>Admin</button>
-          </div>
-          <button className="demo-exit" onClick={() => setLocation('/')}>Exit Demo</button>
-        </div>
+          .q-deal-group { margin-bottom: 20px; }
+          .q-deal-header { font-size: 13px; font-weight: 700; color: #1B2B4B; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+          .q-deal-count { background: rgba(27,43,75,0.08); color: #1B2B4B; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+          .q-card { background: #fff; border: 1px solid #E8E2D9; border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+          .q-card-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 9px; flex-wrap: wrap; }
+          .q-source-rule { background: rgba(212,148,10,0.12); color: #D4940A; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+          .q-source-ai { background: rgba(27,43,75,0.08); color: #1B2B4B; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+          .q-pri-high { background: rgba(220,38,38,0.08); color: #DC2626; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+          .q-pri-medium { background: rgba(212,148,10,0.1); color: #D4940A; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+          .q-pri-low { background: rgba(122,112,96,0.1); color: #7A7060; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+          .q-metric { font-size: 10px; color: #7A7060; font-family: monospace; }
+          .q-text { font-size: 13px; font-weight: 500; color: #1B2B4B; line-height: 1.55; margin-bottom: 10px; }
+          .q-grounded { font-size: 11px; color: #7A7060; line-height: 1.45; margin-bottom: 10px; }
+          .q-grounded strong { font-weight: 600; color: #4A4035; }
+          .q-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+          .q-textarea { width: 100%; min-height: 80px; padding: 10px; border: 1px solid #1B2B4B; border-radius: 6px; font-family: 'Inter', sans-serif; font-size: 13px; color: #1B2B4B; resize: vertical; margin-bottom: 8px; outline: none; box-sizing: border-box; }
+          .q-empty { text-align: center; padding: 40px 20px; color: #7A7060; font-size: 13px; }
+        `}</style>
 
         <div className="navbar">
           <div className="nav-left">
@@ -371,23 +472,23 @@ export default function AdminPanel() {
             <img src={LOGO_NAVY} alt="Junni" className="sb-logo" />
             <button className="sb-close" onClick={() => setSidebarOpen(false)}>✕</button>
           </div>
-          <div className="sb-section">{currentPersona.sidebarLabel}</div>
-          {currentPersona.navItems.map((item: any, idx: number) => (
-            <button key={idx} className={`sb-item ${item.active ? 'active' : ''}`} onClick={() => setSidebarOpen(false)}>
+          <div className="sb-section">ADMIN</div>
+          {ADMIN_NAV_ITEMS.map((item, idx) => (
+            <button key={idx} className="sb-item" onClick={() => setSidebarOpen(false)}>
               <span>{item.icon}</span><span>{item.text}</span>
               {item.badge && <span className="sb-badge">{item.badge}</span>}
             </button>
           ))}
           <div className="sb-section">Platform</div>
-          {currentPersona.accountItems.map((item: any, idx: number) => (
+          {ADMIN_ACCOUNT_ITEMS.map((item, idx) => (
             <button key={idx} className="sb-item" onClick={() => setSidebarOpen(false)}>
               <span>{item.icon}</span><span>{item.text}</span>
             </button>
           ))}
           <div className="sb-bottom">
             <div className="sb-user">
-              <div className="sb-avatar">{currentPersona.userAvatar}</div>
-              <div><div className="sb-name">{currentPersona.userName}</div><div className="sb-role">{currentPersona.userRole}</div></div>
+              <div className="sb-avatar">A</div>
+              <div><div className="sb-name">Admin</div><div className="sb-role">Full Access</div></div>
             </div>
           </div>
         </div>
@@ -406,10 +507,13 @@ export default function AdminPanel() {
           </div>
           <div>
             <div className="tabs">
-              <button className={`tab ${activeTab === 0 ? 'active' : ''}`} onClick={() => setActiveTab(0)}>Deals</button>
-              <button className={`tab ${activeTab === 1 ? 'active' : ''}`} onClick={() => setActiveTab(1)}>Users</button>
-              <button className={`tab ${activeTab === 2 ? 'active' : ''}`} onClick={() => setActiveTab(2)}>KYC <span className="tab-badge">3</span></button>
-              <button className={`tab ${activeTab === 3 ? 'active' : ''}`} onClick={() => setActiveTab(3)}>Bids</button>
+              <button className={`tab ${activeTab === 0 ? 'active' : ''}`} onClick={() => setActiveTab(0)}>
+                Questions{questions.length > 0 && <span className="tab-badge">{questions.length}</span>}
+              </button>
+              <button className={`tab ${activeTab === 1 ? 'active' : ''}`} onClick={() => setActiveTab(1)}>Deals</button>
+              <button className={`tab ${activeTab === 2 ? 'active' : ''}`} onClick={() => setActiveTab(2)}>Users</button>
+              <button className={`tab ${activeTab === 3 ? 'active' : ''}`} onClick={() => setActiveTab(3)}>KYC <span className="tab-badge">3</span></button>
+              <button className={`tab ${activeTab === 4 ? 'active' : ''}`} onClick={() => setActiveTab(4)}>Bids</button>
             </div>
             {renderTabContent(true)}
           </div>
@@ -428,23 +532,13 @@ export default function AdminPanel() {
         :root { --cream: #FAF8F4; --navy: #1B2B4B; --gold: #D4940A; --border: #E8E2D9; --text-muted: #7A7060; --green: #059669; --red: #DC2626; }
         html, body { background: var(--cream); font-family: 'Inter', sans-serif; }
 
-        .d-demo-banner { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: var(--navy); z-index: 300; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; gap: 20px; }
-        .d-demo-left { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-        .d-demo-dot { width: 7px; height: 7px; background: #F59E0B; border-radius: 50%; }
-        .d-demo-label { font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
-        .d-demo-pills { display: flex; gap: 6px; }
-        .d-demo-pill { background: transparent; color: rgba(255,255,255,0.5); border: none; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; }
-        .d-demo-pill.active { background: var(--gold); color: #fff; }
-        .d-demo-exit { background: none; border: 1px solid rgba(255,255,255,0.5); color: #fff; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; flex-shrink: 0; }
-
-        .d-sidebar { position: fixed; top: 40px; left: 0; width: 220px; height: calc(100vh - 40px); background: #0F1B30; overflow-y: auto; z-index: 200; display: flex; flex-direction: column; }
+        .d-sidebar { position: fixed; top: 0; left: 0; width: 220px; height: 100vh; background: #0F1B30; overflow-y: auto; z-index: 200; display: flex; flex-direction: column; }
         .d-sb-head { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.08); position: relative; }
         .d-sb-logo { width: 120px; height: auto; display: block; }
         .d-admin-badge { position: absolute; top: 10px; right: 10px; background: rgba(212,148,10,0.2); color: #F5C842; font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
         .d-sb-section { padding: 16px 14px 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.3); }
         .d-sb-item { display: flex; align-items: center; gap: 11px; padding: 11px 14px; margin: 2px 10px; border-radius: 8px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.6); cursor: pointer; background: none; border: none; font-family: 'Inter', sans-serif; width: calc(100% - 20px); }
         .d-sb-item:hover { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.85); }
-        .d-sb-item.active { background: rgba(212,148,10,0.15); color: #F5C842; font-weight: 600; }
         .d-sb-badge { display: inline-flex; align-items: center; justify-content: center; background: var(--gold); color: var(--navy); font-size: 10px; font-weight: 700; width: 20px; height: 20px; border-radius: 50%; margin-left: auto; }
         .d-sb-bottom { margin-top: auto; padding: 16px; border-top: 1px solid rgba(255,255,255,0.08); }
         .d-sb-user { display: flex; align-items: center; gap: 11px; }
@@ -452,7 +546,7 @@ export default function AdminPanel() {
         .d-sb-name { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.85); }
         .d-sb-role { font-size: 10px; color: rgba(255,255,255,0.4); }
 
-        .d-topbar { position: fixed; top: 40px; left: 220px; right: 0; height: 60px; background: #fff; border-bottom: 1px solid var(--border); z-index: 250; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; transition: transform 0.3s ease; }
+        .d-topbar { position: fixed; top: 0; left: 220px; right: 0; height: 60px; background: #fff; border-bottom: 1px solid var(--border); z-index: 250; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; transition: transform 0.3s ease; }
         .d-topbar.hidden { transform: translateY(-100%); }
         .d-topbar-title { font-size: 16px; font-weight: 700; color: var(--navy); }
         .d-topbar-right { display: flex; align-items: center; gap: 10px; }
@@ -463,7 +557,7 @@ export default function AdminPanel() {
         .a-btn-green { background: #059669; color: #fff; padding: 7px 12px; font-size: 11px; }
         .a-btn-red { background: #DC2626; color: #fff; padding: 7px 12px; font-size: 11px; }
 
-        .d-main { margin-left: 220px; padding-top: 100px; padding-left: 30px; padding-right: 30px; padding-bottom: 40px; }
+        .d-main { margin-left: 220px; padding-top: 60px; padding-left: 30px; padding-right: 30px; padding-bottom: 40px; }
 
         .d-alert { background: rgba(220,38,38,0.06); border: 1px solid rgba(220,38,38,0.15); border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
         .d-alert-text { font-size: 13px; font-weight: 600; color: #DC2626; }
@@ -491,17 +585,25 @@ export default function AdminPanel() {
         .b-lender { background: rgba(59,130,246,0.08); color: #2563EB; }
         .b-pending { background: rgba(27,43,75,0.07); color: var(--navy); }
         .b-approved { background: rgba(5,150,105,0.08); color: #059669; }
-      `}</style>
 
-      <div className="d-demo-banner">
-        <div className="d-demo-left"><div className="d-demo-dot"></div><span className="d-demo-label">Demo Mode</span></div>
-        <div className="d-demo-pills">
-          <button className={`d-demo-pill ${persona === 'borrower' ? 'active' : ''}`} onClick={() => setPersona('borrower')}>Borrower</button>
-          <button className={`d-demo-pill ${persona === 'lender' ? 'active' : ''}`} onClick={() => setPersona('lender')}>Lender</button>
-          <button className={`d-demo-pill ${persona === 'admin' ? 'active' : ''}`} onClick={() => setPersona('admin')}>Admin</button>
-        </div>
-        <button className="d-demo-exit" onClick={() => setLocation('/')}>Exit Demo</button>
-      </div>
+        .q-deal-group { margin-bottom: 24px; }
+        .q-deal-header { font-size: 15px; font-weight: 700; color: #1B2B4B; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .q-deal-count { background: rgba(27,43,75,0.08); color: #1B2B4B; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+        .q-card { background: #fff; border: 1px solid #E8E2D9; border-radius: 10px; padding: 18px; margin-bottom: 10px; }
+        .q-card-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+        .q-source-rule { background: rgba(212,148,10,0.12); color: #D4940A; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .q-source-ai { background: rgba(27,43,75,0.08); color: #1B2B4B; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .q-pri-high { background: rgba(220,38,38,0.08); color: #DC2626; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+        .q-pri-medium { background: rgba(212,148,10,0.1); color: #D4940A; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+        .q-pri-low { background: rgba(122,112,96,0.1); color: #7A7060; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+        .q-metric { font-size: 11px; color: #7A7060; font-family: monospace; }
+        .q-text { font-size: 14px; font-weight: 500; color: #1B2B4B; line-height: 1.6; margin-bottom: 10px; }
+        .q-grounded { font-size: 12px; color: #7A7060; line-height: 1.5; margin-bottom: 12px; padding: 8px 12px; background: rgba(27,43,75,0.03); border-left: 3px solid #E8E2D9; border-radius: 0 4px 4px 0; }
+        .q-grounded strong { font-weight: 600; color: #4A4035; }
+        .q-actions { display: flex; gap: 8px; }
+        .q-textarea { width: 100%; min-height: 88px; padding: 10px 12px; border: 1px solid #1B2B4B; border-radius: 6px; font-family: 'Inter', sans-serif; font-size: 14px; color: #1B2B4B; resize: vertical; margin-bottom: 10px; outline: none; box-sizing: border-box; line-height: 1.55; }
+        .q-empty { text-align: center; padding: 60px 20px; color: #7A7060; font-size: 14px; }
+      `}</style>
 
       <div className="d-sidebar">
         <div className="d-sb-head">
@@ -509,22 +611,22 @@ export default function AdminPanel() {
           <span className="d-admin-badge">Admin</span>
         </div>
         <div className="d-sb-section">Management</div>
-        {currentPersona.navItems.map((item: any, idx: number) => (
-          <button key={idx} className={`d-sb-item ${item.active ? 'active' : ''}`}>
+        {ADMIN_NAV_ITEMS.map((item, idx) => (
+          <button key={idx} className="d-sb-item">
             <span>{item.icon}</span>{item.text}
             {item.badge && <span className="d-sb-badge">{item.badge}</span>}
           </button>
         ))}
         <div className="d-sb-section">Platform</div>
-        {currentPersona.accountItems.map((item: any, idx: number) => (
+        {ADMIN_ACCOUNT_ITEMS.map((item, idx) => (
           <button key={idx} className="d-sb-item">
             <span>{item.icon}</span>{item.text}
           </button>
         ))}
         <div className="d-sb-bottom">
           <div className="d-sb-user">
-            <div className="d-sb-avatar">{currentPersona.userAvatar}</div>
-            <div><div className="d-sb-name">{currentPersona.userName}</div><div className="d-sb-role">{currentPersona.userRole}</div></div>
+            <div className="d-sb-avatar">A</div>
+            <div><div className="d-sb-name">Admin</div><div className="d-sb-role">Full Access</div></div>
           </div>
         </div>
       </div>
@@ -540,7 +642,7 @@ export default function AdminPanel() {
       <div className="d-main">
         <div className="d-alert">
           <div><div className="d-alert-text">⚠ 3 deals pending KYC review</div><div className="d-alert-sub">Action required before deals go live</div></div>
-          <button className="a-btn a-btn-ghost" onClick={() => setActiveTab(2)}>Review Now</button>
+          <button className="a-btn a-btn-ghost" onClick={() => setActiveTab(3)}>Review Now</button>
         </div>
 
         <div className="d-stats">
@@ -552,10 +654,13 @@ export default function AdminPanel() {
         </div>
 
         <div className="d-tabs">
-          <button className={`d-tab ${activeTab === 0 ? 'active' : ''}`} onClick={() => setActiveTab(0)}>Deals</button>
-          <button className={`d-tab ${activeTab === 1 ? 'active' : ''}`} onClick={() => setActiveTab(1)}>Users</button>
-          <button className={`d-tab ${activeTab === 2 ? 'active' : ''}`} onClick={() => setActiveTab(2)}>KYC Review <span className="d-tab-badge">3</span></button>
-          <button className={`d-tab ${activeTab === 3 ? 'active' : ''}`} onClick={() => setActiveTab(3)}>Bids</button>
+          <button className={`d-tab ${activeTab === 0 ? 'active' : ''}`} onClick={() => setActiveTab(0)}>
+            Questions{questions.length > 0 && <span className="d-tab-badge">{questions.length}</span>}
+          </button>
+          <button className={`d-tab ${activeTab === 1 ? 'active' : ''}`} onClick={() => setActiveTab(1)}>Deals</button>
+          <button className={`d-tab ${activeTab === 2 ? 'active' : ''}`} onClick={() => setActiveTab(2)}>Users</button>
+          <button className={`d-tab ${activeTab === 3 ? 'active' : ''}`} onClick={() => setActiveTab(3)}>KYC Review <span className="d-tab-badge">3</span></button>
+          <button className={`d-tab ${activeTab === 4 ? 'active' : ''}`} onClick={() => setActiveTab(4)}>Bids</button>
         </div>
 
         {renderTabContent(false)}
