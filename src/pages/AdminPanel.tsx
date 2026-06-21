@@ -3,10 +3,11 @@ import { useLocation } from "wouter";
 import { supabase } from '../lib/supabase';
 
 const LOGO_NAVY = "/junni-logo-navy.png";
+const SCORE_DEAL_URL = "https://sypqecydiqdpruarkrvy.supabase.co/functions/v1/score-deal";
 
 const ADMIN_NAV_ITEMS = [
   { icon: "◉", text: "Overview", badge: null },
-  { icon: "📋", text: "Deals", badge: "12" },
+  { icon: "📋", text: "Deals", badge: null },
   { icon: "👥", text: "Users", badge: null },
   { icon: "🔍", text: "KYC Review", badge: "3" },
   { icon: "💼", text: "Bids", badge: null },
@@ -18,6 +19,11 @@ const ADMIN_ACCOUNT_ITEMS = [
 
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
+const fmtAmount = (n: number | null | undefined) =>
+  n != null ? `$${Number(n).toLocaleString()}` : "—";
+const fmtDate = (s: string | null | undefined) =>
+  s ? new Date(s).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" }) : "—";
+
 export default function AdminPanel() {
   const [, setLocation] = useLocation();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
@@ -26,16 +32,26 @@ export default function AdminPanel() {
   const [topbarVisible, setTopbarVisible] = useState(true);
   const lastScrollY = useRef(0);
 
+  // Questions state
   const [questions, setQuestions] = useState<any[]>([]);
   const [dealTitles, setDealTitles] = useState<Record<string, string>>({});
   const [questionsLoading, setQuestionsLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
+  // Deals state
+  const [dealsList, setDealsList] = useState<any[]>([]);
+  const [dealsLoading, setDealsLoading] = useState(true);
+  const [selectedDealIds, setSelectedDealIds] = useState<Set<string>>(new Set());
+  const [editingDeal, setEditingDeal] = useState<any | null>(null);
+  const [editDealForm, setEditDealForm] = useState<Record<string, any>>({});
+  const [rescoringDealId, setRescoringDealId] = useState<string | null>(null);
+  const [rescoreFailedDealId, setRescoreFailedDealId] = useState<string | null>(null);
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 900);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   useEffect(() => {
@@ -48,21 +64,27 @@ export default function AdminPanel() {
       }
       lastScrollY.current = currentScrollY;
     };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   useEffect(() => {
     (async () => {
       setQuestionsLoading(true);
-      const [{ data: qData }, { data: dData }] = await Promise.all([
+      setDealsLoading(true);
+      const [{ data: qData }, { data: dlData }] = await Promise.all([
         supabase
-          .from('credit_questions')
-          .select('*')
-          .eq('status', 'pending_review')
-          .order('deal_id'),
-        supabase.from('deals').select('id, title'),
+          .from("credit_questions")
+          .select("*")
+          .eq("status", "pending_review")
+          .order("deal_id"),
+        supabase
+          .from("deals")
+          .select("*, users!deals_borrower_id_fkey(full_name, email)")
+          .order("created_at", { ascending: false }),
       ]);
+
+      // Questions
       const sorted = (qData ?? []).slice().sort((a, b) => {
         if (a.deal_id < b.deal_id) return -1;
         if (a.deal_id > b.deal_id) return 1;
@@ -70,20 +92,25 @@ export default function AdminPanel() {
       });
       setQuestions(sorted);
       const map: Record<string, string> = {};
-      for (const d of (dData ?? [])) map[d.id] = d.title;
+      for (const d of (dlData ?? [])) map[d.id] = d.title;
       setDealTitles(map);
       setQuestionsLoading(false);
+
+      // Deals
+      setDealsList(dlData ?? []);
+      setDealsLoading(false);
     })();
   }, []);
 
+  // ── Questions handlers ──────────────────────────────────────────────
   const handleApprove = async (q: any) => {
-    const { error } = await supabase.from('credit_questions').update({ status: 'approved' }).eq('id', q.id);
+    const { error } = await supabase.from("credit_questions").update({ status: "approved" }).eq("id", q.id);
     if (!error) setQuestions(prev => prev.filter(x => x.id !== q.id));
   };
 
   const handleReject = async (q: any) => {
     if (!window.confirm("Reject this question? It won't be shown to the borrower.")) return;
-    const { error } = await supabase.from('credit_questions').update({ status: 'dismissed' }).eq('id', q.id);
+    const { error } = await supabase.from("credit_questions").update({ status: "dismissed" }).eq("id", q.id);
     if (!error) setQuestions(prev => prev.filter(x => x.id !== q.id));
   };
 
@@ -102,31 +129,119 @@ export default function AdminPanel() {
     const updatedFields = existing.original_question_text
       ? existing
       : { ...existing, original_question_text: q.question_text };
-    const { error } = await supabase.from('credit_questions').update({
-      question_text: editText,
-      input_fields: updatedFields,
-    }).eq('id', q.id);
+    const { error } = await supabase
+      .from("credit_questions")
+      .update({ question_text: editText, input_fields: updatedFields })
+      .eq("id", q.id);
     if (!error) {
-      setQuestions(prev => prev.map(x =>
-        x.id === q.id ? { ...x, question_text: editText, input_fields: updatedFields } : x
-      ));
+      setQuestions(prev =>
+        prev.map(x => x.id === q.id ? { ...x, question_text: editText, input_fields: updatedFields } : x)
+      );
       setEditingId(null);
       setEditText("");
     }
   };
 
-  // ─────────────────────────────────────────────
-  // HARDCODED DATA (other tabs — to be replaced later)
-  // ─────────────────────────────────────────────
-  const dealsData = [
-    { company: "Maple Ridge Mfg.", borrower: "Marc Pellerin", amount: "$3.2M", risk: "Very Low", riskBadge: "b-active", score: "8.4", status: "Active", statusBadge: "b-active", submitted: "Mar 12" },
-    { company: "Volterra Tech", borrower: "Sophie Bélanger", amount: "$1.8M", risk: "Medium", riskBadge: "b-review", score: "6.1", status: "Pending Review", statusBadge: "b-review", submitted: "Apr 14" },
-    { company: "Prairie Health", borrower: "David Park", amount: "$2.1M", risk: "Very Low", riskBadge: "b-active", score: "8.8", status: "KYC Pending", statusBadge: "b-kyc", submitted: "Apr 10" },
-    { company: "Northern Harvest", borrower: "Isabelle Roy", amount: "$5.0M", risk: "Low", riskBadge: "b-active", score: "7.9", status: "Active", statusBadge: "b-active", submitted: "Mar 28" },
-    { company: "Atlantic Energy", borrower: "Thomas Leblanc", amount: "$8.5M", risk: "Low", riskBadge: "b-review", score: "7.2", status: "Funded", statusBadge: "b-funded", submitted: "Feb 18" },
-    { company: "Cascade Logistics", borrower: "Alex Chen", amount: "$4.2M", risk: "Very Low", riskBadge: "b-active", score: "8.6", status: "Active", statusBadge: "b-active", submitted: "Apr 2" },
-  ];
+  // ── Deals handlers ──────────────────────────────────────────────────
+  const handleStatusChange = async (dealId: string, newStatus: string) => {
+    await supabase.from("deals").update({ status: newStatus }).eq("id", dealId);
+    setDealsList(prev => prev.map(d => d.id === dealId ? { ...d, status: newStatus } : d));
+  };
 
+  const handleDealEditStart = (deal: any) => {
+    setEditingDeal(deal);
+    setEditDealForm({
+      title: deal.title ?? "",
+      industry: deal.industry ?? "",
+      amount_requested: deal.amount_requested ?? "",
+      annual_revenue: deal.annual_revenue ?? "",
+      ebitda: deal.ebitda ?? "",
+      years_in_business: deal.years_in_business ?? "",
+      ai_score: deal.ai_score ?? "",
+      status: deal.status ?? "pending",
+    });
+    setRescoreFailedDealId(null);
+  };
+
+  const handleDealEditSave = async () => {
+    if (!editingDeal) return;
+    const orig = editingDeal;
+    const toNum = (v: any) => (v === "" || v == null) ? null : Number(v);
+
+    const updates = {
+      title: editDealForm.title,
+      industry: editDealForm.industry,
+      amount_requested: toNum(editDealForm.amount_requested),
+      annual_revenue: toNum(editDealForm.annual_revenue),
+      ebitda: toNum(editDealForm.ebitda),
+      years_in_business: toNum(editDealForm.years_in_business),
+      ai_score: toNum(editDealForm.ai_score),
+      status: editDealForm.status,
+    };
+
+    const { error } = await supabase.from("deals").update(updates).eq("id", orig.id);
+    if (error) return;
+
+    setDealsList(prev => prev.map(d => d.id === orig.id ? { ...d, ...updates } : d));
+    setEditingDeal(null);
+
+    const financialChanged =
+      updates.amount_requested !== orig.amount_requested ||
+      updates.annual_revenue !== orig.annual_revenue ||
+      updates.ebitda !== orig.ebitda;
+
+    if (financialChanged) {
+      setRescoringDealId(orig.id);
+      setRescoreFailedDealId(null);
+      try {
+        await fetch(SCORE_DEAL_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deal_id: orig.id }),
+        });
+        const { data: refreshed } = await supabase
+          .from("deals")
+          .select("*, users!deals_borrower_id_fkey(full_name, email)")
+          .eq("id", orig.id)
+          .single();
+        if (refreshed) setDealsList(prev => prev.map(d => d.id === orig.id ? refreshed : d));
+      } catch (_e) {
+        setRescoreFailedDealId(orig.id);
+      } finally {
+        setRescoringDealId(null);
+      }
+    }
+  };
+
+  const toggleDealSelect = (id: string) => {
+    setSelectedDealIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedDealIds(
+      selectedDealIds.size === dealsList.length && dealsList.length > 0
+        ? new Set()
+        : new Set(dealsList.map(d => d.id))
+    );
+  };
+
+  const handleDeleteSelected = async () => {
+    const ids = [...selectedDealIds];
+    if (!window.confirm(
+      `Delete ${ids.length} deal(s)? This permanently removes the deal(s) and ALL associated bids, documents, financials, credit flags, and questions. This cannot be undone.`
+    )) return;
+    const { error } = await supabase.from("deals").delete().in("id", ids);
+    if (!error) {
+      setDealsList(prev => prev.filter(d => !selectedDealIds.has(d.id)));
+      setSelectedDealIds(new Set());
+    }
+  };
+
+  // ── Hardcoded data (other tabs — to be replaced later) ──────────────
   const usersData = [
     { name: "Marc Pellerin", email: "marc@mapleridge.ca", role: "Borrower", roleBadge: "b-borrower", joined: "Jan 15, 2025", kyc: "Approved", kycBadge: "b-approved", deals: "2" },
     { name: "Jean Tremblay", email: "jean@investjunni.ca", role: "Lender", roleBadge: "b-lender", joined: "Feb 3, 2025", kyc: "Approved", kycBadge: "b-approved", deals: "5" },
@@ -170,22 +285,70 @@ export default function AdminPanel() {
     { deal: "Prairie Health", lender: "Lender #7845", rate: "7.3%", amount: "$500K", term: "36 mo", submitted: "Apr 14", status: "Pending", statusBadge: "b-review" },
   ];
 
-  // ─────────────────────────────────────────────
-  // SHARED TAB CONTENT
-  // ─────────────────────────────────────────────
+  // ── Edit Deal modal (shared between mobile/desktop) ─────────────────
+  const dealEditModal = editingDeal ? (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15,27,48,0.55)", zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+      <div style={{ background: "#fff", borderRadius: "12px", padding: "28px", width: "100%", maxWidth: "560px", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+          <div style={{ fontFamily: "Fraunces, serif", fontSize: "18px", fontWeight: 700, color: "#1B2B4B" }}>Edit Deal</div>
+          <button onClick={() => setEditingDeal(null)} style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "#7A7060", lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ display: "grid", gap: "12px" }}>
+          {([
+            { label: "Title", key: "title", type: "text" },
+            { label: "Industry", key: "industry", type: "text" },
+            { label: "Amount Requested ($)", key: "amount_requested", type: "number" },
+            { label: "Annual Revenue ($)", key: "annual_revenue", type: "number" },
+            { label: "EBITDA ($)", key: "ebitda", type: "number" },
+            { label: "Years in Business", key: "years_in_business", type: "number" },
+            { label: "AI Score (0–100)", key: "ai_score", type: "number" },
+          ] as { label: string; key: string; type: string }[]).map(({ label, key, type }) => (
+            <div key={key}>
+              <div style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", marginBottom: "5px" }}>{label}</div>
+              <input
+                type={type}
+                value={editDealForm[key]}
+                onChange={e => setEditDealForm(prev => ({ ...prev, [key]: e.target.value }))}
+                style={{ width: "100%", padding: "8px 10px", border: "1px solid #E8E2D9", borderRadius: "6px", fontFamily: "Inter, sans-serif", fontSize: "14px", color: "#1B2B4B", outline: "none", boxSizing: "border-box" }}
+              />
+            </div>
+          ))}
+          <div>
+            <div style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", marginBottom: "5px" }}>Status</div>
+            <select
+              value={editDealForm.status}
+              onChange={e => setEditDealForm(prev => ({ ...prev, status: e.target.value }))}
+              style={{ width: "100%", padding: "8px 10px", border: "1px solid #E8E2D9", borderRadius: "6px", fontFamily: "Inter, sans-serif", fontSize: "14px", color: "#1B2B4B", background: "#fff", outline: "none", boxSizing: "border-box" }}
+            >
+              <option value="pending">Pending</option>
+              <option value="active">Active</option>
+              <option value="funded">Funded</option>
+              <option value="closed">Closed</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: "10px", marginTop: "20px", paddingTop: "16px", borderTop: "1px solid #E8E2D9" }}>
+          <button className="a-btn a-btn-navy" onClick={handleDealEditSave}>Save</button>
+          <button className="a-btn a-btn-ghost" onClick={() => setEditingDeal(null)}>Cancel</button>
+        </div>
+        <div style={{ fontSize: "11px", color: "#7A7060", marginTop: "10px" }}>
+          Changes to Amount Requested, Annual Revenue, or EBITDA will trigger automatic re-scoring.
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  // ── Tab content renderer ────────────────────────────────────────────
   const renderTabContent = (mobile: boolean) => {
-    const thPad = mobile ? '10px 10px' : '12px 16px';
-    const tdPad = mobile ? '10px 10px' : '12px 16px';
-    const tableStyle = mobile ? { fontSize: '11px' } : {};
+    const thPad = mobile ? "10px 10px" : "12px 16px";
+    const tdPad = mobile ? "10px 10px" : "12px 16px";
+    const tableStyle = mobile ? { fontSize: "11px" } : {};
 
     // ── Questions (tab 0) ──
     if (activeTab === 0) {
-      if (questionsLoading) {
-        return <div className="q-empty">Loading questions…</div>;
-      }
-      if (questions.length === 0) {
-        return <div className="q-empty">No questions pending review.</div>;
-      }
+      if (questionsLoading) return <div className="q-empty">Loading questions…</div>;
+      if (questions.length === 0) return <div className="q-empty">No questions pending review.</div>;
       const dealIds = [...new Set(questions.map(q => q.deal_id))];
       return (
         <>
@@ -203,26 +366,19 @@ export default function AdminPanel() {
                   const isEditing = editingId === q.id;
                   const priLabel = q.priority
                     ? q.priority.charAt(0).toUpperCase() + q.priority.slice(1)
-                    : 'Medium';
+                    : "Medium";
                   return (
                     <div key={q.id} className="q-card">
                       <div className="q-card-meta">
-                        <span className={q.source === 'ai' ? 'q-source-ai' : 'q-source-rule'}>
-                          {q.source === 'ai' ? 'AI' : 'Rule'}
+                        <span className={q.source === "ai" ? "q-source-ai" : "q-source-rule"}>
+                          {q.source === "ai" ? "AI" : "Rule"}
                         </span>
-                        <span className={`q-pri-${q.priority ?? 'medium'}`}>{priLabel}</span>
-                        {q.related_metric && (
-                          <span className="q-metric">{q.related_metric}</span>
-                        )}
+                        <span className={`q-pri-${q.priority ?? "medium"}`}>{priLabel}</span>
+                        {q.related_metric && <span className="q-metric">{q.related_metric}</span>}
                       </div>
-
                       {isEditing ? (
                         <>
-                          <textarea
-                            className="q-textarea"
-                            value={editText}
-                            onChange={e => setEditText(e.target.value)}
-                          />
+                          <textarea className="q-textarea" value={editText} onChange={e => setEditText(e.target.value)} />
                           <div className="q-actions">
                             <button className="a-btn a-btn-navy" onClick={() => handleEditSave(q)}>Save</button>
                             <button className="a-btn a-btn-ghost" onClick={handleEditCancel}>Cancel</button>
@@ -231,10 +387,8 @@ export default function AdminPanel() {
                       ) : (
                         <>
                           <div className="q-text">{q.question_text}</div>
-                          {q.source === 'ai' && grounded && (
-                            <div className="q-grounded">
-                              <strong>Grounded in:</strong> {grounded}
-                            </div>
+                          {q.source === "ai" && grounded && (
+                            <div className="q-grounded"><strong>Grounded in:</strong> {grounded}</div>
                           )}
                           <div className="q-actions">
                             <button className="a-btn a-btn-green" onClick={() => handleApprove(q)}>Approve</button>
@@ -254,55 +408,144 @@ export default function AdminPanel() {
     }
 
     // ── Deals (tab 1) ──
-    if (activeTab === 1) return (
-      <div style={{ background: '#fff', border: '1px solid #E8E2D9', borderRadius: '12px', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', ...tableStyle }}>
-          <thead>
-            <tr>
-              {['Company','Borrower','Amount','Risk','Score','Status','Submitted','Actions'].map(h => (
-                <th key={h} style={{ fontSize:'11px', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', color:'#7A7060', padding:thPad, textAlign:'left', borderBottom:'1px solid #E8E2D9', background:'rgba(27,43,75,0.02)' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {dealsData.map((deal, idx) => (
-              <tr key={idx} style={{ borderBottom: idx < dealsData.length-1 ? '1px solid #E8E2D9' : 'none' }}>
-                <td style={{ padding:tdPad, fontWeight:600, color:'#1B2B4B' }}>{deal.company}</td>
-                <td style={{ padding:tdPad, color:'#7A7060' }}>{deal.borrower}</td>
-                <td style={{ padding:tdPad, fontWeight:600, color:'#1B2B4B' }}>{deal.amount}</td>
-                <td style={{ padding:tdPad }}><span className={`badge ${deal.riskBadge}`}>{deal.risk}</span></td>
-                <td style={{ padding:tdPad, fontWeight:700, color:'#1B2B4B' }}>{deal.score}</td>
-                <td style={{ padding:tdPad }}><span className={`badge ${deal.statusBadge}`}>{deal.status}</span></td>
-                <td style={{ padding:tdPad, color:'#7A7060' }}>{deal.submitted}</td>
-                <td style={{ padding:tdPad }}><button className="a-btn a-btn-ghost" onClick={() => setLocation('/deals/1')}>View</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
+    if (activeTab === 1) {
+      if (dealsLoading) return <div className="q-empty">Loading deals…</div>;
+      if (dealsList.length === 0) return <div className="q-empty">No deals found.</div>;
+      const allSelected = selectedDealIds.size === dealsList.length && dealsList.length > 0;
+      const statusSelectStyle: React.CSSProperties = {
+        border: "1px solid #E8E2D9",
+        borderRadius: "6px",
+        padding: "4px 6px",
+        fontFamily: "Inter, sans-serif",
+        fontSize: mobile ? "10px" : "11px",
+        color: "#1B2B4B",
+        background: "#fff",
+        cursor: "pointer",
+        outline: "none",
+      };
+      return (
+        <>
+          {selectedDealIds.size > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+              <span style={{ fontSize: "12px", color: "#7A7060" }}>{selectedDealIds.size} selected</span>
+              <button
+                className="a-btn a-btn-red"
+                onClick={handleDeleteSelected}
+              >
+                Delete selected ({selectedDealIds.size})
+              </button>
+            </div>
+          )}
+          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", ...tableStyle }}>
+              <thead>
+                <tr>
+                  <th style={{ padding: thPad, borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)", width: "32px" }}>
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      style={{ cursor: "pointer" }}
+                    />
+                  </th>
+                  {["Title", "Borrower", "Industry", "Amount", "AI Score", "Status", "Created", "Actions"].map(h => (
+                    <th key={h} style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", padding: thPad, textAlign: "left", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dealsList.map((deal, idx) => {
+                  const isRescoring = rescoringDealId === deal.id;
+                  const rescoreFailed = rescoreFailedDealId === deal.id;
+                  const borrowerName = deal.users?.full_name ?? deal.users?.email ?? "—";
+                  return (
+                    <tr
+                      key={deal.id}
+                      style={{
+                        borderBottom: idx < dealsList.length - 1 ? "1px solid #E8E2D9" : "none",
+                        background: selectedDealIds.has(deal.id) ? "rgba(212,148,10,0.04)" : undefined,
+                        opacity: isRescoring ? 0.7 : 1,
+                      }}
+                    >
+                      <td style={{ padding: tdPad }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedDealIds.has(deal.id)}
+                          onChange={() => toggleDealSelect(deal.id)}
+                          style={{ cursor: "pointer" }}
+                        />
+                      </td>
+                      <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B", maxWidth: mobile ? "100px" : "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {deal.title ?? "Untitled"}
+                      </td>
+                      <td style={{ padding: tdPad, color: "#7A7060" }}>{borrowerName}</td>
+                      <td style={{ padding: tdPad, color: "#7A7060" }}>{deal.industry ?? "—"}</td>
+                      <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B" }}>{fmtAmount(deal.amount_requested)}</td>
+                      <td style={{ padding: tdPad }}>
+                        {isRescoring ? (
+                          <span style={{ fontSize: "11px", color: "#D4940A", fontStyle: "italic" }}>Re-scoring…</span>
+                        ) : rescoreFailed ? (
+                          <span style={{ fontSize: "11px", color: "#DC2626" }}>{deal.ai_score ?? "—"} ⚠</span>
+                        ) : (
+                          <span style={{ fontWeight: 700, color: "#1B2B4B" }}>{deal.ai_score ?? "—"}</span>
+                        )}
+                      </td>
+                      <td style={{ padding: tdPad }}>
+                        <select
+                          value={deal.status ?? "pending"}
+                          onChange={e => handleStatusChange(deal.id, e.target.value)}
+                          style={statusSelectStyle}
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="active">Active</option>
+                          <option value="funded">Funded</option>
+                          <option value="closed">Closed</option>
+                          <option value="rejected">Rejected</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: tdPad, color: "#7A7060", whiteSpace: "nowrap" }}>{fmtDate(deal.created_at)}</td>
+                      <td style={{ padding: tdPad }}>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          <button className="a-btn a-btn-ghost" onClick={() => setLocation(`/deals/${deal.id}`)}>View</button>
+                          <button className="a-btn a-btn-ghost" onClick={() => handleDealEditStart(deal)}>Edit</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {rescoreFailedDealId && (
+            <div style={{ marginTop: "10px", fontSize: "12px", color: "#DC2626" }}>
+              ⚠ Re-scoring failed for one deal — financial fields were saved. Score will update on next manual re-score.
+            </div>
+          )}
+        </>
+      );
+    }
 
     // ── Users (tab 2) ──
     if (activeTab === 2) return (
-      <div style={{ background: '#fff', border: '1px solid #E8E2D9', borderRadius: '12px', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', ...tableStyle }}>
+      <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", ...tableStyle }}>
           <thead>
             <tr>
-              {['Name','Email','Role','Joined','KYC Status','Deals','Actions'].map(h => (
-                <th key={h} style={{ fontSize:'11px', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', color:'#7A7060', padding:thPad, textAlign:'left', borderBottom:'1px solid #E8E2D9', background:'rgba(27,43,75,0.02)' }}>{h}</th>
+              {["Name", "Email", "Role", "Joined", "KYC Status", "Deals", "Actions"].map(h => (
+                <th key={h} style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", padding: thPad, textAlign: "left", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {usersData.map((user, idx) => (
-              <tr key={idx} style={{ borderBottom: idx < usersData.length-1 ? '1px solid #E8E2D9' : 'none' }}>
-                <td style={{ padding:tdPad, fontWeight:600, color:'#1B2B4B' }}>{user.name}</td>
-                <td style={{ padding:tdPad, color:'#7A7060' }}>{user.email}</td>
-                <td style={{ padding:tdPad }}><span className={`badge ${user.roleBadge}`}>{user.role}</span></td>
-                <td style={{ padding:tdPad, color:'#7A7060' }}>{user.joined}</td>
-                <td style={{ padding:tdPad }}><span className={`badge ${user.kycBadge}`}>{user.kyc}</span></td>
-                <td style={{ padding:tdPad, color:'#1B2B4B' }}>{user.deals}</td>
-                <td style={{ padding:tdPad }}><button className="a-btn a-btn-ghost" onClick={() => alert('View user')}>View</button></td>
+              <tr key={idx} style={{ borderBottom: idx < usersData.length - 1 ? "1px solid #E8E2D9" : "none" }}>
+                <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B" }}>{user.name}</td>
+                <td style={{ padding: tdPad, color: "#7A7060" }}>{user.email}</td>
+                <td style={{ padding: tdPad }}><span className={`badge ${user.roleBadge}`}>{user.role}</span></td>
+                <td style={{ padding: tdPad, color: "#7A7060" }}>{user.joined}</td>
+                <td style={{ padding: tdPad }}><span className={`badge ${user.kycBadge}`}>{user.kyc}</span></td>
+                <td style={{ padding: tdPad, color: "#1B2B4B" }}>{user.deals}</td>
+                <td style={{ padding: tdPad }}><button className="a-btn a-btn-ghost" onClick={() => alert("View user")}>View</button></td>
               </tr>
             ))}
           </tbody>
@@ -312,26 +555,26 @@ export default function AdminPanel() {
 
     // ── KYC Review (tab 3) ──
     if (activeTab === 3) return (
-      <div style={{ display:'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(3,1fr)', gap:'14px' }}>
+      <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "repeat(3,1fr)", gap: "14px" }}>
         {kycData.map((kyc, idx) => (
-          <div key={idx} style={{ background:'#fff', border:'1px solid #E8E2D9', borderRadius:'12px', padding:'20px' }}>
-            <div style={{ fontSize:'14px', fontWeight:600, color:'#1B2B4B', marginBottom:'3px' }}>{kyc.company}</div>
-            <div style={{ fontSize:'12px', color:'#7A7060', marginBottom:'4px' }}>{kyc.borrower}</div>
-            <div style={{ fontSize:'11px', color:'#7A7060', marginBottom:'14px' }}>Submitted {kyc.submitted}</div>
-            <div style={{ display:'flex', flexDirection:'column', gap:'8px', marginBottom:'14px' }}>
+          <div key={idx} style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", padding: "20px" }}>
+            <div style={{ fontSize: "14px", fontWeight: 600, color: "#1B2B4B", marginBottom: "3px" }}>{kyc.company}</div>
+            <div style={{ fontSize: "12px", color: "#7A7060", marginBottom: "4px" }}>{kyc.borrower}</div>
+            <div style={{ fontSize: "11px", color: "#7A7060", marginBottom: "14px" }}>Submitted {kyc.submitted}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "14px" }}>
               {kyc.docs.map((doc, docIdx) => (
-                <div key={docIdx} style={{ display:'flex', alignItems:'center', gap:'8px', padding:'8px', background:'rgba(27,43,75,0.03)', borderRadius:'6px', fontSize:'12px' }}>
-                  <span style={{ width:'18px', height:'18px', borderRadius:'50%', background: doc.status === 'uploaded' ? '#059669' : '#D97706', color:'#fff', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:'10px', fontWeight:700, flexShrink:0 }}>
-                    {doc.status === 'uploaded' ? '✓' : '⏳'}
+                <div key={docIdx} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px", background: "rgba(27,43,75,0.03)", borderRadius: "6px", fontSize: "12px" }}>
+                  <span style={{ width: "18px", height: "18px", borderRadius: "50%", background: doc.status === "uploaded" ? "#059669" : "#D97706", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 700, flexShrink: 0 }}>
+                    {doc.status === "uploaded" ? "✓" : "⏳"}
                   </span>
-                  <span style={{ color:'#1B2B4B' }}>{doc.name}</span>
+                  <span style={{ color: "#1B2B4B" }}>{doc.name}</span>
                 </div>
               ))}
             </div>
-            <div style={{ display:'flex', gap:'6px', paddingTop:'12px', borderTop:'1px solid #E8E2D9', flexWrap:'wrap' }}>
-              <button className="a-btn a-btn-green" onClick={() => alert('Approve KYC')}>Approve KYC</button>
-              <button className="a-btn a-btn-red" onClick={() => alert('Reject')}>Reject</button>
-              <button className="a-btn a-btn-ghost" onClick={() => alert('View Documents')}>View Docs</button>
+            <div style={{ display: "flex", gap: "6px", paddingTop: "12px", borderTop: "1px solid #E8E2D9", flexWrap: "wrap" }}>
+              <button className="a-btn a-btn-green" onClick={() => alert("Approve KYC")}>Approve KYC</button>
+              <button className="a-btn a-btn-red" onClick={() => alert("Reject")}>Reject</button>
+              <button className="a-btn a-btn-ghost" onClick={() => alert("View Documents")}>View Docs</button>
             </div>
           </div>
         ))}
@@ -340,25 +583,25 @@ export default function AdminPanel() {
 
     // ── Bids (tab 4) ──
     if (activeTab === 4) return (
-      <div style={{ background: '#fff', border: '1px solid #E8E2D9', borderRadius: '12px', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', ...tableStyle }}>
+      <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", ...tableStyle }}>
           <thead>
             <tr>
-              {['Deal','Lender','Rate','Amount','Term','Submitted','Status'].map(h => (
-                <th key={h} style={{ fontSize:'11px', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', color:'#7A7060', padding:thPad, textAlign:'left', borderBottom:'1px solid #E8E2D9', background:'rgba(27,43,75,0.02)' }}>{h}</th>
+              {["Deal", "Lender", "Rate", "Amount", "Term", "Submitted", "Status"].map(h => (
+                <th key={h} style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", padding: thPad, textAlign: "left", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {bidsData.map((bid, idx) => (
-              <tr key={idx} style={{ borderBottom: idx < bidsData.length-1 ? '1px solid #E8E2D9' : 'none' }}>
-                <td style={{ padding:tdPad, fontWeight:600, color:'#1B2B4B' }}>{bid.deal}</td>
-                <td style={{ padding:tdPad, color:'#7A7060' }}>{bid.lender}</td>
-                <td style={{ padding:tdPad, fontWeight:700, color:'#1B2B4B' }}>{bid.rate}</td>
-                <td style={{ padding:tdPad, color:'#1B2B4B' }}>{bid.amount}</td>
-                <td style={{ padding:tdPad, color:'#1B2B4B' }}>{bid.term}</td>
-                <td style={{ padding:tdPad, color:'#7A7060' }}>{bid.submitted}</td>
-                <td style={{ padding:tdPad }}><span className={`badge ${bid.statusBadge}`}>{bid.status}</span></td>
+              <tr key={idx} style={{ borderBottom: idx < bidsData.length - 1 ? "1px solid #E8E2D9" : "none" }}>
+                <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B" }}>{bid.deal}</td>
+                <td style={{ padding: tdPad, color: "#7A7060" }}>{bid.lender}</td>
+                <td style={{ padding: tdPad, fontWeight: 700, color: "#1B2B4B" }}>{bid.rate}</td>
+                <td style={{ padding: tdPad, color: "#1B2B4B" }}>{bid.amount}</td>
+                <td style={{ padding: tdPad, color: "#1B2B4B" }}>{bid.term}</td>
+                <td style={{ padding: tdPad, color: "#7A7060" }}>{bid.submitted}</td>
+                <td style={{ padding: tdPad }}><span className={`badge ${bid.statusBadge}`}>{bid.status}</span></td>
               </tr>
             ))}
           </tbody>
@@ -369,9 +612,7 @@ export default function AdminPanel() {
     return null;
   };
 
-  // ─────────────────────────────────────────────
-  // MOBILE LAYOUT
-  // ─────────────────────────────────────────────
+  // ── MOBILE LAYOUT ───────────────────────────────────────────────────
   if (isMobile) {
     return (
       <div style={{ minHeight: "100vh", background: "#FAF8F4" }}>
@@ -457,6 +698,8 @@ export default function AdminPanel() {
           .q-empty { text-align: center; padding: 40px 20px; color: #7A7060; font-size: 13px; }
         `}</style>
 
+        {dealEditModal}
+
         <div className="navbar">
           <div className="nav-left">
             <button className="hamburger" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Menu">
@@ -466,8 +709,8 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        <div className={`overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)}></div>
-        <div className={`m-sidebar ${sidebarOpen ? 'open' : ''}`}>
+        <div className={`overlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)}></div>
+        <div className={`m-sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="sb-head">
             <img src={LOGO_NAVY} alt="Junni" className="sb-logo" />
             <button className="sb-close" onClick={() => setSidebarOpen(false)}>✕</button>
@@ -500,20 +743,20 @@ export default function AdminPanel() {
           </div>
           <div className="stats-grid">
             <div className="stat-card"><div className="stat-label">Total Users</div><div className="stat-num">1,842</div><div className="stat-sub">+24 this week</div></div>
-            <div className="stat-card"><div className="stat-label">Active Deals</div><div className="stat-num gold">38</div><div className="stat-sub">12 pending review</div></div>
+            <div className="stat-card"><div className="stat-label">Active Deals</div><div className="stat-num gold">{dealsList.length || "—"}</div><div className="stat-sub">on platform</div></div>
             <div className="stat-card"><div className="stat-label">Capital Deployed</div><div className="stat-num">$450M</div><div className="stat-sub">all time</div></div>
             <div className="stat-card"><div className="stat-label">KYC Pending</div><div className="stat-num red">3</div><div className="stat-sub">needs review</div></div>
             <div className="stat-card"><div className="stat-label">Platform Fee</div><div className="stat-num">2.5%</div><div className="stat-sub">per deal</div></div>
           </div>
           <div>
             <div className="tabs">
-              <button className={`tab ${activeTab === 0 ? 'active' : ''}`} onClick={() => setActiveTab(0)}>
+              <button className={`tab ${activeTab === 0 ? "active" : ""}`} onClick={() => setActiveTab(0)}>
                 Questions{questions.length > 0 && <span className="tab-badge">{questions.length}</span>}
               </button>
-              <button className={`tab ${activeTab === 1 ? 'active' : ''}`} onClick={() => setActiveTab(1)}>Deals</button>
-              <button className={`tab ${activeTab === 2 ? 'active' : ''}`} onClick={() => setActiveTab(2)}>Users</button>
-              <button className={`tab ${activeTab === 3 ? 'active' : ''}`} onClick={() => setActiveTab(3)}>KYC <span className="tab-badge">3</span></button>
-              <button className={`tab ${activeTab === 4 ? 'active' : ''}`} onClick={() => setActiveTab(4)}>Bids</button>
+              <button className={`tab ${activeTab === 1 ? "active" : ""}`} onClick={() => setActiveTab(1)}>Deals</button>
+              <button className={`tab ${activeTab === 2 ? "active" : ""}`} onClick={() => setActiveTab(2)}>Users</button>
+              <button className={`tab ${activeTab === 3 ? "active" : ""}`} onClick={() => setActiveTab(3)}>KYC <span className="tab-badge">3</span></button>
+              <button className={`tab ${activeTab === 4 ? "active" : ""}`} onClick={() => setActiveTab(4)}>Bids</button>
             </div>
             {renderTabContent(true)}
           </div>
@@ -522,9 +765,7 @@ export default function AdminPanel() {
     );
   }
 
-  // ─────────────────────────────────────────────
-  // DESKTOP LAYOUT
-  // ─────────────────────────────────────────────
+  // ── DESKTOP LAYOUT ──────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: "#FAF8F4" }}>
       <style>{`
@@ -552,6 +793,7 @@ export default function AdminPanel() {
         .d-topbar-right { display: flex; align-items: center; gap: 10px; }
 
         .a-btn { border: none; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; cursor: pointer; transition: opacity 0.12s; }
+        .a-btn:hover { opacity: 0.85; }
         .a-btn-ghost { background: none; border: 1px solid var(--border); color: var(--navy); padding: 8px 14px; font-size: 12px; }
         .a-btn-navy { background: var(--navy); color: #fff; padding: 8px 14px; font-size: 12px; }
         .a-btn-green { background: #059669; color: #fff; padding: 7px 12px; font-size: 11px; }
@@ -605,6 +847,8 @@ export default function AdminPanel() {
         .q-empty { text-align: center; padding: 60px 20px; color: #7A7060; font-size: 14px; }
       `}</style>
 
+      {dealEditModal}
+
       <div className="d-sidebar">
         <div className="d-sb-head">
           <img src={LOGO_NAVY} alt="Junni" className="d-sb-logo" />
@@ -631,11 +875,11 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      <div className={`d-topbar ${!topbarVisible ? 'hidden' : ''}`}>
+      <div className={`d-topbar ${!topbarVisible ? "hidden" : ""}`}>
         <div className="d-topbar-title">Admin Panel</div>
         <div className="d-topbar-right">
-          <button className="a-btn a-btn-ghost" onClick={() => alert('Export Data')}>Export Data</button>
-          <button className="a-btn a-btn-navy" onClick={() => alert('Platform Settings')}>Platform Settings</button>
+          <button className="a-btn a-btn-ghost" onClick={() => alert("Export Data")}>Export Data</button>
+          <button className="a-btn a-btn-navy" onClick={() => alert("Platform Settings")}>Platform Settings</button>
         </div>
       </div>
 
@@ -647,20 +891,22 @@ export default function AdminPanel() {
 
         <div className="d-stats">
           <div className="d-stat-card"><div className="d-stat-label">Total Users</div><div className="d-stat-num">1,842</div><div className="d-stat-sub">+24 this week</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Active Deals</div><div className="d-stat-num gold">38</div><div className="d-stat-sub">12 pending review</div></div>
+          <div className="d-stat-card"><div className="d-stat-label">Total Deals</div><div className="d-stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="d-stat-sub">on platform</div></div>
           <div className="d-stat-card"><div className="d-stat-label">Capital Deployed</div><div className="d-stat-num">$450M</div><div className="d-stat-sub">all time</div></div>
           <div className="d-stat-card"><div className="d-stat-label">KYC Pending</div><div className="d-stat-num red">3</div><div className="d-stat-sub">needs review</div></div>
           <div className="d-stat-card"><div className="d-stat-label">Platform Fee</div><div className="d-stat-num">2.5%</div><div className="d-stat-sub">per deal</div></div>
         </div>
 
         <div className="d-tabs">
-          <button className={`d-tab ${activeTab === 0 ? 'active' : ''}`} onClick={() => setActiveTab(0)}>
+          <button className={`d-tab ${activeTab === 0 ? "active" : ""}`} onClick={() => setActiveTab(0)}>
             Questions{questions.length > 0 && <span className="d-tab-badge">{questions.length}</span>}
           </button>
-          <button className={`d-tab ${activeTab === 1 ? 'active' : ''}`} onClick={() => setActiveTab(1)}>Deals</button>
-          <button className={`d-tab ${activeTab === 2 ? 'active' : ''}`} onClick={() => setActiveTab(2)}>Users</button>
-          <button className={`d-tab ${activeTab === 3 ? 'active' : ''}`} onClick={() => setActiveTab(3)}>KYC Review <span className="d-tab-badge">3</span></button>
-          <button className={`d-tab ${activeTab === 4 ? 'active' : ''}`} onClick={() => setActiveTab(4)}>Bids</button>
+          <button className={`d-tab ${activeTab === 1 ? "active" : ""}`} onClick={() => setActiveTab(1)}>
+            Deals{!dealsLoading && dealsList.length > 0 && <span className="d-tab-badge" style={{ background: "#1B2B4B" }}>{dealsList.length}</span>}
+          </button>
+          <button className={`d-tab ${activeTab === 2 ? "active" : ""}`} onClick={() => setActiveTab(2)}>Users</button>
+          <button className={`d-tab ${activeTab === 3 ? "active" : ""}`} onClick={() => setActiveTab(3)}>KYC Review <span className="d-tab-badge">3</span></button>
+          <button className={`d-tab ${activeTab === 4 ? "active" : ""}`} onClick={() => setActiveTab(4)}>Bids</button>
         </div>
 
         {renderTabContent(false)}
