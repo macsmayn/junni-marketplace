@@ -62,6 +62,11 @@ export default function AdminPanel() {
   const [userModalBids, setUserModalBids] = useState<any[]>([]);
   const [userModalLoading, setUserModalLoading] = useState(false);
 
+  // Bids state
+  const [bidsList, setBidsList] = useState<any[]>([]);
+  const [bidsLoading, setBidsLoading] = useState(true);
+  const [selectedBidsByDeal, setSelectedBidsByDeal] = useState<Record<string, Set<string>>>({});
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 900);
     window.addEventListener("resize", handleResize);
@@ -87,11 +92,13 @@ export default function AdminPanel() {
       setQuestionsLoading(true);
       setDealsLoading(true);
       setUsersLoading(true);
-      const [{ data: qData }, { data: dlData }, { data: ulData }, { data: alData }] = await Promise.all([
+      setBidsLoading(true);
+      const [{ data: qData }, { data: dlData }, { data: ulData }, { data: alData }, { data: blData }] = await Promise.all([
         supabase.from("credit_questions").select("*").eq("status", "pending_review").order("deal_id"),
         supabase.from("deals").select("*, users!deals_borrower_id_fkey(full_name, email)").order("created_at", { ascending: false }),
         supabase.from("users").select("*").order("created_at", { ascending: false }),
         supabase.from("admin_allowlist").select("email"),
+        supabase.from("bids").select("*, deals(id, title, amount_requested, status)").order("deal_id"),
       ]);
 
       // Questions
@@ -124,6 +131,10 @@ export default function AdminPanel() {
       // Allowlisted emails (lowercased)
       const allowSet = new Set<string>((alData ?? []).map((r: any) => (r.email ?? "").toLowerCase().trim()));
       setAllowlistedEmails(allowSet);
+
+      // Bids
+      setBidsList(blData ?? []);
+      setBidsLoading(false);
     })();
   }, []);
 
@@ -347,6 +358,55 @@ export default function AdminPanel() {
     if (error) return;
     setUsersList(prev => prev.map(u => u.id === viewingUser.id ? { ...u, ...updates } : u));
     setViewingUser((prev: any) => prev ? { ...prev, ...updates } : null);
+  };
+
+  // ── Bids handlers ──────────────────────────────────────────────────
+  const refetchBids = async () => {
+    const { data } = await supabase.from("bids").select("*, deals(id, title, amount_requested, status)").order("deal_id");
+    setBidsList(data ?? []);
+  };
+
+  const handleAdminAcceptBids = async (dealId: string, bidIds: string[]) => {
+    const dealBids = bidsList.filter((b: any) => b.deal_id === dealId);
+    const deal = dealBids[0]?.deals ?? {};
+    const requested = deal.amount_requested ?? 0;
+    const currentAccepted = dealBids
+      .filter((b: any) => b.status === 'accepted')
+      .reduce((sum: number, b: any) => sum + (b.amount ?? 0), 0);
+    const newAmount = dealBids
+      .filter((b: any) => bidIds.includes(b.id))
+      .reduce((sum: number, b: any) => sum + (b.amount ?? 0), 0);
+    const total = currentAccepted + newAmount;
+    if (requested > 0 && total > requested) {
+      const ok = window.confirm(
+        `Accepting these bids brings funding to ${fmtAmount(total)}, above the requested ${fmtAmount(requested)}. Continue with oversubscription?`
+      );
+      if (!ok) return;
+    }
+    const { error } = await supabase.rpc('accept_bids', { p_deal_id: dealId, p_bid_ids: bidIds });
+    if (error) { alert('Failed to accept bids: ' + error.message); return; }
+    setSelectedBidsByDeal(prev => { const next = { ...prev }; delete next[dealId]; return next; });
+    await refetchBids();
+  };
+
+  const handleAdminUnacceptBid = async (dealId: string, bidId: string) => {
+    const { error } = await supabase.rpc('unaccept_bid', { p_deal_id: dealId, p_bid_id: bidId });
+    if (error) { alert('Failed to un-accept bid: ' + error.message); return; }
+    await refetchBids();
+  };
+
+  const handleAdminCloseDeal = async (dealId: string) => {
+    const dealBids = bidsList.filter((b: any) => b.deal_id === dealId);
+    const acceptedTotal = dealBids
+      .filter((b: any) => b.status === 'accepted')
+      .reduce((sum: number, b: any) => sum + (b.amount ?? 0), 0);
+    const ok = window.confirm(
+      `Close this deal? It will be funded at ${fmtAmount(acceptedTotal)}, removed from the marketplace, and all remaining open bids will be rejected. This cannot be undone.`
+    );
+    if (!ok) return;
+    const { error } = await supabase.rpc('close_deal', { p_deal_id: dealId });
+    if (error) { alert('Failed to close deal: ' + error.message); return; }
+    await refetchBids();
   };
 
   // ── Hardcoded data (tabs not yet converted) ─────────────────────────
@@ -807,32 +867,125 @@ export default function AdminPanel() {
     );
 
     // ── Bids (tab 4) ──
-    if (activeTab === 4) return (
-      <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", ...tableStyle }}>
-          <thead>
-            <tr>
-              {["Deal", "Lender", "Rate", "Amount", "Term", "Submitted", "Status"].map(h => (
-                <th key={h} style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", padding: thPad, textAlign: "left", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)" }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {bidsData.map((bid, idx) => (
-              <tr key={idx} style={{ borderBottom: idx < bidsData.length - 1 ? "1px solid #E8E2D9" : "none" }}>
-                <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B" }}>{bid.deal}</td>
-                <td style={{ padding: tdPad, color: "#7A7060" }}>{bid.lender}</td>
-                <td style={{ padding: tdPad, fontWeight: 700, color: "#1B2B4B" }}>{bid.rate}</td>
-                <td style={{ padding: tdPad, color: "#1B2B4B" }}>{bid.amount}</td>
-                <td style={{ padding: tdPad, color: "#1B2B4B" }}>{bid.term}</td>
-                <td style={{ padding: tdPad, color: "#7A7060" }}>{bid.submitted}</td>
-                <td style={{ padding: tdPad }}><span className={`badge ${bid.statusBadge}`}>{bid.status}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
+    if (activeTab === 4) {
+      if (bidsLoading) return (
+        <div style={{ padding: "40px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>Loading bids…</div>
+      );
+
+      const bidsByDeal: Record<string, any[]> = {};
+      for (const bid of bidsList) {
+        if (!bidsByDeal[bid.deal_id]) bidsByDeal[bid.deal_id] = [];
+        bidsByDeal[bid.deal_id].push(bid);
+      }
+      const dealGroups = Object.entries(bidsByDeal);
+
+      if (dealGroups.length === 0) return (
+        <div style={{ padding: "40px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>No bids yet.</div>
+      );
+
+      const BID_STATUS_STYLE: Record<string, { background: string; color: string }> = {
+        pending:   { background: "rgba(217,119,6,0.1)",   color: "#D97706" },
+        accepted:  { background: "rgba(5,150,105,0.08)",  color: "#059669" },
+        rejected:  { background: "rgba(220,38,38,0.08)",  color: "#DC2626" },
+        countered: { background: "rgba(212,148,10,0.12)", color: "#D4940A" },
+      };
+
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: mobile ? "12px" : "16px" }}>
+          {dealGroups.map(([dealId, dealBids]) => {
+            const deal = dealBids[0]?.deals ?? {};
+            const acceptedBids = dealBids.filter((b: any) => b.status === 'accepted');
+            const acceptedTotal = acceptedBids.reduce((sum: number, b: any) => sum + (b.amount ?? 0), 0);
+            const requested = deal.amount_requested ?? 0;
+            const oversubscribed = requested > 0 && acceptedTotal > requested;
+            const isClosed = deal.status === 'funded' || deal.status === 'closed';
+            const selectedForDeal = selectedBidsByDeal[dealId] || new Set<string>();
+            const hasPendingSelected = selectedForDeal.size > 0;
+            const hasAcceptedBid = acceptedBids.length > 0;
+            return (
+              <div key={dealId} style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", overflow: "hidden" }}>
+                {/* Deal header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: mobile ? "12px 14px" : "14px 20px", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)" }}>
+                  <div>
+                    <div style={{ fontSize: mobile ? "13px" : "14px", fontWeight: 700, color: "#1B2B4B", marginBottom: "3px" }}>{deal.title ?? dealId}</div>
+                    <div style={{ fontSize: "11px", color: "#7A7060" }}>
+                      Accepted: {fmtAmount(acceptedTotal)} of {fmtAmount(requested)}
+                      {oversubscribed && <span style={{ color: "#D97706", fontWeight: 600 }}> (oversubscribed)</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                    {isClosed && <span className="badge b-funded">CLOSED</span>}
+                    {!isClosed && hasAcceptedBid && (
+                      <button className="a-btn a-btn-ghost" style={{ fontSize: "11px", padding: "5px 10px" }}
+                        onClick={() => handleAdminCloseDeal(dealId)}>Close Deal</button>
+                    )}
+                  </div>
+                </div>
+                {/* Bids table */}
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: mobile ? "11px" : "13px" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: thPad, width: "32px", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.01)" }}></th>
+                      {["Lender ID", "Rate", "Amount", "Term", "Status", ""].map(h => (
+                        <th key={h} style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", padding: thPad, textAlign: "left", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.01)" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dealBids.map((bid: any, idx: number) => {
+                      const isSelected = selectedForDeal.has(bid.id);
+                      const ss = BID_STATUS_STYLE[bid.status] ?? { background: "rgba(27,43,75,0.07)", color: "#1B2B4B" };
+                      return (
+                        <tr key={bid.id} style={{ borderBottom: idx < dealBids.length - 1 ? "1px solid #E8E2D9" : "none" }}>
+                          <td style={{ padding: tdPad, width: "32px" }}>
+                            {!isClosed && bid.status === 'pending' && (
+                              <input type="checkbox" checked={isSelected}
+                                onChange={() => {
+                                  setSelectedBidsByDeal(prev => {
+                                    const cur = new Set(prev[dealId] || []);
+                                    if (cur.has(bid.id)) cur.delete(bid.id); else cur.add(bid.id);
+                                    return { ...prev, [dealId]: cur };
+                                  });
+                                }}
+                                style={{ accentColor: "#D4940A", cursor: "pointer" }}
+                              />
+                            )}
+                          </td>
+                          <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B", fontFamily: "monospace", fontSize: mobile ? "10px" : "12px", maxWidth: mobile ? "90px" : "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bid.lender_id}</td>
+                          <td style={{ padding: tdPad, fontWeight: 700, color: "#1B2B4B" }}>{bid.interest_rate != null ? `${bid.interest_rate}%` : "—"}</td>
+                          <td style={{ padding: tdPad, color: "#1B2B4B" }}>{fmtAmount(bid.amount)}</td>
+                          <td style={{ padding: tdPad, color: "#1B2B4B" }}>{bid.term_months ? `${bid.term_months} mo` : "—"}</td>
+                          <td style={{ padding: tdPad }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: "100px", fontSize: "10px", fontWeight: 700, ...ss }}>
+                              {bid.status ? bid.status.charAt(0).toUpperCase() + bid.status.slice(1) : "—"}
+                            </span>
+                          </td>
+                          <td style={{ padding: tdPad }}>
+                            {!isClosed && bid.status === 'accepted' && (
+                              <button className="a-btn a-btn-ghost" style={{ fontSize: "11px", padding: "4px 8px", color: "#DC2626", borderColor: "#DC2626" }}
+                                onClick={() => handleAdminUnacceptBid(dealId, bid.id)}>Un-accept</button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {/* Batch accept footer */}
+                {!isClosed && hasPendingSelected && (
+                  <div style={{ display: "flex", gap: "8px", padding: mobile ? "10px 14px" : "12px 20px", borderTop: "1px solid #E8E2D9", background: "rgba(27,43,75,0.01)" }}>
+                    <button className="a-btn a-btn-navy" style={{ fontSize: "11px", padding: "6px 12px" }}
+                      onClick={() => handleAdminAcceptBids(dealId, Array.from(selectedForDeal))}>
+                      Accept Selected ({selectedForDeal.size})
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
 
     return null;
   };
