@@ -33,6 +33,14 @@ export default function RoleSelect() {
         }, { onConflict: 'auth0_id' });
         setLocation('/admin');
       } else {
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('role')
+          .eq('auth0_id', user.sub)
+          .maybeSingle();
+        if (existingUser?.role === 'borrower') { setLocation('/borrower-dashboard'); return; }
+        if (existingUser?.role === 'lender')   { setLocation('/lender-dashboard'); return; }
+        if (existingUser?.role === 'admin')    { setLocation('/admin'); return; }
         setCheckingAdmin(false);
       }
     })();
