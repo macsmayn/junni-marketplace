@@ -362,6 +362,15 @@ export default function BorrowerDashboard() {
           : q
       )
     );
+    try {
+      await fetch('https://sypqecydiqdpruarkrvy.supabase.co/functions/v1/score-deal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deal_id: dealId }),
+      });
+    } catch (rescoreErr) {
+      console.error('[handleSubmitAnswers] Re-score failed (answers still saved):', rescoreErr);
+    }
     setSubmittingAnswers(prev => ({ ...prev, [dealId]: false }));
     setAnsweredDeals(prev => new Set([...prev, dealId]));
     setTimeout(() => {

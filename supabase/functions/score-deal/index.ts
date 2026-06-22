@@ -932,6 +932,30 @@ FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
       }
     }
 
+    // Fetch answered credit questions for answer-incorporation into scoring
+    const { data: answeredQData } = await supabase
+      .from('credit_questions')
+      .select('id, question_text, answer, related_metric, source')
+      .eq('deal_id', deal_id)
+      .eq('status', 'approved')
+      .not('answer', 'is', null);
+    const answeredQuestions = (answeredQData ?? []).filter((q: any) => q.answer && String(q.answer).trim());
+
+    let qnaBlock = "";
+    if (answeredQuestions.length > 0) {
+      qnaBlock =
+        `\nBORROWER ANSWERS TO CREDIT QUESTIONS:\n` +
+        `The borrower was asked the following questions about anomalies and concerns in their financials, and provided these answers. Assess EACH answer as a skeptical credit analyst: does the answer adequately RESOLVE the concern, or NOT?\n\n` +
+        `An answer only resolves a concern if it is specific, plausible, and consistent with the financial data. Vague, evasive, or unverifiable answers do NOT resolve the concern. An answer that reveals additional risk should be treated as NOT resolved and noted.\n\n` +
+        `A genuinely resolved concern may modestly improve the assessment. Unresolved concerns should NOT improve it, and answers that reveal new risk may worsen it. Be conservative — do not reward hand-waving.\n\n` +
+        answeredQuestions.map((q: any, i: number) =>
+          `Q${i + 1} [question_id: ${q.id}${q.related_metric ? `, metric: ${q.related_metric}` : ""}]:\n` +
+          `Question: ${q.question_text}\n` +
+          `Borrower's Answer: ${q.answer}`
+        ).join("\n\n");
+      console.log(`[score-deal] Incorporating ${answeredQuestions.length} answered question(s) into scoring prompt.`);
+    }
+
     // Build the credit scoring prompt
     const prompt = `You are a senior SME credit analyst at a Canadian debt marketplace. Score the following deal using the structured financial data provided.
 
@@ -947,7 +971,7 @@ DEAL DETAILS:
 - EBITDA: $${Number(deal.ebitda ?? 0).toLocaleString()} CAD
 - Use of Funds: ${deal.ai_summary ?? "Not specified"}
 
-${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}Return ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
+${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}Return ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
 
 {
   "overall_score": <integer 0-100>,
@@ -964,7 +988,8 @@ ${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBloc
     "deal_structure": <integer 0-100>,
     "revenue_quality": <integer 0-100>,
     "repayment_capacity": <integer 0-100>
-  }
+  }${answeredQuestions.length > 0 ? `,
+  "answer_assessments": [ { "question_id": "<the question_id value from the Q&A block above>", "resolved": true|false, "assessment": "<one or two sentence skeptical reasoning>" } ]` : ""}
 }
 
 Scoring guidance: overall_score of 80+ = Very Low risk, 65-79 = Low, 50-64 = Moderate, 35-49 = Elevated, below 35 = High. Each metric score is 0-100 where 100 is best.`;
@@ -979,7 +1004,7 @@ Scoring guidance: overall_score of 80+ = Very Low risk, 65-79 = Low, 50-64 = Mod
       },
       body: JSON.stringify({
         model: "claude-opus-4-8",
-        max_tokens: 2000,
+        max_tokens: 4000,
         messages: [{ role: "user", content: prompt }],
       }),
     });
@@ -1011,6 +1036,26 @@ Scoring guidance: overall_score of 80+ = Very Low risk, 65-79 = Low, 50-64 = Mod
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
         }
       );
+    }
+
+    // Write answer_assessments back to credit_questions rows
+    if (answeredQuestions.length > 0 && Array.isArray(scoring.answer_assessments)) {
+      for (const assessment of scoring.answer_assessments) {
+        if (!assessment.question_id) continue;
+        const label = assessment.resolved
+          ? `Resolved — ${assessment.assessment}`
+          : `Not resolved — ${assessment.assessment}`;
+        try {
+          const { error: aaErr } = await supabase
+            .from('credit_questions')
+            .update({ answer_assessment: label })
+            .eq('id', assessment.question_id);
+          if (aaErr) console.error(`[score-deal] answer_assessment write-back error (${assessment.question_id}):`, aaErr);
+        } catch (aErr) {
+          console.error(`[score-deal] answer_assessment write-back unhandled error (${assessment.question_id}):`, aErr);
+        }
+      }
+      console.log(`[score-deal] Wrote ${scoring.answer_assessments.length} answer assessment(s) back to credit_questions.`);
     }
 
     // Upsert into credit_scores
