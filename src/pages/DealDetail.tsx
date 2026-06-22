@@ -158,12 +158,13 @@ export default function DealDetail() {
   const [submittingBid, setSubmittingBid] = useState(false);
   const [creditScore, setCreditScore] = useState<any>(null);
   const [computedMetrics, setComputedMetrics] = useState<any[]>([]);
+  const [answeredQuestions, setAnsweredQuestions] = useState<any[]>([]);
   const [showDocModal, setShowDocModal] = useState(false);
   const [expandedBids, setExpandedBids] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
-      const [dealRes, bidsRes, docsRes, scoreRes, metricsRes] = await Promise.all([
+      const [dealRes, bidsRes, docsRes, scoreRes, metricsRes, qaRes] = await Promise.all([
         supabase.from('deals').select('*').eq('id', dealId).single(),
         supabase.from('bids').select('*').eq('deal_id', dealId),
         supabase.from('documents').select('*').eq('deal_id', dealId),
@@ -172,6 +173,12 @@ export default function DealDetail() {
           .select('metric_key, metric_label, value, unit, benchmark_status, industry_tier, fiscal_year')
           .eq('deal_id', dealId)
           .order('fiscal_year', { ascending: false, nullsFirst: false }),
+        supabase.from('credit_questions')
+          .select('id, question_text, answer, answer_assessment, related_metric, source')
+          .eq('deal_id', dealId)
+          .eq('status', 'approved')
+          .not('answer', 'is', null)
+          .not('answer_assessment', 'is', null),
       ]);
       if (dealRes.data) setDeal(dealRes.data);
       if (metricsRes.data) setComputedMetrics(metricsRes.data);
@@ -192,6 +199,7 @@ export default function DealDetail() {
       }
       if (docsRes.data) setDealDocs(docsRes.data);
       setCreditScore(scoreRes.data || null);
+      if (qaRes.data) setAnsweredQuestions(qaRes.data);
       if (isAuthenticated && user?.sub) {
         const { data: userData } = await supabase.from('users').select('*').eq('auth0_id', user.sub).single();
         if (userData) setDbUser(userData);
@@ -1464,6 +1472,61 @@ export default function DealDetail() {
                   })()}
                 </>
               ) : null}
+
+              {/* Borrower Q&A */}
+              {answeredQuestions.length > 0 && (
+                <div style={{ marginTop: "20px" }}>
+                  <div style={{ marginBottom: "16px" }}>
+                    <div style={{ fontFamily: "'Fraunces', serif", fontSize: "17px", fontWeight: 700, color: "var(--navy)", marginBottom: "4px" }}>Borrower Q&A</div>
+                    <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Questions raised during analysis and the borrower's responses.</div>
+                  </div>
+                  {answeredQuestions.map((q: any) => {
+                    const isResolved = String(q.answer_assessment ?? "").startsWith("Resolved");
+                    const reasoning = String(q.answer_assessment ?? "").replace(/^(?:Not resolved|Resolved)\s*[—-]\s*/i, "");
+                    return (
+                      <div key={q.id} style={{
+                        background: "var(--white)",
+                        border: "1px solid var(--border)",
+                        borderLeft: `4px solid ${isResolved ? "var(--success)" : "var(--warning)"}`,
+                        borderRadius: "10px",
+                        marginBottom: "12px",
+                        overflow: "hidden",
+                      }}>
+                        <div style={{ padding: "14px 16px 0", display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{
+                            fontSize: "9px", fontWeight: 700, padding: "2px 7px", borderRadius: "4px",
+                            textTransform: "uppercase", letterSpacing: "0.04em",
+                            background: q.source === "rule" ? "rgba(212,148,10,0.12)" : "rgba(27,43,75,0.08)",
+                            color: q.source === "rule" ? "var(--gold)" : "var(--navy)",
+                          }}>{q.source}</span>
+                          {q.related_metric && (
+                            <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "monospace" }}>{q.related_metric}</span>
+                          )}
+                          <span style={{
+                            marginLeft: "auto",
+                            fontSize: "10px", fontWeight: 700, padding: "2px 10px", borderRadius: "100px",
+                            background: isResolved ? "rgba(5,150,105,0.1)" : "rgba(217,119,6,0.1)",
+                            color: isResolved ? "var(--success)" : "var(--warning)",
+                          }}>{isResolved ? "Resolved" : "Not Resolved"}</span>
+                        </div>
+                        <div style={{ padding: "10px 16px 8px", fontSize: "13px", fontWeight: 600, color: "var(--navy)", lineHeight: 1.55 }}>
+                          {q.question_text}
+                        </div>
+                        <div style={{ margin: "0 16px 10px", padding: "10px 12px", background: "rgba(27,43,75,0.03)", borderRadius: "8px", borderLeft: "2px solid var(--border)" }}>
+                          <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", marginBottom: "5px" }}>Borrower's response</div>
+                          <div style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.6 }}>{q.answer}</div>
+                        </div>
+                        <div style={{ padding: "0 16px 14px", display: "flex", gap: "8px", alignItems: "flex-start" }}>
+                          <span style={{ fontSize: "12px", flexShrink: 0, color: isResolved ? "var(--success)" : "var(--warning)", fontWeight: 700 }}>
+                            {isResolved ? "✓" : "⚠"}
+                          </span>
+                          <div style={{ fontSize: "12px", color: "var(--text-muted)", lineHeight: 1.6, fontStyle: "italic" }}>{reasoning}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
