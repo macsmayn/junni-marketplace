@@ -1474,7 +1474,7 @@ export default function DealDetail() {
               ) : null}
 
               {/* Borrower Q&A */}
-              {answeredQuestions.length > 0 && (
+              {answeredQuestions.length > 0 && dbUser?.id && dbUser.id !== deal?.borrower_id && (
                 <div style={{ marginTop: "20px" }}>
                   <div style={{ marginBottom: "16px" }}>
                     <div style={{ fontFamily: "'Fraunces', serif", fontSize: "17px", fontWeight: 700, color: "var(--navy)", marginBottom: "4px" }}>Borrower Q&A</div>
