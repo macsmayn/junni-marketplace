@@ -50,6 +50,18 @@ interface DocRecord {
   doc_category?: string | null;
 }
 
+interface CreditQuestion {
+  id: string;
+  deal_id: string;
+  question_text: string;
+  source: string;
+  related_metric: string | null;
+  priority: string | null;
+  answer: string | null;
+  answered_at: string | null;
+  input_fields?: any;
+}
+
 function formatCurrency(amount: number): string {
   if (amount == null || isNaN(amount)) return "$0";
   if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
@@ -134,6 +146,10 @@ export default function BorrowerDashboard() {
   const [docCategory, setDocCategory] = useState("Financial Statement");
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [selectedBidIds, setSelectedBidIds] = useState<Record<string, Set<string>>>({});
+  const [approvedQuestions, setApprovedQuestions] = useState<CreditQuestion[]>([]);
+  const [answerDraft, setAnswerDraft] = useState<Record<string, string>>({});
+  const [submittingAnswers, setSubmittingAnswers] = useState<Record<string, boolean>>({});
+  const [answeredDeals, setAnsweredDeals] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 900);
@@ -195,6 +211,18 @@ export default function BorrowerDashboard() {
             .in("deal_id", dealIds)
             .order("created_at", { ascending: false });
           setBids(bidsData || []);
+
+          const { data: questionsData } = await supabase
+            .from("credit_questions")
+            .select("id, deal_id, question_text, source, related_metric, priority, answer, answered_at, input_fields")
+            .eq("status", "approved")
+            .in("deal_id", dealIds)
+            .order("deal_id");
+          const qs: CreditQuestion[] = questionsData || [];
+          setApprovedQuestions(qs);
+          const drafts: Record<string, string> = {};
+          for (const q of qs) drafts[q.id] = q.answer ?? "";
+          setAnswerDraft(drafts);
         }
 
         const { data: docsData } = await supabase
@@ -232,6 +260,12 @@ export default function BorrowerDashboard() {
     acc[deal.id] = bids.filter(b => b.deal_id === deal.id);
     return acc;
   }, {} as Record<string, Bid[]>);
+
+  const dealQuestionsMap = approvedQuestions.reduce((acc, q) => {
+    if (!acc[q.deal_id]) acc[q.deal_id] = [];
+    acc[q.deal_id].push(q);
+    return acc;
+  }, {} as Record<string, CreditQuestion[]>);
 
   const displayName = user?.name || dbUser?.name || "there";
   const firstName = displayName.split(" ")[0];
@@ -305,6 +339,38 @@ export default function BorrowerDashboard() {
     const { error } = await supabase.rpc('close_deal', { p_deal_id: dealId });
     if (error) { alert('Failed to close deal: ' + error.message); return; }
     await refetchDealsAndBids();
+  };
+
+  const handleSubmitAnswers = async (dealId: string) => {
+    const dealQs = approvedQuestions.filter(q => q.deal_id === dealId);
+    setSubmittingAnswers(prev => ({ ...prev, [dealId]: true }));
+    const now = new Date().toISOString();
+    await Promise.all(
+      dealQs
+        .filter(q => (answerDraft[q.id] ?? "").trim() !== "")
+        .map(q =>
+          supabase.from("credit_questions").update({
+            answer: answerDraft[q.id].trim(),
+            answered_at: now,
+          }).eq("id", q.id)
+        )
+    );
+    setApprovedQuestions(prev =>
+      prev.map(q =>
+        q.deal_id === dealId && (answerDraft[q.id] ?? "").trim() !== ""
+          ? { ...q, answer: answerDraft[q.id].trim(), answered_at: now }
+          : q
+      )
+    );
+    setSubmittingAnswers(prev => ({ ...prev, [dealId]: false }));
+    setAnsweredDeals(prev => new Set([...prev, dealId]));
+    setTimeout(() => {
+      setAnsweredDeals(prev => {
+        const next = new Set(prev);
+        next.delete(dealId);
+        return next;
+      });
+    }, 3000);
   };
 
   const handleNavClick = (item: any, closeSidebar: boolean) => {
@@ -607,6 +673,24 @@ export default function BorrowerDashboard() {
           .dbg-bid-row { padding: 12px 15px; border-bottom: 1px solid var(--border); }
           .dbg-bid-row:last-of-type { border-bottom: none; }
           .dbg-footer { display: flex; gap: 8px; padding: 12px 15px; border-top: 1px solid var(--border); background: rgba(27,43,75,0.02); flex-wrap: wrap; }
+          .qna-group { background: #fff; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; overflow: hidden; }
+          .qna-group:last-child { margin-bottom: 0; }
+          .qna-group-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 15px 12px; border-bottom: 1px solid var(--border); }
+          .qna-group-name { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 2px; }
+          .qna-group-count { font-size: 11px; color: var(--text-muted); }
+          .qna-locked-note { font-size: 10px; color: var(--amber); font-style: italic; flex-shrink: 0; margin-top: 2px; }
+          .qna-question { padding: 13px 15px; border-bottom: 1px solid var(--border); }
+          .qna-question-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 7px; }
+          .qna-source { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+          .qna-source-rule { background: rgba(212,148,10,0.12); color: var(--gold); }
+          .qna-source-ai { background: rgba(27,43,75,0.08); color: var(--navy); }
+          .qna-metric { font-size: 10px; color: var(--text-muted); font-family: monospace; }
+          .qna-answered-tag { font-size: 10px; color: var(--green); font-weight: 600; }
+          .qna-text { font-size: 13px; font-weight: 500; color: var(--navy); line-height: 1.55; margin-bottom: 9px; }
+          .qna-textarea { width: 100%; min-height: 70px; padding: 9px; border: 1px solid var(--border); border-radius: 8px; font-family: 'Inter', sans-serif; font-size: 13px; color: var(--navy); resize: vertical; outline: none; box-sizing: border-box; line-height: 1.5; }
+          .qna-textarea:focus { border-color: var(--navy); }
+          .qna-textarea:disabled { background: rgba(27,43,75,0.03); color: var(--text-muted); cursor: not-allowed; }
+          .qna-footer { padding: 12px 15px; border-top: 1px solid var(--border); background: rgba(27,43,75,0.02); }
         `}</style>
 
         <div className="demo-banner">
@@ -753,6 +837,63 @@ export default function BorrowerDashboard() {
               ))
             )}
           </div>
+
+          {/* QUESTIONS TO ANSWER */}
+          {Object.keys(dealQuestionsMap).length > 0 && (
+            <div id="questions">
+              <div className="section-head">
+                <div className="section-title">Questions to Answer</div>
+              </div>
+              {deals
+                .filter(d => (dealQuestionsMap[d.id] || []).length > 0)
+                .map(deal => {
+                  const qs = dealQuestionsMap[deal.id];
+                  const isLocked = (dealBidsMap[deal.id] || []).length > 0;
+                  const isSubmitting = !!submittingAnswers[deal.id];
+                  const justSaved = answeredDeals.has(deal.id);
+                  return (
+                    <div key={deal.id} className="qna-group">
+                      <div className="qna-group-header">
+                        <div>
+                          <div className="qna-group-name">{deal.company_name}</div>
+                          <div className="qna-group-count">{qs.length} question{qs.length !== 1 ? "s" : ""}</div>
+                        </div>
+                        {isLocked && <span className="qna-locked-note">Locked — has bids</span>}
+                      </div>
+                      {qs.map(q => (
+                        <div key={q.id} className="qna-question">
+                          <div className="qna-question-meta">
+                            <span className={`qna-source qna-source-${q.source === "rule" ? "rule" : "ai"}`}>{q.source}</span>
+                            {q.related_metric && <span className="qna-metric">{q.related_metric}</span>}
+                            {q.answered_at && <span className="qna-answered-tag">✓ Answered</span>}
+                          </div>
+                          <div className="qna-text">{q.question_text}</div>
+                          <textarea
+                            className="qna-textarea"
+                            placeholder={isLocked ? "" : "Type your answer here…"}
+                            value={answerDraft[q.id] ?? ""}
+                            onChange={e => !isLocked && setAnswerDraft(prev => ({ ...prev, [q.id]: e.target.value }))}
+                            disabled={isLocked}
+                          />
+                        </div>
+                      ))}
+                      {!isLocked && (
+                        <div className="qna-footer">
+                          <button
+                            className="btn btn-gold"
+                            style={{ fontSize: "12px", padding: "9px 18px", width: "100%" }}
+                            disabled={isSubmitting}
+                            onClick={() => handleSubmitAnswers(deal.id)}
+                          >
+                            {isSubmitting ? "Saving…" : justSaved ? "Saved ✓" : "Submit Answers"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
 
           <div id="bids">
             <div className="section-head">
@@ -1028,6 +1169,24 @@ export default function BorrowerDashboard() {
         .d-dbg-tally { font-size: 12px; color: var(--text-muted); }
         .d-dbg-oversub { color: #D97706; font-weight: 600; }
         .d-dbg-footer { display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border); background: rgba(27,43,75,0.02); }
+        .qna-group { background: #fff; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 14px; overflow: hidden; }
+        .qna-group:last-child { margin-bottom: 0; }
+        .qna-group-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); background: rgba(27,43,75,0.02); }
+        .qna-group-name { font-size: 15px; font-weight: 700; color: var(--navy); margin-bottom: 2px; }
+        .qna-group-count { font-size: 12px; color: var(--text-muted); }
+        .qna-locked-note { font-size: 11px; color: #D97706; font-style: italic; }
+        .qna-question { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+        .qna-question-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+        .qna-source { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .qna-source-rule { background: rgba(212,148,10,0.12); color: #D4940A; }
+        .qna-source-ai { background: rgba(27,43,75,0.08); color: #1B2B4B; }
+        .qna-metric { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+        .qna-answered-tag { font-size: 11px; color: var(--green); font-weight: 600; }
+        .qna-text { font-size: 14px; font-weight: 500; color: var(--navy); line-height: 1.55; margin-bottom: 10px; }
+        .qna-textarea { width: 100%; min-height: 80px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-family: 'Inter', sans-serif; font-size: 13px; color: var(--navy); resize: vertical; outline: none; box-sizing: border-box; line-height: 1.5; }
+        .qna-textarea:focus { border-color: var(--navy); }
+        .qna-textarea:disabled { background: rgba(27,43,75,0.03); color: var(--text-muted); cursor: not-allowed; }
+        .qna-footer { padding: 14px 20px; border-top: 1px solid var(--border); background: rgba(27,43,75,0.02); }
       `}</style>
 
       {/* DEMO BANNER */}
@@ -1177,6 +1336,63 @@ export default function BorrowerDashboard() {
             )}
           </div>
         </div>
+
+        {/* QUESTIONS TO ANSWER */}
+        {Object.keys(dealQuestionsMap).length > 0 && (
+          <div id="questions" className="d-section">
+            <div className="d-section-head">
+              <div className="d-section-title">Questions to Answer</div>
+            </div>
+            {deals
+              .filter(d => (dealQuestionsMap[d.id] || []).length > 0)
+              .map(deal => {
+                const qs = dealQuestionsMap[deal.id];
+                const isLocked = (dealBidsMap[deal.id] || []).length > 0;
+                const isSubmitting = !!submittingAnswers[deal.id];
+                const justSaved = answeredDeals.has(deal.id);
+                return (
+                  <div key={deal.id} className="qna-group">
+                    <div className="qna-group-header">
+                      <div>
+                        <div className="qna-group-name">{deal.company_name}</div>
+                        <div className="qna-group-count">{qs.length} question{qs.length !== 1 ? "s" : ""}</div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        {isLocked && <span className="qna-locked-note">Answers locked — this deal has received bids</span>}
+                        {!isLocked && (
+                          <button
+                            className="d-btn d-btn-gold"
+                            style={{ fontSize: "12px", padding: "8px 18px" }}
+                            disabled={isSubmitting}
+                            onClick={() => handleSubmitAnswers(deal.id)}
+                          >
+                            {isSubmitting ? "Saving…" : justSaved ? "Saved ✓" : "Submit Answers"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {qs.map(q => (
+                      <div key={q.id} className="qna-question">
+                        <div className="qna-question-meta">
+                          <span className={`qna-source qna-source-${q.source === "rule" ? "rule" : "ai"}`}>{q.source}</span>
+                          {q.related_metric && <span className="qna-metric">{q.related_metric}</span>}
+                          {q.answered_at && <span className="qna-answered-tag">✓ Answered</span>}
+                        </div>
+                        <div className="qna-text">{q.question_text}</div>
+                        <textarea
+                          className="qna-textarea"
+                          placeholder={isLocked ? "" : "Type your answer here…"}
+                          value={answerDraft[q.id] ?? ""}
+                          onChange={e => !isLocked && setAnswerDraft(prev => ({ ...prev, [q.id]: e.target.value }))}
+                          disabled={isLocked}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+          </div>
+        )}
 
         {/* BIDS BY DEAL */}
         <div id="bids" className="d-section">
