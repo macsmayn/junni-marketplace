@@ -288,6 +288,17 @@ export default function AdminPanel() {
     setUsersList(prev => prev.map(u => u.id === userId ? { ...u, kyc_status: newKyc } : u));
   };
 
+  const handleKycApprove = async (userId: string) => {
+    const { error } = await supabase.from("users").update({ kyc_status: "approved" }).eq("id", userId);
+    if (!error) setUsersList(prev => prev.map(u => u.id === userId ? { ...u, kyc_status: "approved" } : u));
+  };
+
+  const handleKycReject = async (userId: string) => {
+    if (!window.confirm("Reject this user's KYC? Their status will be marked as rejected.")) return;
+    const { error } = await supabase.from("users").update({ kyc_status: "rejected" }).eq("id", userId);
+    if (!error) setUsersList(prev => prev.map(u => u.id === userId ? { ...u, kyc_status: "rejected" } : u));
+  };
+
   const getDeletableUsers = () => usersList.filter(u =>
     u.auth0_id !== auth0User?.sub &&
     !allowlistedEmails.has((u.email ?? "").toLowerCase().trim())
@@ -409,34 +420,6 @@ export default function AdminPanel() {
     await refetchBids();
   };
 
-  // ── Hardcoded data (tabs not yet converted) ─────────────────────────
-  const kycData = [
-    {
-      company: "Volterra Tech", borrower: "Sophie Bélanger", submitted: "Apr 14, 2025",
-      docs: [
-        { name: "Business License", status: "pending" },
-        { name: "Tax ID / CRA Number", status: "uploaded" },
-        { name: "Bank Statement", status: "pending" },
-      ],
-    },
-    {
-      company: "Prairie Health", borrower: "David Park", submitted: "Apr 10, 2025",
-      docs: [
-        { name: "Business License", status: "uploaded" },
-        { name: "Tax ID / CRA Number", status: "uploaded" },
-        { name: "Bank Statement", status: "uploaded" },
-      ],
-    },
-    {
-      company: "Cascade Logistics", borrower: "Alex Chen", submitted: "Apr 8, 2025",
-      docs: [
-        { name: "Business License", status: "uploaded" },
-        { name: "Tax ID / CRA Number", status: "pending" },
-        { name: "Bank Statement", status: "uploaded" },
-      ],
-    },
-  ];
-
   const bidsData = [
     { deal: "Maple Ridge Mfg.", lender: "Lender #4821", rate: "6.9%", amount: "$200K", term: "36 mo", submitted: "Apr 15", status: "Accepted", statusBadge: "b-active" },
     { deal: "Maple Ridge Mfg.", lender: "Lender #2194", rate: "7.1%", amount: "$300K", term: "36 mo", submitted: "Apr 15", status: "Pending", statusBadge: "b-review" },
@@ -444,6 +427,13 @@ export default function AdminPanel() {
     { deal: "Atlantic Energy", lender: "Lender #1203", rate: "6.5%", amount: "$2.0M", term: "60 mo", submitted: "Apr 8", status: "Accepted", statusBadge: "b-active" },
     { deal: "Prairie Health", lender: "Lender #7845", rate: "7.3%", amount: "$500K", term: "36 mo", submitted: "Apr 14", status: "Pending", statusBadge: "b-review" },
   ];
+
+  // ── Computed stats ──────────────────────────────────────────────────
+  const capitalDeployed = dealsList
+    .filter(d => d.status === "funded" || d.status === "closed")
+    .reduce((sum, d) => sum + (d.amount_funded ?? 0), 0);
+  const feeRevenue = capitalDeployed * 0.025;
+  const kycPendingCount = usersList.filter(u => u.kyc_status === "pending").length;
 
   // ── Edit Deal modal ─────────────────────────────────────────────────
   const dealEditModal = editingDeal ? (
@@ -839,32 +829,33 @@ export default function AdminPanel() {
     }
 
     // ── KYC Review (tab 3) ──
-    if (activeTab === 3) return (
-      <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "repeat(3,1fr)", gap: "14px" }}>
-        {kycData.map((kyc, idx) => (
-          <div key={idx} style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", padding: "20px" }}>
-            <div style={{ fontSize: "14px", fontWeight: 600, color: "#1B2B4B", marginBottom: "3px" }}>{kyc.company}</div>
-            <div style={{ fontSize: "12px", color: "#7A7060", marginBottom: "4px" }}>{kyc.borrower}</div>
-            <div style={{ fontSize: "11px", color: "#7A7060", marginBottom: "14px" }}>Submitted {kyc.submitted}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "14px" }}>
-              {kyc.docs.map((doc, docIdx) => (
-                <div key={docIdx} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px", background: "rgba(27,43,75,0.03)", borderRadius: "6px", fontSize: "12px" }}>
-                  <span style={{ width: "18px", height: "18px", borderRadius: "50%", background: doc.status === "uploaded" ? "#059669" : "#D97706", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 700, flexShrink: 0 }}>
-                    {doc.status === "uploaded" ? "✓" : "⏳"}
-                  </span>
-                  <span style={{ color: "#1B2B4B" }}>{doc.name}</span>
-                </div>
-              ))}
+    if (activeTab === 3) {
+      const pendingUsers = usersList.filter(u => u.kyc_status === "pending");
+      if (pendingUsers.length === 0) return (
+        <div style={{ padding: "40px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>No users pending KYC review.</div>
+      );
+      return (
+        <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "repeat(3,1fr)", gap: "14px" }}>
+          {pendingUsers.map(u => (
+            <div key={u.id} style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", padding: "20px" }}>
+              <div style={{ fontSize: "14px", fontWeight: 600, color: "#1B2B4B", marginBottom: "3px" }}>{u.full_name || u.email}</div>
+              <div style={{ fontSize: "12px", color: "#7A7060", marginBottom: "8px" }}>{u.email}</div>
+              <div style={{ display: "flex", gap: "6px", alignItems: "center", marginBottom: "14px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", borderRadius: "4px", textTransform: "uppercase", letterSpacing: "0.04em", background: "rgba(27,43,75,0.08)", color: "#1B2B4B" }}>{u.role || "—"}</span>
+                <span style={{ fontSize: "11px", color: "#7A7060" }}>Joined {fmtDate(u.created_at)}</span>
+              </div>
+              <div style={{ padding: "10px 12px", background: "rgba(27,43,75,0.03)", borderRadius: "8px", marginBottom: "14px", fontSize: "12px", color: "#7A7060", fontStyle: "italic" }}>
+                No documents on file — status review only.
+              </div>
+              <div style={{ display: "flex", gap: "6px", paddingTop: "12px", borderTop: "1px solid #E8E2D9" }}>
+                <button className="a-btn a-btn-green" onClick={() => handleKycApprove(u.id)}>Approve</button>
+                <button className="a-btn a-btn-red" onClick={() => handleKycReject(u.id)}>Reject</button>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: "6px", paddingTop: "12px", borderTop: "1px solid #E8E2D9", flexWrap: "wrap" }}>
-              <button className="a-btn a-btn-green" onClick={() => alert("Approve KYC")}>Approve KYC</button>
-              <button className="a-btn a-btn-red" onClick={() => alert("Reject")}>Reject</button>
-              <button className="a-btn a-btn-ghost" onClick={() => alert("View Documents")}>View Docs</button>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
+          ))}
+        </div>
+      );
+    }
 
     // ── Bids (tab 4) ──
     if (activeTab === 4) {
@@ -1197,16 +1188,21 @@ export default function AdminPanel() {
         </div>
 
         <div className="content">
-          <div className="alert-bar">
-            <p>⚠ 3 deals pending KYC review</p>
-            <span>Action required before deals go live</span>
-          </div>
+          {kycPendingCount > 0 && (
+            <div className="alert-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
+              <div>
+                <p>⚠ {kycPendingCount} user(s) pending KYC review</p>
+                <span>Action required</span>
+              </div>
+              <button className="a-btn a-btn-ghost" style={{ flexShrink: 0 }} onClick={() => setActiveTab(3)}>Review Now</button>
+            </div>
+          )}
           <div className="stats-grid">
             <div className="stat-card"><div className="stat-label">Total Users</div><div className="stat-num">{usersLoading ? "—" : usersList.length}</div><div className="stat-sub">registered</div></div>
             <div className="stat-card"><div className="stat-label">Active Deals</div><div className="stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="stat-sub">on platform</div></div>
-            <div className="stat-card"><div className="stat-label">Capital Deployed</div><div className="stat-num">$450M</div><div className="stat-sub">all time</div></div>
-            <div className="stat-card"><div className="stat-label">KYC Pending</div><div className="stat-num red">3</div><div className="stat-sub">needs review</div></div>
-            <div className="stat-card"><div className="stat-label">Platform Fee</div><div className="stat-num">2.5%</div><div className="stat-sub">per deal</div></div>
+            <div className="stat-card"><div className="stat-label">Capital Deployed</div><div className="stat-num gold">{dealsLoading ? "—" : fmtAmount(capitalDeployed)}</div><div className="stat-sub">funded + closed deals</div></div>
+            <div className="stat-card"><div className="stat-label">KYC Pending</div><div className={`stat-num${kycPendingCount > 0 ? " red" : ""}`}>{usersLoading ? "—" : kycPendingCount}</div><div className="stat-sub">needs review</div></div>
+            <div className="stat-card"><div className="stat-label">Fee Revenue</div><div className="stat-num gold">{dealsLoading ? "—" : fmtAmount(feeRevenue)}</div><div className="stat-sub">2.5% of deployed</div></div>
           </div>
           <div>
             <div className="tabs">
@@ -1215,7 +1211,7 @@ export default function AdminPanel() {
               </button>
               <button className={`tab ${activeTab === 1 ? "active" : ""}`} onClick={() => setActiveTab(1)}>Deals</button>
               <button className={`tab ${activeTab === 2 ? "active" : ""}`} onClick={() => setActiveTab(2)}>Users</button>
-              <button className={`tab ${activeTab === 3 ? "active" : ""}`} onClick={() => setActiveTab(3)}>KYC <span className="tab-badge">3</span></button>
+              <button className={`tab ${activeTab === 3 ? "active" : ""}`} onClick={() => setActiveTab(3)}>KYC {kycPendingCount > 0 && <span className="tab-badge">{kycPendingCount}</span>}</button>
               <button className={`tab ${activeTab === 4 ? "active" : ""}`} onClick={() => setActiveTab(4)}>Bids</button>
             </div>
             {renderTabContent(true)}
@@ -1267,17 +1263,19 @@ export default function AdminPanel() {
       </div>
 
       <div className="d-main">
-        <div className="d-alert">
-          <div><div className="d-alert-text">⚠ 3 deals pending KYC review</div><div className="d-alert-sub">Action required before deals go live</div></div>
-          <button className="a-btn a-btn-ghost" onClick={() => setActiveTab(3)}>Review Now</button>
-        </div>
+        {kycPendingCount > 0 && (
+          <div className="d-alert">
+            <div><div className="d-alert-text">⚠ {kycPendingCount} user(s) pending KYC review</div><div className="d-alert-sub">Action required</div></div>
+            <button className="a-btn a-btn-ghost" onClick={() => setActiveTab(3)}>Review Now</button>
+          </div>
+        )}
 
         <div className="d-stats">
           <div className="d-stat-card"><div className="d-stat-label">Total Users</div><div className="d-stat-num">{usersLoading ? "—" : usersList.length}</div><div className="d-stat-sub">registered</div></div>
           <div className="d-stat-card"><div className="d-stat-label">Total Deals</div><div className="d-stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="d-stat-sub">on platform</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Capital Deployed</div><div className="d-stat-num">$450M</div><div className="d-stat-sub">all time</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">KYC Pending</div><div className="d-stat-num red">3</div><div className="d-stat-sub">needs review</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Platform Fee</div><div className="d-stat-num">2.5%</div><div className="d-stat-sub">per deal</div></div>
+          <div className="d-stat-card"><div className="d-stat-label">Capital Deployed</div><div className="d-stat-num gold">{dealsLoading ? "—" : fmtAmount(capitalDeployed)}</div><div className="d-stat-sub">funded + closed deals</div></div>
+          <div className="d-stat-card"><div className="d-stat-label">KYC Pending</div><div className={`d-stat-num${kycPendingCount > 0 ? " red" : ""}`}>{usersLoading ? "—" : kycPendingCount}</div><div className="d-stat-sub">needs review</div></div>
+          <div className="d-stat-card"><div className="d-stat-label">Fee Revenue</div><div className="d-stat-num gold">{dealsLoading ? "—" : fmtAmount(feeRevenue)}</div><div className="d-stat-sub">2.5% of deployed</div></div>
         </div>
 
         <div className="d-tabs">
@@ -1290,7 +1288,7 @@ export default function AdminPanel() {
           <button className={`d-tab ${activeTab === 2 ? "active" : ""}`} onClick={() => setActiveTab(2)}>
             Users{!usersLoading && usersList.length > 0 && <span className="d-tab-badge" style={{ background: "#1B2B4B" }}>{usersList.length}</span>}
           </button>
-          <button className={`d-tab ${activeTab === 3 ? "active" : ""}`} onClick={() => setActiveTab(3)}>KYC Review <span className="d-tab-badge">3</span></button>
+          <button className={`d-tab ${activeTab === 3 ? "active" : ""}`} onClick={() => setActiveTab(3)}>KYC Review {kycPendingCount > 0 && <span className="d-tab-badge">{kycPendingCount}</span>}</button>
           <button className={`d-tab ${activeTab === 4 ? "active" : ""}`} onClick={() => setActiveTab(4)}>Bids</button>
         </div>
 
