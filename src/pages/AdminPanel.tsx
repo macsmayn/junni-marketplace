@@ -290,13 +290,33 @@ export default function AdminPanel() {
 
   const handleKycApprove = async (userId: string) => {
     const { error } = await supabase.from("users").update({ kyc_status: "approved" }).eq("id", userId);
-    if (!error) setUsersList(prev => prev.map(u => u.id === userId ? { ...u, kyc_status: "approved" } : u));
+    if (!error) {
+      setUsersList(prev => prev.map(u => u.id === userId ? { ...u, kyc_status: "approved" } : u));
+      const { error: notifErr } = await supabase.from("notifications").insert({
+        user_id: userId,
+        title: "KYC approved",
+        message: "Your identity verification has been approved. You now have full access.",
+        type: "kyc",
+        link: null,
+      });
+      if (notifErr) console.error("Notification insert failed (kyc approve):", notifErr);
+    }
   };
 
   const handleKycReject = async (userId: string) => {
     if (!window.confirm("Reject this user's KYC? Their status will be marked as rejected.")) return;
     const { error } = await supabase.from("users").update({ kyc_status: "rejected" }).eq("id", userId);
-    if (!error) setUsersList(prev => prev.map(u => u.id === userId ? { ...u, kyc_status: "rejected" } : u));
+    if (!error) {
+      setUsersList(prev => prev.map(u => u.id === userId ? { ...u, kyc_status: "rejected" } : u));
+      const { error: notifErr } = await supabase.from("notifications").insert({
+        user_id: userId,
+        title: "KYC update",
+        message: "Your identity verification could not be completed. Please review your submission.",
+        type: "kyc",
+        link: null,
+      });
+      if (notifErr) console.error("Notification insert failed (kyc reject):", notifErr);
+    }
   };
 
   const getDeletableUsers = () => usersList.filter(u =>

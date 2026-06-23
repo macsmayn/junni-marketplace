@@ -225,6 +225,14 @@ export default function DealDetail() {
       console.error('Bid error:', error);
       alert("Error placing bid. Please try again.");
     } else {
+      const { error: notifErr } = await supabase.from('notifications').insert({
+        user_id: deal.borrower_id,
+        title: 'New bid received',
+        message: `A lender placed a bid on your deal "${deal.title ?? 'your deal'}".`,
+        type: 'bid',
+        link: `/deals/${deal.id}`,
+      });
+      if (notifErr) console.error('Notification insert failed (bid):', notifErr);
       alert("Bid placed successfully!");
       setBidRate("");
       setBidAmount("");
