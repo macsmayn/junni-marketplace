@@ -125,6 +125,17 @@ function formatLenderId(lenderId: string): string {
   return `Lender #${(parts[parts.length - 1] || lenderId).toUpperCase().slice(0, 6)}`;
 }
 
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 export default function BorrowerDashboard() {
   const [location, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: auth0Loading } = useAuth0();
@@ -150,6 +161,9 @@ export default function BorrowerDashboard() {
   const [answerDraft, setAnswerDraft] = useState<Record<string, string>>({});
   const [submittingAnswers, setSubmittingAnswers] = useState<Record<string, boolean>>({});
   const [answeredDeals, setAnsweredDeals] = useState<Set<string>>(new Set());
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 900);
@@ -170,6 +184,31 @@ export default function BorrowerDashboard() {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (!dbUser?.id) return;
+    const fetchNotifications = async () => {
+      const { data } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', dbUser.id)
+        .order('created_at', { ascending: false })
+        .limit(30);
+      setNotifications(data || []);
+    };
+    fetchNotifications();
+  }, [dbUser?.id]);
+
+  useEffect(() => {
+    if (!notifOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [notifOpen]);
 
   useEffect(() => {
     if (auth0Loading) return;
@@ -255,6 +294,7 @@ export default function BorrowerDashboard() {
   const newBidsThisWeek = bids.filter((b) => new Date(b.created_at) > oneWeekAgo).length;
 
   const dealsNeedingReview = deals.filter(d => d.financials_status === "extracted");
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   const dealBidsMap = deals.reduce((acc, deal) => {
     acc[deal.id] = bids.filter(b => b.deal_id === deal.id);
@@ -392,6 +432,90 @@ export default function BorrowerDashboard() {
     }
     if (closeSidebar) setSidebarOpen(false);
   };
+
+  const fetchNotificationsNow = async () => {
+    if (!dbUser?.id) return;
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', dbUser.id)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    setNotifications(data || []);
+  };
+
+  const handleMarkAllRead = async () => {
+    if (!dbUser?.id) return;
+    await supabase.from('notifications').update({ read: true }).eq('user_id', dbUser.id).eq('read', false);
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
+  const handleNotifClick = async (n: any) => {
+    if (!n.read) {
+      await supabase.from('notifications').update({ read: true }).eq('id', n.id);
+      setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
+    }
+    if (n.link) {
+      setNotifOpen(false);
+      setLocation(n.link);
+    }
+  };
+
+  const notifPanel = (
+    <div style={{
+      position: 'absolute',
+      top: 'calc(100% + 8px)',
+      right: 0,
+      width: 'min(320px, calc(100vw - 20px))',
+      maxHeight: 400,
+      background: '#fff',
+      border: '1px solid #E8E2D9',
+      borderRadius: 12,
+      boxShadow: '0 8px 24px rgba(27,43,75,0.14)',
+      zIndex: 1000,
+      display: 'flex',
+      flexDirection: 'column' as const,
+      overflow: 'hidden',
+      fontFamily: "'Inter', sans-serif",
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #E8E2D9', flexShrink: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: '#1B2B4B' }}>Notifications</span>
+        {unreadCount > 0 && (
+          <button onClick={handleMarkAllRead} style={{ background: 'none', border: 'none', fontSize: 12, color: '#D4940A', fontWeight: 600, cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>
+            Mark all read
+          </button>
+        )}
+      </div>
+      <div style={{ overflowY: 'auto' as const, flex: 1 }}>
+        {notifications.length === 0 ? (
+          <div style={{ padding: '24px 16px', textAlign: 'center' as const, color: '#7A7060', fontSize: 13 }}>No notifications yet.</div>
+        ) : (
+          notifications.map(n => (
+            <div
+              key={n.id}
+              onClick={() => handleNotifClick(n)}
+              style={{
+                padding: '12px 16px',
+                borderBottom: '1px solid #E8E2D9',
+                background: n.read ? '#fff' : 'rgba(212,148,10,0.06)',
+                cursor: n.link ? 'pointer' : 'default',
+                display: 'flex',
+                gap: 10,
+                alignItems: 'flex-start',
+              }}
+            >
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: n.read ? 'transparent' : '#D4940A', flexShrink: 0, marginTop: 5 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1B2B4B', marginBottom: 2 }}>{n.title}</div>
+                <div style={{ fontSize: 12, color: '#7A7060', lineHeight: 1.45, marginBottom: 4 }}>{n.message}</div>
+                <div style={{ fontSize: 11, color: '#9CA3AF' }}>{timeAgo(n.created_at)}</div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
 
   const handleViewDocument = async (doc: DocRecord) => {
     const { data, error } = await supabase.storage
@@ -723,7 +847,12 @@ export default function BorrowerDashboard() {
             <span className="nav-title">Dashboard</span>
           </div>
           <div className="nav-right">
-            <button className="bell" aria-label="Notifications">🔔<span className="bell-dot"></span></button>
+            <div ref={notifRef} style={{ position: 'relative' }}>
+              <button className="bell" aria-label="Notifications" onClick={() => { setNotifOpen(o => !o); fetchNotificationsNow(); }}>
+                🔔{unreadCount > 0 && <span className="bell-dot"></span>}
+              </button>
+              {notifOpen && notifPanel}
+            </div>
             <button className="btn btn-gold nav-new" onClick={() => setLocation('/onboarding')}>+ New Deal</button>
           </div>
         </div>
@@ -1249,7 +1378,12 @@ export default function BorrowerDashboard() {
             <button className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>EN</button>
             <button className={lang === 'fr' ? 'active' : ''} onClick={() => setLang('fr')}>FR</button>
           </div>
-          <button className="d-bell" aria-label="Notifications">🔔<span className="d-bell-dot"></span></button>
+          <div ref={notifRef} style={{ position: 'relative' }}>
+            <button className="d-bell" aria-label="Notifications" onClick={() => { setNotifOpen(o => !o); fetchNotificationsNow(); }}>
+              🔔{unreadCount > 0 && <span className="d-bell-dot"></span>}
+            </button>
+            {notifOpen && notifPanel}
+          </div>
           <button className="d-btn d-btn-gold" onClick={() => setLocation('/onboarding')}>+ New Deal</button>
         </div>
       </div>
