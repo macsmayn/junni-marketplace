@@ -543,7 +543,7 @@ export default function FinancialReview() {
 
       <nav>
         <div className="nav-left">
-          <div className="logo"><img src={LOGO_BEIGE} alt="Junni" /></div>
+          <div className="logo"><img src={LOGO_BEIGE} alt="Junni" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} /></div>
           <span className="nav-back" onClick={() => setLocation("/borrower-dashboard")}>← Back to Dashboard</span>
         </div>
       </nav>

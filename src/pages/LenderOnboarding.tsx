@@ -733,7 +733,7 @@ export default function LenderOnboarding() {
       {/* Navigation */}
       <nav className="nav">
         <div className="nav-logo">
-          <img src={LOGO_BEIGE} alt="Junni" style={{ width: "120px", height: "auto" }} />
+          <img src={LOGO_BEIGE} alt="Junni" style={{ width: "120px", height: "auto", cursor: 'pointer' }} onClick={() => setLocation('/')} />
         </div>
         <div className="nav-right">
           <div className="lang-pill">

@@ -212,7 +212,7 @@ export default function LenderPortfolio() {
         <div className={`overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)}></div>
         <div className={`m-sidebar ${sidebarOpen ? 'open' : ''}`}>
           <div className="sb-head">
-            <img src={LOGO_NAVY} alt="Junni" className="sb-logo" />
+            <img src={LOGO_NAVY} alt="Junni" className="sb-logo" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} />
             <button className="sb-close" onClick={() => setSidebarOpen(false)}>✕</button>
           </div>
           <div className="sb-section">{currentPersona.sidebarLabel}</div>
@@ -1056,7 +1056,7 @@ export default function LenderPortfolio() {
       {/* SIDEBAR */}
       <nav className="sidenav">
         <div className="sidenav-logo">
-          <img src={LOGO_NAVY} alt="Junni" />
+          <img src={LOGO_NAVY} alt="Junni" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} />
         </div>
 
         <div className="sidenav-section">{currentPersona.sidebarLabel}</div>

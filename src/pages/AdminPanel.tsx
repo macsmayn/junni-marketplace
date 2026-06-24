@@ -1171,7 +1171,7 @@ export default function AdminPanel() {
         <div className={`overlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)}></div>
         <div className={`m-sidebar ${sidebarOpen ? "open" : ""}`}>
           <div className="sb-head">
-            <img src={LOGO_NAVY} alt="Junni" className="sb-logo" />
+            <img src={LOGO_NAVY} alt="Junni" className="sb-logo" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} />
             <button className="sb-close" onClick={() => setSidebarOpen(false)}>✕</button>
           </div>
           <div className="sb-section">ADMIN</div>
@@ -1238,7 +1238,7 @@ export default function AdminPanel() {
 
       <div className="d-sidebar">
         <div className="d-sb-head">
-          <img src={LOGO_NAVY} alt="Junni" className="d-sb-logo" />
+          <img src={LOGO_NAVY} alt="Junni" className="d-sb-logo" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} />
           <span className="d-admin-badge">Admin</span>
         </div>
         <div className="d-sb-section">Management</div>
