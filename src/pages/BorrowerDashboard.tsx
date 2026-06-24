@@ -592,7 +592,6 @@ export default function BorrowerDashboard() {
         { icon: "📋", text: "My Deals", badge: activeDealCount > 0 ? String(activeDealCount) : null, scrollTo: "deals" },
         { icon: "💼", text: "Bids Received", badge: pendingBids.length > 0 ? String(pendingBids.length) : null, scrollTo: "bids" },
         { icon: "📄", text: "Documents", badge: null, scrollTo: "documents" },
-        { icon: "🔔", text: "Notifications", badge: null, alertMsg: "Notifications coming soon" },
       ],
       accountItems: [
         { icon: "🏪", text: "Marketplace", badge: null, route: "/marketplace" },
@@ -609,7 +608,6 @@ export default function BorrowerDashboard() {
         { icon: "📊", text: "Portfolio", badge: null, route: "/lender-portfolio" },
         { icon: "🎯", text: "Opportunities", badge: "12", route: "/marketplace" },
         { icon: "📄", text: "Documents", badge: null, alertMsg: "Documents coming soon" },
-        { icon: "🔔", text: "Notifications", badge: "3", alertMsg: "Notifications coming soon" },
       ],
       accountItems: [
         { icon: "🏪", text: "Marketplace", badge: null, route: "/marketplace" },

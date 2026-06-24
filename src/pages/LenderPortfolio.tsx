@@ -42,7 +42,6 @@ export default function LenderPortfolio() {
         { icon: "📋", text: "My Deals", badge: "2", active: false },
         { icon: "💼", text: "Bids Received", badge: "8", active: false },
         { icon: "📄", text: "Documents", badge: null, active: false },
-        { icon: "🔔", text: "Notifications", badge: null, active: false },
       ],
       accountItems: [
         { icon: "🏪", text: "Marketplace", badge: null },
@@ -60,7 +59,6 @@ export default function LenderPortfolio() {
         { icon: "💼", text: "My Bids", badge: "5", active: false },
         { icon: "📈", text: "Portfolio", badge: null, active: true },
         { icon: "❤️", text: "Saved Deals", badge: null, active: false },
-        { icon: "🔔", text: "Notifications", badge: null, active: false },
       ],
       accountItems: [
         { icon: "⚙️", text: "Settings", badge: null },

@@ -203,7 +203,6 @@ export default function LenderDashboard() {
         { icon: "📋", text: "My Deals", badge: "2", active: false },
         { icon: "💼", text: "Bids Received", badge: "8", active: false },
         { icon: "📄", text: "Documents", badge: null, active: false },
-        { icon: "🔔", text: "Notifications", badge: null, active: false },
       ],
       accountItems: [
         { icon: "🏪", text: "Marketplace", badge: null },
@@ -221,7 +220,6 @@ export default function LenderDashboard() {
         { icon: "💼", text: "My Bids", badge: activeBids.length > 0 ? String(activeBids.length) : null, active: false },
         { icon: "📊", text: "Portfolio", badge: null, active: false },
         { icon: "❤️", text: "Saved Deals", badge: null, active: false },
-        { icon: "🔔", text: "Notifications", badge: null, active: false },
       ],
       accountItems: [
         { icon: "⚙️", text: "Settings", badge: null },
