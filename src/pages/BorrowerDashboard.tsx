@@ -188,12 +188,7 @@ export default function BorrowerDashboard() {
   useEffect(() => {
     if (!dbUser?.id) return;
     const fetchNotifications = async () => {
-      const { data } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', dbUser.id)
-        .order('created_at', { ascending: false })
-        .limit(30);
+      const { data } = await supabase.rpc('get_notifications', { p_user_id: dbUser.id });
       setNotifications(data || []);
     };
     fetchNotifications();
@@ -435,24 +430,19 @@ export default function BorrowerDashboard() {
 
   const fetchNotificationsNow = async () => {
     if (!dbUser?.id) return;
-    const { data } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', dbUser.id)
-      .order('created_at', { ascending: false })
-      .limit(30);
+    const { data } = await supabase.rpc('get_notifications', { p_user_id: dbUser.id });
     setNotifications(data || []);
   };
 
   const handleMarkAllRead = async () => {
     if (!dbUser?.id) return;
-    await supabase.from('notifications').update({ read: true }).eq('user_id', dbUser.id).eq('read', false);
+    await supabase.rpc('mark_all_notifications_read', { p_user_id: dbUser.id });
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
 
   const handleNotifClick = async (n: any) => {
     if (!n.read) {
-      await supabase.from('notifications').update({ read: true }).eq('id', n.id);
+      await supabase.rpc('mark_notification_read', { p_notification_id: n.id });
       setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
     }
     if (n.link) {
