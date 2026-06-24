@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect } from "react";
+import { useAuth0 } from "@auth0/auth0-react";
 import { supabase } from '../lib/supabase';
 
 const LOGO_BEIGE = "/junni-logo-beige.png";
@@ -158,6 +159,7 @@ function getIndustryEmoji(industry: string): string {
 }
 
 export default function Marketplace() {
+  const { isAuthenticated, logout } = useAuth0();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndustry, setSelectedIndustry] = useState("All Industries");
   const [selectedRisk, setSelectedRisk] = useState("All Risk Tiers");
@@ -715,6 +717,9 @@ export default function Marketplace() {
         <div className="nav-right">
           <a href="/lender-portfolio" className="nav-user">Portfolio</a>
           <a href="/lender-dashboard" className="nav-user">Dashboard</a>
+          {isAuthenticated && (
+            <button onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })} style={{ background: 'none', border: 'none', color: 'rgba(239,68,68,0.8)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'Inter', sans-serif", display: 'flex', alignItems: 'center', gap: 6 }}>⏻ Sign Out</button>
+          )}
         </div>
       </nav>
 

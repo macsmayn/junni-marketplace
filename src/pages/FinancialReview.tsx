@@ -27,7 +27,7 @@ export default function FinancialReview() {
   const params = useParams<{ id: string }>();
   const dealId = params.id;
   const [, setLocation] = useLocation();
-  const { user } = useAuth0();
+  const { user, logout } = useAuth0();
 
   const [deal, setDeal] = useState<any>(null);
   const [financials, setFinancials] = useState<any[]>([]);
@@ -546,6 +546,7 @@ export default function FinancialReview() {
           <div className="logo"><img src={LOGO_BEIGE} alt="Junni" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} /></div>
           <span className="nav-back" onClick={() => setLocation("/borrower-dashboard")}>← Back to Dashboard</span>
         </div>
+        <button onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })} style={{ background: 'none', border: 'none', color: 'rgba(239,68,68,0.8)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'Inter', sans-serif", display: 'flex', alignItems: 'center', gap: 6 }}>⏻ Sign Out</button>
       </nav>
 
       <div className="container">

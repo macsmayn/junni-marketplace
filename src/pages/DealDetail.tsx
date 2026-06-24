@@ -145,7 +145,7 @@ export default function DealDetail() {
   const params = useParams<{ id: string }>();
   const dealId = params.id;
 
-  const { user, isAuthenticated } = useAuth0();
+  const { user, isAuthenticated, logout } = useAuth0();
   const [deal, setDeal] = useState<any>(null);
   const [dealBids, setDealBids] = useState<any[]>([]);
   const [dealDocs, setDealDocs] = useState<any[]>([]);
@@ -1136,6 +1136,9 @@ export default function DealDetail() {
         <div className="nav-right">
           <button className="btn-nav btn-ghost">Share Deal</button>
           <button className="btn-nav btn-gold">Save Deal</button>
+          {isAuthenticated && (
+            <button onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })} style={{ background: 'none', border: 'none', color: 'rgba(239,68,68,0.8)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'Inter', sans-serif", display: 'flex', alignItems: 'center', gap: 6 }}>⏻ Sign Out</button>
+          )}
         </div>
       </nav>
 
