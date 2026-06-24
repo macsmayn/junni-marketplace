@@ -46,7 +46,7 @@ export default function LenderDashboard() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const { user, isAuthenticated, isLoading: auth0Loading } = useAuth0();
+  const { user, isAuthenticated, isLoading: auth0Loading, logout } = useAuth0();
   const [dbUser, setDbUser] = useState<any>(null);
   const [lenderBids, setLenderBids] = useState<any[]>([]);
   const [savedDeals, setSavedDeals] = useState<any[]>([]);
@@ -418,6 +418,12 @@ export default function LenderDashboard() {
               <span>{item.icon}</span>{item.text}
             </a>
           ))}
+          <button
+            onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+            style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
+          >
+            <span>⏻</span>Sign Out
+          </button>
           <div className="sb-bottom">
             <div className="sb-user">
               <div className="sb-avatar">{currentPersona.userAvatar}</div>
@@ -645,6 +651,12 @@ export default function LenderDashboard() {
             <span>{item.icon}</span>{item.text}
           </button>
         ))}
+        <button
+          onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+          style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
+        >
+          <span>⏻</span>Sign Out
+        </button>
         <div className="d-sb-bottom">
           <div className="d-sb-user">
             <div className="d-sb-avatar">{currentPersona.userAvatar}</div>

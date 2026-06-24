@@ -238,6 +238,12 @@ export default function LenderPortfolio() {
               <span>{item.text}</span>
             </button>
           ))}
+          <button
+            onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+            style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
+          >
+            <span>⏻</span>Sign Out
+          </button>
           <div className="sb-bottom">
             <div className="sb-user">
               <div className="sb-avatar">{currentPersona.userAvatar}</div>
@@ -1083,6 +1089,12 @@ export default function LenderPortfolio() {
           </button>
         ))}
 
+        <button
+          onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+          style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
+        >
+          <span>⏻</span>Sign Out
+        </button>
         <div className="sidenav-bottom">
           <div className="sidenav-user">
             <div className="sidenav-avatar">{currentPersona.userAvatar}</div>

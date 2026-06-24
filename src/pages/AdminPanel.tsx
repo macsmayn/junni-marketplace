@@ -27,7 +27,7 @@ const fmtDate = (s: string | null | undefined) =>
 
 export default function AdminPanel() {
   const [, setLocation] = useLocation();
-  const { user: auth0User } = useAuth0();
+  const { user: auth0User, logout } = useAuth0();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(0); // 0=Questions, 1=Deals, 2=Users, 3=KYC, 4=Bids
@@ -1187,6 +1187,12 @@ export default function AdminPanel() {
               <span>{item.icon}</span><span>{item.text}</span>
             </button>
           ))}
+          <button
+            onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+            style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
+          >
+            <span>⏻</span>Sign Out
+          </button>
           <div className="sb-bottom">
             <div className="sb-user">
               <div className="sb-avatar">A</div>
@@ -1254,6 +1260,12 @@ export default function AdminPanel() {
             <span>{item.icon}</span>{item.text}
           </button>
         ))}
+        <button
+          onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+          style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
+        >
+          <span>⏻</span>Sign Out
+        </button>
         <div className="d-sb-bottom">
           <div className="d-sb-user">
             <div className="d-sb-avatar">A</div>
