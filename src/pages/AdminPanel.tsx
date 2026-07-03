@@ -738,6 +738,7 @@ export default function AdminPanel() {
                         <div style={{ display: "flex", gap: "6px" }}>
                           <button className="a-btn a-btn-ghost" onClick={() => setLocation(`/deals/${deal.id}`)}>View</button>
                           <button className="a-btn a-btn-ghost" onClick={() => handleDealEditStart(deal)}>Edit</button>
+                          <button className="a-btn a-btn-ghost" onClick={() => setLocation(`/analysis/${deal.id}`)}>Analysis</button>
                         </div>
                       </td>
                     </tr>

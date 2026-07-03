@@ -18,6 +18,7 @@ import LenderDashboard from "./pages/LenderDashboard";
 import LenderPortfolio from "./pages/LenderPortfolio";
 import FinancialReview from "./pages/FinancialReview";
 import AdminPanel from "./pages/AdminPanel";
+import DealAnalysis from "./pages/DealAnalysis";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import { supabase } from './lib/supabase'
@@ -67,6 +68,11 @@ function Router() {
         <AdminRoute>
           <AdminPanel />
         </AdminRoute>
+      </Route>
+      <Route path={"/analysis/:dealId"}>
+        <ProtectedRoute>
+          <DealAnalysis />
+        </ProtectedRoute>
       </Route>
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}

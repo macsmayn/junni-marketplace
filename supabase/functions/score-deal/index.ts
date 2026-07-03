@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
+import { runDeterministicScore, persistEngineResult } from "./scoreDealIntegration.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -86,6 +87,16 @@ Some figures are rarely printed as line items and must be CALCULATED from the co
 When you calculate rather than read a value, note this briefly in raw_notes (e.g. "EBITDA calculated as operating income + D&A").
 Do NOT apply EBITDA add-backs or normalizations — use the standard formula only. Adjustments are handled separately.
 
+WORKING CAPITAL AND CASH FLOW FIELDS — read these from the balance sheet and cash flow statement:
+- cash: "Cash and cash equivalents" from the balance sheet. Exclude short-term investments unless the statement combines them into one line (then use the combined line and note it in raw_notes).
+- inventory: Inventory/inventories from the balance sheet (net). If the balance sheet contains NO inventory line item anywhere — typical for software, services, and financial companies — return 0, not null: the company holds no inventory, which is a known zero, not missing data. Return null ONLY when an inventory line exists but its amount cannot be read reliably.
+- accounts_receivable: Trade/accounts receivable (net of allowance). If only a combined "receivables" line exists, use it.
+- accounts_payable: Trade/accounts payable. Canadian statements often show one combined line "Accounts payable and accrued liabilities" — if that is all that exists, use the combined figure and note "AP includes accruals" in raw_notes.
+- capex: "Purchase of property, plant and equipment" (and intangibles/development costs if shown) from INVESTING activities on the cash flow statement. Return as a POSITIVE number even though the statement shows it as an outflow.
+- cfo: "Cash provided by (used in) operating activities" — the operating activities subtotal from the cash flow statement. PRESERVE THE SIGN (negative if operations consumed cash).
+- depreciation_amortization: D&A add-back from operating activities on the cash flow statement, or from the notes. Combine depreciation + amortization into one figure.
+If no cash flow statement is provided, set capex, cfo, and depreciation_amortization to null — do not estimate them.
+
 Return ONLY valid JSON with no markdown fences or commentary. Use this exact shape:
 
 {
@@ -109,6 +120,13 @@ Return ONLY valid JSON with no markdown fences or commentary. Use this exact sha
       "total_debt": <number or null>,
       "equity": <number or null>,
       "interest_expense": <number or null>,
+      "cash": <number or null>,
+      "inventory": <number or null>,
+      "accounts_receivable": <number or null>,
+      "accounts_payable": <number or null>,
+      "capex": <number or null>,
+      "cfo": <number or null>,
+      "depreciation_amortization": <number or null>,
       "debt_detail": <object with current_portion, long_term, rates, maturities if disclosed — or null>,
       "notes_summary": "<material disclosures from notes: debt covenants, maturities, contingencies, related-party transactions, leases, guarantees>",
       "extraction_confidence": "<high | medium | low>",
@@ -145,6 +163,13 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
               total_debt: stmt.total_debt ?? null,
               equity: stmt.equity ?? null,
               interest_expense: stmt.interest_expense ?? null,
+              cash: stmt.cash ?? null,
+              inventory: stmt.inventory ?? null,
+              accounts_receivable: stmt.accounts_receivable ?? null,
+              accounts_payable: stmt.accounts_payable ?? null,
+              capex: stmt.capex ?? null,
+              cfo: stmt.cfo ?? null,
+              depreciation_amortization: stmt.depreciation_amortization ?? null,
               debt_detail: stmt.debt_detail ?? null,
               notes_summary: stmt.notes_summary ?? null,
               extraction_confidence: stmt.extraction_confidence ?? null,
@@ -893,6 +918,37 @@ FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
     }
 
     // ─────────────────────────────────────────────────────────────
+    // PHASE 2c-ENGINE: Deterministic transparent score (the rubric)
+    // Runs the code engine against the versioned framework tables.
+    // The engine — not the LLM — produces the overall score.
+    // ─────────────────────────────────────────────────────────────
+    let engineResult = null;
+    try {
+      engineResult = await runDeterministicScore(
+        supabase,
+        deal_id,
+        {
+          industry: deal.industry,
+          amount_requested: deal.amount_requested,
+          term_months: deal.term_months,
+          interest_rate: deal.interest_rate,
+          existing_debt_service: deal.existing_debt_service,
+        },
+        confirmedFinancials ?? [],
+        { lenderId: null }   // null = canonical defaults; wire lender policy later
+      );
+      if (engineResult) {
+        console.log(`[score-deal] Engine score: ${engineResult.score.overall_score} ` +
+          `(${engineResult.score.risk_label}), coverage ${engineResult.score.coverage_pct}%, ` +
+          `floor ${engineResult.score.critical_floor_applied ? "applied" : "no"}.`);
+      } else {
+        console.log("[score-deal] Engine skipped — no confirmed financials.");
+      }
+    } catch (engineErr) {
+      console.error("[score-deal] Engine error (falling back to LLM score):", engineErr);
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Phase 1 scoring continues unchanged below
     // ─────────────────────────────────────────────────────────────
 
@@ -974,8 +1030,6 @@ DEAL DETAILS:
 ${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}Return ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
 
 {
-  "overall_score": <integer 0-100>,
-  "risk_label": "<one of: Very Low | Low | Moderate | Elevated | High>",
   "summary": "<4-6 sentence credit assessment covering the borrower's financial health, debt capacity, and overall creditworthiness>",
   "strengths": ["<strength 1>", "<strength 2>", "<strength 3>", "<strength 4>", "<strength 5>"],
   "risks": ["<risk 1>", "<risk 2>", "<risk 3>", "<risk 4>", "<risk 5>"],
@@ -992,7 +1046,7 @@ ${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBloc
   "answer_assessments": [ { "question_id": "<the question_id value from the Q&A block above>", "resolved": true|false, "assessment": "<one or two sentence skeptical reasoning>" } ]` : ""}
 }
 
-Scoring guidance: overall_score of 80+ = Very Low risk, 65-79 = Low, 50-64 = Moderate, 35-49 = Elevated, below 35 = High. Each metric score is 0-100 where 100 is best.`;
+Each metric score is 0-100 where 100 is best.`;
 
     // Call Claude
     const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1058,31 +1112,44 @@ Scoring guidance: overall_score of 80+ = Very Low risk, 65-79 = Low, 50-64 = Mod
       console.log(`[score-deal] Wrote ${scoring.answer_assessments.length} answer assessment(s) back to credit_questions.`);
     }
 
-    // Upsert into credit_scores
-    const { error: upsertError } = await supabase.from("credit_scores").upsert(
-      {
-        deal_id,
-        overall_score: scoring.overall_score,
-        risk_label: scoring.risk_label,
+    // Engine owns the number when it ran; LLM owns the narrative.
+    const finalScore = engineResult ? engineResult.score.overall_score : scoring.overall_score;
+    const finalRisk  = engineResult ? engineResult.score.risk_label     : scoring.risk_label;
+
+    if (engineResult) {
+      // Engine path: persist deterministic score + per-metric rationale,
+      // with the LLM narrative attached.
+      await persistEngineResult(supabase, deal_id, engineResult, {
         summary: scoring.summary,
         strengths: scoring.strengths,
         risks: scoring.risks,
         metrics: scoring.metrics,
-        model_used: "claude-opus-4-8",
-      },
-      { onConflict: "deal_id" }
-    );
-
-    if (upsertError) {
-      console.error("[score-deal] credit_scores upsert error:", upsertError);
+      });
+    } else {
+      // Fallback path (no confirmed financials): keep existing LLM-only behavior.
+      const { error: upsertError } = await supabase.from("credit_scores").upsert(
+        {
+          deal_id,
+          overall_score: scoring.overall_score,
+          risk_label: scoring.risk_label,
+          summary: scoring.summary,
+          strengths: scoring.strengths,
+          risks: scoring.risks,
+          metrics: scoring.metrics,
+          score_source: "llm",
+          model_used: "claude-opus-4-8",
+        },
+        { onConflict: "deal_id" }
+      );
+      if (upsertError) console.error("[score-deal] credit_scores upsert error:", upsertError);
     }
 
     // Update deals: write AI score + summary back to the deal row
     const { error: dealUpdateError } = await supabase
       .from("deals")
       .update({
-        ai_score: scoring.overall_score,
-        ai_summary: scoring.summary,
+        ai_score: finalScore,        // engine number when available
+        ai_summary: scoring.summary, // summary stays LLM
       })
       .eq("id", deal_id);
 
@@ -1104,6 +1171,13 @@ Scoring guidance: overall_score of 80+ = Very Low risk, 65-79 = Low, 50-64 = Mod
       JSON.stringify({
         deal_id,
         ...scoring,
+        overall_score: finalScore,   // engine number wins
+        risk_label: finalRisk,
+        engine: engineResult ? {
+          coverage_pct: engineResult.score.coverage_pct,
+          critical_floor_applied: engineResult.score.critical_floor_applied,
+          metrics_scored: engineResult.score.metrics_scored,
+        } : null,
       }),
       {
         status: 200,
