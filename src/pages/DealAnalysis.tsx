@@ -12,8 +12,15 @@ const MUTED = "#7A7060";
 
 const TIER_ORDER = ["Critical", "Important", "Supplementary", "Optional"];
 
-function fmtValue(v: number | null, name: string): string {
+function fmtValue(v: number | null, name: string, strongBand?: string | null): string {
   if (v === null || v === undefined) return "—";
+  if (strongBand) {
+    const b = strongBand.toLowerCase();
+    if (b.includes("%")) return `${v.toFixed(1)}%`;
+    if (b.includes("x")) return `${v.toFixed(2)}x`;
+    if (b.includes("day")) return `${v.toFixed(1)} days`;
+    return v.toFixed(2);
+  }
   const n = name.toLowerCase();
   const isRatio = n.includes("ratio") || n.includes("coverage") || n.includes("dscr") ||
     n.includes("leverage") || n.includes("debt /") || n.includes("/ ebitda") || n.includes("/ debt");
@@ -225,7 +232,7 @@ export default function DealAnalysis() {
                           onClick={() => setExpandedRow(isExpanded ? null : row.metric_name)}
                         >
                           <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{row.metric_name}</span>
-                          <span style={{ fontSize: 13, color: MUTED, textAlign: "right" }}>{fmtValue(row.value, row.metric_name)}</span>
+                          <span style={{ fontSize: 13, color: MUTED, textAlign: "right" }}>{fmtValue(row.value, row.metric_name, row.strong_band)}</span>
                           <span>{gradeChip(row.grade)}</span>
                           <span style={{ fontSize: 13, color: GOLD, userSelect: "none" }}>ⓘ</span>
                         </div>
