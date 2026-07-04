@@ -19,7 +19,7 @@ function fmtValue(v: number | null, name: string, strongBand?: string | null): s
     if (b.includes("%")) return `${v.toFixed(1)}%`;
     if (b.includes("x")) return `${v.toFixed(2)}x`;
     if (b.includes("day")) return `${v.toFixed(1)} days`;
-    return v.toFixed(2);
+    // no band token matched — fall through to name-based logic
   }
   const n = name.toLowerCase();
   const isRatio = n.includes("ratio") || n.includes("coverage") || n.includes("dscr") ||
@@ -27,8 +27,13 @@ function fmtValue(v: number | null, name: string, strongBand?: string | null): s
   const isPct = n.includes("margin") || n.includes("growth") || n.includes("return on") ||
     n.includes("roa") || n.includes("roe") || n.includes("intensity") || n.includes("yield");
   const isDays = n.includes("days") || n.includes("dso") || n.includes("dpo") || n.includes("dio") ||
-    n.includes("cycle");
+    n.includes("ccc") || n.includes("cycle");
+  const isMonths = n.includes("payback") || n.includes("duration");
+  const isYears = n.includes("walt") || n.includes("lease term") || n.includes("reserve life") ||
+    n.includes("mine life") || n.includes("amortization");
   if (isDays) return `${v.toFixed(1)} days`;
+  if (isMonths) return `${v.toFixed(1)} months`;
+  if (isYears) return `${v.toFixed(1)} years`;
   if (isPct) return `${v.toFixed(1)}%`;
   if (isRatio) return `${v.toFixed(2)}x`;
   if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
@@ -93,6 +98,7 @@ export default function DealAnalysis() {
   const [loading, setLoading] = useState(true);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [notScoredOpen, setNotScoredOpen] = useState(false);
+  const [definitions, setDefinitions] = useState<Record<string, any>>({});
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900);
@@ -112,7 +118,20 @@ export default function DealAnalysis() {
       if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
       setScore(s);
-      setMetrics((m as MetricRow[]) ?? []);
+      const metricRows = (m as MetricRow[]) ?? [];
+      setMetrics(metricRows);
+
+      const names = [...new Set(metricRows.map(r => r.metric_name))];
+      if (names.length > 0) {
+        const { data: defs } = await supabase
+          .from("metric_definitions")
+          .select("metric_name,what_it_is,what_it_measures,high_value_means,low_value_means,why_it_matters,formula_plain")
+          .in("metric_name", names);
+        const defMap: Record<string, any> = {};
+        for (const def of defs ?? []) defMap[def.metric_name] = def;
+        setDefinitions(defMap);
+      }
+
       setLoading(false);
     })();
   }, [dealId]);
@@ -252,7 +271,35 @@ export default function DealAnalysis() {
                         {/* Expanded rationale */}
                         {isExpanded && (
                           <div style={{ padding: isMobile ? "0 14px 14px" : "0 18px 16px", borderTop: "1px solid #F0EDE8", background: CREAM }}>
-                            <div style={{ fontSize: 12, color: MUTED, marginTop: 10, lineHeight: 1.6 }}>
+                            <div style={{ fontSize: 12, color: MUTED, marginTop: 10, lineHeight: 1.7 }}>
+
+                              {/* Definition block */}
+                              {definitions[row.metric_name] && (() => {
+                                const def = definitions[row.metric_name];
+                                return (
+                                  <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #E8E2D9" }}>
+                                    {def.what_it_is && (
+                                      <div style={{ color: NAVY, fontWeight: 500, marginBottom: 4 }}>{def.what_it_is}</div>
+                                    )}
+                                    {def.what_it_measures && (
+                                      <div style={{ marginBottom: 4 }}>{def.what_it_measures}</div>
+                                    )}
+                                    {(def.high_value_means || def.low_value_means) && (
+                                      <div style={{ marginBottom: 4 }}>
+                                        {def.high_value_means && <div>↑ Higher: {def.high_value_means}</div>}
+                                        {def.low_value_means && <div>↓ Lower: {def.low_value_means}</div>}
+                                      </div>
+                                    )}
+                                    {def.why_it_matters && (
+                                      <div style={{ fontStyle: "italic", marginBottom: 6 }}>{def.why_it_matters}</div>
+                                    )}
+                                    {def.formula_plain && (
+                                      <code style={{ fontSize: 11, background: "#EDE9E1", padding: "2px 7px", borderRadius: 4, fontFamily: "monospace", color: NAVY }}>{def.formula_plain}</code>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+
                               {row.compute_detail && <div><strong>Formula:</strong> {row.compute_detail}</div>}
                               {row.grade_reason && <div style={{ marginTop: 4 }}><strong>Grade reason:</strong> {row.grade_reason}</div>}
                               {(row.strong_band || row.adequate_band || row.weak_band) && (
