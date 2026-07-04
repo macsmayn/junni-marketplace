@@ -106,7 +106,7 @@ export default function DealAnalysis() {
       setLoading(true);
       const [{ data: d }, { data: s, error: sErr }, { data: m }] = await Promise.all([
         supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate").eq("id", dealId).single(),
-        supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,score_source,metrics_scored,metrics_total").eq("deal_id", dealId).single(),
+        supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,score_source").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
       ]);
       if (sErr) console.error("credit_scores fetch:", sErr);
@@ -194,13 +194,15 @@ export default function DealAnalysis() {
                 )}
               </div>
 
-              {/* Coverage */}
-              {score.coverage_pct != null && (
+              {/* Coverage — computed client-side from fetched metric rows */}
+              {metrics.length > 0 && (
                 <div style={{ fontSize: 13, color: MUTED }}>
                   Based on{" "}
-                  <strong style={{ color: NAVY }}>{score.metrics_scored ?? scored.length}</strong> of{" "}
-                  <strong style={{ color: NAVY }}>{score.metrics_total ?? metrics.length}</strong> metrics{" "}
-                  <span style={{ color: MUTED }}>({score.coverage_pct}% coverage)</span>
+                  <strong style={{ color: NAVY }}>{scored.length}</strong> of{" "}
+                  <strong style={{ color: NAVY }}>{metrics.length}</strong> metrics{" "}
+                  {score.coverage_pct != null && (
+                    <span style={{ color: MUTED }}>({score.coverage_pct}% coverage)</span>
+                  )}
                 </div>
               )}
             </div>
