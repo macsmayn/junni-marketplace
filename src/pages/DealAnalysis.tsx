@@ -104,11 +104,12 @@ export default function DealAnalysis() {
     if (!dealId) return;
     (async () => {
       setLoading(true);
-      const [{ data: d }, { data: s }, { data: m }] = await Promise.all([
+      const [{ data: d }, { data: s, error: sErr }, { data: m }] = await Promise.all([
         supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,score_source,metrics_scored,metrics_total").eq("deal_id", dealId).single(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
       ]);
+      if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
       setScore(s);
       setMetrics((m as MetricRow[]) ?? []);
