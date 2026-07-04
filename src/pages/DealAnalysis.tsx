@@ -55,10 +55,9 @@ function riskChip(label: string) {
 }
 
 function statusLabel(status: string) {
-  if (status === "needs_input") return { text: "Needs input", color: GOLD };
+  if (status === "needs_document_or_input" || status === "needs_input") return { text: "Needs data", color: GOLD };
   if (status === "needs_review") return { text: "Needs review", color: RED };
-  if (status === "needs_document_or_input") return { text: "Qualitative", color: MUTED };
-  return { text: status, color: MUTED };
+  return { text: "Qualitative", color: MUTED };
 }
 
 interface MetricRow {
