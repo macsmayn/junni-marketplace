@@ -87,26 +87,36 @@ interface MetricRow {
   weak_band: string | null;
 }
 
-function DefContent({ def }: { def: any }) {
+function DefContent({ def, lang }: { def: any; lang: "en" | "fr" }) {
+  const fr = lang === "fr";
+  const t = (enVal: string | null, frVal: string | null) => (fr && frVal) ? frVal : enVal;
+  const higher = fr ? "↑ Plus élevé :" : "↑ Higher:";
+  const lower  = fr ? "↓ Plus bas :"  : "↓ Lower:";
+  const whatItIs       = t(def.what_it_is,       def.what_it_is_fr);
+  const whatItMeasures = t(def.what_it_measures,  def.what_it_measures_fr);
+  const highMeans      = t(def.high_value_means,  def.high_value_means_fr);
+  const lowMeans       = t(def.low_value_means,   def.low_value_means_fr);
+  const why            = t(def.why_it_matters,    def.why_it_matters_fr);
+  const formula        = t(def.formula_plain,     def.formula_plain_fr);
   return (
     <>
-      {def.what_it_is && (
-        <div style={{ color: NAVY, fontWeight: 500, marginBottom: 4 }}>{def.what_it_is}</div>
+      {whatItIs && (
+        <div style={{ color: NAVY, fontWeight: 500, marginBottom: 4 }}>{whatItIs}</div>
       )}
-      {def.what_it_measures && (
-        <div style={{ marginBottom: 4 }}>{def.what_it_measures}</div>
+      {whatItMeasures && (
+        <div style={{ marginBottom: 4 }}>{whatItMeasures}</div>
       )}
-      {(def.high_value_means || def.low_value_means) && (
+      {(highMeans || lowMeans) && (
         <div style={{ marginBottom: 4 }}>
-          {def.high_value_means && <div>↑ Higher: {def.high_value_means}</div>}
-          {def.low_value_means && <div>↓ Lower: {def.low_value_means}</div>}
+          {highMeans && <div>{higher} {highMeans}</div>}
+          {lowMeans  && <div>{lower} {lowMeans}</div>}
         </div>
       )}
-      {def.why_it_matters && (
-        <div style={{ fontStyle: "italic", marginBottom: 6 }}>{def.why_it_matters}</div>
+      {why && (
+        <div style={{ fontStyle: "italic", marginBottom: 6 }}>{why}</div>
       )}
-      {def.formula_plain && (
-        <code style={{ fontSize: 11, background: "#EDE9E1", padding: "2px 7px", borderRadius: 4, fontFamily: "monospace", color: NAVY }}>{def.formula_plain}</code>
+      {formula && (
+        <code style={{ fontSize: 11, background: "#EDE9E1", padding: "2px 7px", borderRadius: 4, fontFamily: "monospace", color: NAVY }}>{formula}</code>
       )}
     </>
   );
@@ -127,6 +137,7 @@ export default function DealAnalysis() {
   const [definitionBubble, setDefinitionBubble] = useState<string | null>(null);
   const [bubbleRect, setBubbleRect] = useState<DOMRect | null>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
+  const [lang, setLang] = useState<"en" | "fr">("en");
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900);
@@ -164,7 +175,7 @@ export default function DealAnalysis() {
       if (names.length > 0) {
         const { data: defs } = await supabase
           .from("metric_definitions")
-          .select("metric_name,what_it_is,what_it_measures,high_value_means,low_value_means,why_it_matters,formula_plain")
+          .select("metric_name,what_it_is,what_it_measures,high_value_means,low_value_means,why_it_matters,formula_plain,what_it_is_fr,what_it_measures_fr,high_value_means_fr,low_value_means_fr,why_it_matters_fr,formula_plain_fr")
           .in("metric_name", names);
         const defMap: Record<string, any> = {};
         for (const def of defs ?? []) defMap[def.metric_name] = def;
@@ -213,6 +224,22 @@ export default function DealAnalysis() {
         </button>
         <span style={{ color: "#E8E2D9" }}>|</span>
         <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>Deal Analysis</span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
+          {(["en", "fr"] as const).map(l => (
+            <button
+              key={l}
+              onClick={() => setLang(l)}
+              style={{
+                padding: "3px 10px", borderRadius: 99, border: "1px solid",
+                fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
+                letterSpacing: "0.05em", textTransform: "uppercase",
+                background: lang === l ? NAVY : "transparent",
+                color: lang === l ? "#fff" : MUTED,
+                borderColor: lang === l ? NAVY : "#D8D2C8",
+              }}
+            >{l}</button>
+          ))}
+        </div>
       </div>
 
       <div style={{ maxWidth: 900, margin: "0 auto", padding: isMobile ? "24px 16px 60px" : "40px 24px 80px" }}>
@@ -435,7 +462,7 @@ export default function DealAnalysis() {
               style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, padding: 0, lineHeight: 1, flexShrink: 0 }}
             >×</button>
           </div>
-          <DefContent def={definitions[definitionBubble]} />
+          <DefContent def={definitions[definitionBubble]} lang={lang} />
         </div>
       )}
 
@@ -460,7 +487,7 @@ export default function DealAnalysis() {
                 style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 22, padding: 0, lineHeight: 1, flexShrink: 0, fontFamily: "Inter, sans-serif" }}
               >×</button>
             </div>
-            <DefContent def={definitions[definitionBubble]} />
+            <DefContent def={definitions[definitionBubble]} lang={lang} />
           </div>
         </>
       )}
