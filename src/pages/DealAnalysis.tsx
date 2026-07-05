@@ -87,6 +87,31 @@ interface MetricRow {
   weak_band: string | null;
 }
 
+function DefContent({ def }: { def: any }) {
+  return (
+    <>
+      {def.what_it_is && (
+        <div style={{ color: NAVY, fontWeight: 500, marginBottom: 4 }}>{def.what_it_is}</div>
+      )}
+      {def.what_it_measures && (
+        <div style={{ marginBottom: 4 }}>{def.what_it_measures}</div>
+      )}
+      {(def.high_value_means || def.low_value_means) && (
+        <div style={{ marginBottom: 4 }}>
+          {def.high_value_means && <div>↑ Higher: {def.high_value_means}</div>}
+          {def.low_value_means && <div>↓ Lower: {def.low_value_means}</div>}
+        </div>
+      )}
+      {def.why_it_matters && (
+        <div style={{ fontStyle: "italic", marginBottom: 6 }}>{def.why_it_matters}</div>
+      )}
+      {def.formula_plain && (
+        <code style={{ fontSize: 11, background: "#EDE9E1", padding: "2px 7px", borderRadius: 4, fontFamily: "monospace", color: NAVY }}>{def.formula_plain}</code>
+      )}
+    </>
+  );
+}
+
 export default function DealAnalysis() {
   const { dealId } = useParams<{ dealId: string }>();
   const [, setLocation] = useLocation();
@@ -99,12 +124,26 @@ export default function DealAnalysis() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [notScoredOpen, setNotScoredOpen] = useState(false);
   const [definitions, setDefinitions] = useState<Record<string, any>>({});
+  const [definitionBubble, setDefinitionBubble] = useState<string | null>(null);
+  const [bubbleRect, setBubbleRect] = useState<DOMRect | null>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    if (!definitionBubble || isMobile) return;
+    const close = (e: MouseEvent) => {
+      if (bubbleRef.current && !bubbleRef.current.contains(e.target as Node)) {
+        setDefinitionBubble(null);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [definitionBubble, isMobile]);
 
   useEffect(() => {
     if (!dealId) return;
@@ -155,8 +194,14 @@ export default function DealAnalysis() {
   const notScored = metrics.filter(m => !m.counted);
   const byTier = TIER_ORDER.map(t => ({ tier: t, rows: scored.filter(m => m.tier === t) })).filter(g => g.rows.length > 0);
 
-  const pad = isMobile ? "0 16px" : "0 48px";
-  const maxW = 900;
+  const openBubble = (metricName: string, rect: DOMRect) => {
+    if (definitionBubble === metricName) {
+      setDefinitionBubble(null);
+    } else {
+      setDefinitionBubble(metricName);
+      setBubbleRect(rect);
+    }
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: CREAM, fontFamily: "Inter, sans-serif", color: NAVY }}>
@@ -170,7 +215,7 @@ export default function DealAnalysis() {
         <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>Deal Analysis</span>
       </div>
 
-      <div style={{ maxWidth: maxW, margin: "0 auto", padding: isMobile ? "24px 16px 60px" : "40px 24px 80px" }}>
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: isMobile ? "24px 16px 60px" : "40px 24px 80px" }}>
 
         {/* ── 1. Header ── */}
         <div style={{ marginBottom: 28 }}>
@@ -189,16 +234,13 @@ export default function DealAnalysis() {
         {/* ── 2. Score card ── */}
         {score ? (
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginBottom: 28, display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", gap: isMobile ? 16 : 32 }}>
-            {/* Big score number */}
             <div style={{ textAlign: "center", minWidth: 110 }}>
               <div style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: isMobile ? 56 : 72, color: NAVY, lineHeight: 1 }}>
                 {score.overall_score ?? "—"}
               </div>
               <div style={{ fontSize: 11, color: MUTED, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>out of 100</div>
             </div>
-
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
-              {/* Risk label + badges */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                 {score.risk_label && riskChip(score.risk_label)}
                 {score.score_source === "engine" && (
@@ -212,8 +254,6 @@ export default function DealAnalysis() {
                   </span>
                 )}
               </div>
-
-              {/* Coverage — computed client-side from fetched metric rows */}
               {metrics.length > 0 && (
                 <div style={{ fontSize: 13, color: MUTED }}>
                   Based on{" "}
@@ -247,8 +287,10 @@ export default function DealAnalysis() {
                   {rows.map((row, i) => {
                     const isExpanded = expandedRow === row.metric_name;
                     const isLast = i === rows.length - 1;
+                    const hasDef = !!definitions[row.metric_name];
                     return (
                       <div key={row.metric_name} style={{ borderBottom: isLast ? "none" : "1px solid #F0EDE8" }}>
+                        {/* Row header — click to expand grade detail */}
                         <div
                           style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr auto auto" : "2fr 1fr 1fr auto", alignItems: "center", gap: isMobile ? 8 : 16, padding: isMobile ? "12px 14px" : "13px 18px", cursor: "pointer" }}
                           onClick={() => setExpandedRow(isExpanded ? null : row.metric_name)}
@@ -256,10 +298,19 @@ export default function DealAnalysis() {
                           <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{row.metric_name}</span>
                           <span style={{ fontSize: 13, color: MUTED, textAlign: "right" }}>{fmtValue(row.value, row.metric_name, row.strong_band)}</span>
                           <span>{gradeChip(row.grade)}</span>
-                          <span style={{ fontSize: 13, color: GOLD, userSelect: "none" }}>ⓘ</span>
+                          {/* ⓘ — opens definition bubble, does not expand row */}
+                          <span
+                            style={{ fontSize: 14, color: hasDef ? GOLD : "#C8C0B0", userSelect: "none", cursor: hasDef ? "pointer" : "default", lineHeight: 1 }}
+                            title={hasDef ? "What is this metric?" : undefined}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!hasDef) return;
+                              openBubble(row.metric_name, (e.currentTarget as HTMLElement).getBoundingClientRect());
+                            }}
+                          >ⓘ</span>
                         </div>
 
-                        {/* Band row (muted, desktop only) */}
+                        {/* Band row (muted, desktop only, hidden when expanded) */}
                         {!isMobile && !isExpanded && (row.strong_band || row.adequate_band || row.weak_band) && (
                           <div style={{ display: "flex", gap: 20, padding: "0 18px 10px", fontSize: 11, color: MUTED }}>
                             <span>Strong: {row.strong_band ?? "—"}</span>
@@ -268,38 +319,10 @@ export default function DealAnalysis() {
                           </div>
                         )}
 
-                        {/* Expanded rationale */}
+                        {/* Expanded — grade detail only (no definition) */}
                         {isExpanded && (
                           <div style={{ padding: isMobile ? "0 14px 14px" : "0 18px 16px", borderTop: "1px solid #F0EDE8", background: CREAM }}>
                             <div style={{ fontSize: 12, color: MUTED, marginTop: 10, lineHeight: 1.7 }}>
-
-                              {/* Definition block */}
-                              {definitions[row.metric_name] && (() => {
-                                const def = definitions[row.metric_name];
-                                return (
-                                  <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #E8E2D9" }}>
-                                    {def.what_it_is && (
-                                      <div style={{ color: NAVY, fontWeight: 500, marginBottom: 4 }}>{def.what_it_is}</div>
-                                    )}
-                                    {def.what_it_measures && (
-                                      <div style={{ marginBottom: 4 }}>{def.what_it_measures}</div>
-                                    )}
-                                    {(def.high_value_means || def.low_value_means) && (
-                                      <div style={{ marginBottom: 4 }}>
-                                        {def.high_value_means && <div>↑ Higher: {def.high_value_means}</div>}
-                                        {def.low_value_means && <div>↓ Lower: {def.low_value_means}</div>}
-                                      </div>
-                                    )}
-                                    {def.why_it_matters && (
-                                      <div style={{ fontStyle: "italic", marginBottom: 6 }}>{def.why_it_matters}</div>
-                                    )}
-                                    {def.formula_plain && (
-                                      <code style={{ fontSize: 11, background: "#EDE9E1", padding: "2px 7px", borderRadius: 4, fontFamily: "monospace", color: NAVY }}>{def.formula_plain}</code>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-
                               {row.compute_detail && <div><strong>Formula:</strong> {row.compute_detail}</div>}
                               {row.grade_reason && <div style={{ marginTop: 4 }}><strong>Grade reason:</strong> {row.grade_reason}</div>}
                               {(row.strong_band || row.adequate_band || row.weak_band) && (
@@ -384,6 +407,63 @@ export default function DealAnalysis() {
           </div>
         )}
       </div>
+
+      {/* ── Definition bubble — desktop (fixed card) ── */}
+      {definitionBubble && !isMobile && bubbleRect && definitions[definitionBubble] && (
+        <div
+          ref={bubbleRef}
+          style={{
+            position: "fixed",
+            top: bubbleRect.bottom + 8,
+            left: Math.max(8, Math.min(bubbleRect.right - 340, window.innerWidth - 356)),
+            width: 340,
+            background: "#fff",
+            border: "1px solid #E8E2D9",
+            borderRadius: 12,
+            boxShadow: "0 8px 32px rgba(27,43,75,0.14)",
+            zIndex: 1000,
+            padding: "16px 18px",
+            fontSize: 12,
+            color: MUTED,
+            lineHeight: 1.7,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+            <span style={{ fontWeight: 700, color: NAVY, fontSize: 13, paddingRight: 12 }}>{definitionBubble}</span>
+            <button
+              onClick={() => setDefinitionBubble(null)}
+              style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, padding: 0, lineHeight: 1, flexShrink: 0 }}
+            >×</button>
+          </div>
+          <DefContent def={definitions[definitionBubble]} />
+        </div>
+      )}
+
+      {/* ── Definition bubble — mobile (bottom sheet) ── */}
+      {definitionBubble && isMobile && definitions[definitionBubble] && (
+        <>
+          <div
+            onClick={() => setDefinitionBubble(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(27,43,75,0.35)", zIndex: 998 }}
+          />
+          <div style={{
+            position: "fixed", bottom: 0, left: 0, right: 0,
+            background: "#fff", borderRadius: "16px 16px 0 0",
+            padding: "20px 20px 36px",
+            zIndex: 999, maxHeight: "72vh", overflowY: "auto",
+            fontSize: 13, color: MUTED, lineHeight: 1.7,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+              <span style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 15, color: NAVY, paddingRight: 12 }}>{definitionBubble}</span>
+              <button
+                onClick={() => setDefinitionBubble(null)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 22, padding: 0, lineHeight: 1, flexShrink: 0, fontFamily: "Inter, sans-serif" }}
+              >×</button>
+            </div>
+            <DefContent def={definitions[definitionBubble]} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

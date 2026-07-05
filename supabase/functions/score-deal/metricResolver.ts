@@ -130,7 +130,7 @@ const fDebtEquity: Fn = (f) => {
     return { value: null, status: "needs_review", detail: "equity <= 0 (negative book equity)" };
   return ratio(num(f.total_debt), eq, "Debt / Equity");
 };
-const fDebtAssets: Fn = (f) => ratio(num(f.total_debt), num(f.total_assets), "Debt / TotalAssets");
+const fDebtAssets: Fn = (f) => ratio(num(f.total_debt), num(f.total_assets), "Debt / TotalAssets", true);
 
 const fInterestCoverage: Fn = (f) => {
   const ie = num(f.interest_expense);
@@ -166,6 +166,14 @@ const fWorkingCapital: Fn = (f) => {
     return { value: null, status: "needs_input", detail: "requires CA & CL" };
   return { value: ca - cl, status: "computed", detail: "CA - CL" };
 };
+const fWorkingCapitalPctRevenue: Fn = (f) => {
+  const ca = num(f.current_assets), cl = num(f.current_liabilities), rev = num(f.revenue);
+  if (ca === null || cl === null || rev === null)
+    return { value: null, status: "needs_input", detail: "requires CA, CL, revenue" };
+  if (rev === 0) return { value: null, status: "needs_review", detail: "revenue = 0" };
+  return { value: ((ca - cl) / rev) * 100, status: "computed", detail: "(CA - CL) / Revenue %" };
+};
+const fGmroi: Fn = (f) => ratio(deriveGrossProfit(f), num(f.inventory), "GrossProfit / Inventory");
 
 const fEbitdaMargin: Fn = (f) => ratio(deriveEbitda(f), num(f.revenue), "EBITDA / Revenue", true, false);
 const fGrossMargin: Fn = (f) => ratio(deriveGrossProfit(f), num(f.revenue), "GrossProfit / Revenue", true, false);
@@ -178,7 +186,6 @@ const fRoe: Fn = (f) => {
   return ratio(num(f.net_income), eq, "NetIncome / Equity", true);
 };
 
-const fOcfDebt: Fn = (f) => ratio(num(f.cfo), num(f.total_debt), "CFO / TotalDebt");
 const fFcfMargin: Fn = (f) => {
   const cfo = num(f.cfo), capex = num(f.capex), rev = num(f.revenue);
   if (cfo === null || capex === null || rev === null)
@@ -249,6 +256,13 @@ const fFcfYield: Fn = (f) => {
     return { value: null, status: "needs_input", detail: "requires CFO, capex, revenue" };
   return ratio(cfo - capex, rev, "(CFO-Capex) / Revenue", true, false);
 };
+const fOcfDebt: Fn = (f) => {
+  const cfo = num(f.cfo), td = num(f.total_debt);
+  if (cfo === null || td === null)
+    return { value: null, status: "needs_input", detail: "requires CFO & total debt" };
+  if (td <= 0) return { value: null, status: "needs_review", detail: "no debt (ratio n/a)" };
+  return { value: (cfo / td) * 100, status: "computed", detail: "CFO / TotalDebt %" };
+};
 
 // ---------- registry: normalized-name fragment -> function ----------
 const REGISTRY: Array<[string, Fn]> = [
@@ -264,8 +278,12 @@ const REGISTRY: Array<[string, Fn]> = [
   ["debt service coverage", fDscr],
   ["current ratio", fCurrentRatio],
   ["quick ratio", fQuickRatio],
+  ["working capital as % of revenue", fWorkingCapitalPctRevenue],
   ["working capital ratio", fCurrentRatio],
-  ["working capital", fWorkingCapital],
+  ["working capital / current ratio", fCurrentRatio],
+  ["working capital", fWorkingCapitalPctRevenue],
+  ["gross margin return on inventory", fGmroi],
+  ["gmroi", fGmroi],
   ["ebitda margin", fEbitdaMargin],
   ["gross profit margin", fGrossMargin],
   ["gross margin", fGrossMargin],
@@ -276,8 +294,9 @@ const REGISTRY: Array<[string, Fn]> = [
   ["return on assets", fRoa],
   ["return on equity", fRoe],
   ["operating cash flow / total debt", fOcfDebt],
+  ["free cash flow (fcf) margin", fFcfYield],
   ["free cash flow margin", fFcfMargin],
-  ["fcf margin", fFcfMargin],
+  ["fcf margin", fFcfYield],
   ["revenue growth", fRevenueGrowth],
   // extraction-depth additions:
   ["inventory turnover", fInventoryTurnover],
