@@ -32,7 +32,7 @@ Deno.serve(async (req: Request) => {
     const { data: deal, error: dealError } = await supabase
       .from("deals")
       .select(
-        "title, industry, amount_requested, term_months, interest_rate, annual_revenue, ebitda, years_in_business, province, ai_summary, financials_status, existing_debt, existing_debt_service"
+        "title, industry, amount_requested, term_months, interest_rate, annual_revenue, ebitda, years_in_business, province, ai_summary, financials_status, existing_debt, existing_debt_service, use_of_funds"
       )
       .eq("id", deal_id)
       .single();
@@ -348,6 +348,26 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
         JSON.stringify({ extract_only: true, years_extracted: totalYearsExtracted }),
         { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
       );
+    }
+
+    // Supplementary context for the scoring prompt
+    const [{ data: capTableRows }, { data: collateralRows }] = await Promise.all([
+      supabase.from("cap_table_entries").select("holder_name, ownership_pct").eq("deal_id", deal_id).order("ownership_pct", { ascending: false }),
+      supabase.from("collateral_assets").select("asset_type, market_value, advance_rate, lending_value").eq("deal_id", deal_id),
+    ]);
+
+    let collateralLine = "";
+    if (collateralRows && collateralRows.length > 0) {
+      const totalLending = collateralRows.reduce((s: number, r: any) => s + (Number(r.lending_value) || 0), 0);
+      const totalDebt = (Number(deal.existing_debt) || 0) + Number(deal.amount_requested);
+      const coverage = totalDebt > 0 ? (totalLending / totalDebt).toFixed(2) : "N/A";
+      collateralLine = `\n- Collateral offered: ${collateralRows.length} asset(s), lending value $${Math.round(totalLending).toLocaleString()} against total debt $${Math.round(totalDebt).toLocaleString()} — coverage ${coverage}x.`;
+    }
+
+    let capTableLine = "";
+    if (capTableRows && capTableRows.length > 0) {
+      const top3 = (capTableRows as any[]).slice(0, 3).map((r: any) => `${r.holder_name} ${r.ownership_pct ?? "?"}%`).join(", ");
+      capTableLine = `\n- Ownership: ${top3}${capTableRows.length > 3 ? `, +${capTableRows.length - 3} more` : ""}, ${capTableRows.length} holder(s) total.`;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -1033,7 +1053,7 @@ DEAL DETAILS:
 - Target Interest Rate: ${deal.interest_rate ?? "N/A"}%
 - Annual Revenue: $${Number(deal.annual_revenue ?? 0).toLocaleString()} CAD
 - EBITDA: $${Number(deal.ebitda ?? 0).toLocaleString()} CAD
-- Use of Funds: Not specified by the applicant.
+- Use of Funds: ${deal.use_of_funds?.trim() ? deal.use_of_funds : "Not specified by the applicant."}${collateralLine}${capTableLine}
 
 ${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}Return ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
 

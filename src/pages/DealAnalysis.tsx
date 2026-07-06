@@ -139,6 +139,8 @@ export default function DealAnalysis() {
   const [bubbleRect, setBubbleRect] = useState<DOMRect | null>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const [lang, setLang] = useState<"en" | "fr">("en");
+  const [capTable, setCapTable] = useState<any[]>([]);
+  const [collateral, setCollateral] = useState<any[]>([]);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900);
@@ -161,16 +163,20 @@ export default function DealAnalysis() {
     if (!dealId) return;
     (async () => {
       setLoading(true);
-      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }] = await Promise.all([
-        supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate,borrower_id").eq("id", dealId).single(),
+      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: cap }, { data: coll }] = await Promise.all([
+        supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,score_source").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
         supabase.from("users").select("id,role").eq("auth0_id", user?.sub ?? "").maybeSingle(),
+        supabase.from("cap_table_entries").select("holder_name,role,security_type,ownership_pct,notes").eq("deal_id", dealId).order("ownership_pct", { ascending: false }),
+        supabase.from("collateral_assets").select("asset_type,description,market_value,advance_rate,lending_value").eq("deal_id", dealId),
       ]);
       if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
       setCurrentUser(cu ?? null);
       setScore(s);
+      setCapTable(cap ?? []);
+      setCollateral(coll ?? []);
       const metricRows = (m as MetricRow[]) ?? [];
       setMetrics(metricRows);
 
@@ -449,6 +455,104 @@ export default function DealAnalysis() {
                   </ul>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Use of Funds ── */}
+        {deal?.use_of_funds && (
+          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 10 }}>Use of Funds</div>
+            <p style={{ fontSize: 14, color: NAVY, lineHeight: 1.7, margin: 0 }}>{deal.use_of_funds}</p>
+          </div>
+        )}
+
+        {/* ── Capitalization ── */}
+        {capTable.length > 0 && (
+          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 14 }}>Capitalization</div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #E8E2D9" }}>
+                    {["Holder", "Role", "Security", "Ownership %", "Notes"].map(h => (
+                      <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {capTable.map((row: any, i: number) => (
+                    <tr key={i} style={{ borderBottom: i < capTable.length - 1 ? "1px solid #E8E2D9" : "none" }}>
+                      <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{row.holder_name}</td>
+                      <td style={{ padding: "8px 10px", color: MUTED }}>{row.role}</td>
+                      <td style={{ padding: "8px 10px", color: MUTED }}>{row.security_type}</td>
+                      <td style={{ padding: "8px 10px", color: NAVY }}>{row.ownership_pct != null ? `${row.ownership_pct}%` : "—"}</td>
+                      <td style={{ padding: "8px 10px", color: MUTED, fontSize: 12 }}>{row.notes || "—"}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ borderTop: "2px solid #E8E2D9" }}>
+                    <td colSpan={3} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>Total</td>
+                    <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>
+                      {capTable.reduce((sum: number, r: any) => sum + (Number(r.ownership_pct) || 0), 0).toFixed(1)}%
+                    </td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── Collateral & Asset Coverage ── */}
+        {collateral.length > 0 && (
+          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24, marginBottom: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 14 }}>Collateral & Asset Coverage</div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #E8E2D9" }}>
+                    {["Asset", "Description", "Market Value", "Advance %", "Lending Value"].map(h => (
+                      <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {collateral.map((row: any, i: number) => (
+                    <tr key={i} style={{ borderBottom: i < collateral.length - 1 ? "1px solid #E8E2D9" : "none" }}>
+                      <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{row.asset_type}</td>
+                      <td style={{ padding: "8px 10px", color: MUTED, fontSize: 12 }}>{row.description || "—"}</td>
+                      <td style={{ padding: "8px 10px", color: NAVY }}>${Number(row.market_value || 0).toLocaleString()}</td>
+                      <td style={{ padding: "8px 10px", color: MUTED }}>{row.advance_rate}%</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>${Number(row.lending_value || 0).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                  {(() => {
+                    const sumMarket = collateral.reduce((s: number, r: any) => s + (Number(r.market_value) || 0), 0);
+                    const sumLending = collateral.reduce((s: number, r: any) => s + (Number(r.lending_value) || 0), 0);
+                    const existing = Number(deal?.existing_debt) || 0;
+                    const requested = Number(deal?.amount_requested) || 0;
+                    const totalDebt = existing + requested;
+                    const coverage = totalDebt > 0 ? sumLending / totalDebt : null;
+                    return (
+                      <>
+                        <tr style={{ borderTop: "2px solid #E8E2D9" }}>
+                          <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>Total</td>
+                          <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>${sumMarket.toLocaleString()}</td>
+                          <td></td>
+                          <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>${sumLending.toLocaleString()}</td>
+                        </tr>
+                        {coverage !== null && (
+                          <tr>
+                            <td colSpan={5} style={{ padding: "10px 10px 4px", fontSize: 12, color: MUTED }}>
+                              Lending value ${sumLending.toLocaleString()} ÷ total debt ${totalDebt.toLocaleString()} (existing ${existing.toLocaleString()} + requested ${requested.toLocaleString()}) = <strong style={{ color: NAVY }}>{coverage.toFixed(2)}x</strong>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })()}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
