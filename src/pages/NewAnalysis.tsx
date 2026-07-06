@@ -132,7 +132,7 @@ export default function NewAnalysis() {
         amount_requested: amount,
         term_months: parseInt(termMonths) || 60,
         interest_rate: parseFloat(interestRate) || 10,
-        status: "under_review",
+        status: "pending",
         deal_source: "lender_analysis",
         ...(province.trim() ? { province: province.trim() } : {}),
         ...(city.trim() ? { city: city.trim() } : {}),
