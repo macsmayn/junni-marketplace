@@ -20,28 +20,45 @@ const INDUSTRIES = [
   "Transportation & Logistics", "Wholesale & Distribution",
 ];
 
-const FIELDS: { key: string; label: string }[] = [
-  { key: "revenue",                   label: "Revenue" },
-  { key: "cogs",                      label: "Cost of Goods Sold" },
-  { key: "gross_profit",              label: "Gross Profit" },
-  { key: "operating_expenses",        label: "Operating Expenses" },
-  { key: "ebitda",                    label: "EBITDA" },
-  { key: "net_income",                label: "Net Income" },
-  { key: "total_assets",              label: "Total Assets" },
-  { key: "current_assets",            label: "Current Assets" },
-  { key: "total_liabilities",         label: "Total Liabilities" },
-  { key: "current_liabilities",       label: "Current Liabilities" },
-  { key: "total_debt",                label: "Total Debt" },
-  { key: "equity",                    label: "Equity" },
-  { key: "interest_expense",          label: "Interest Expense" },
-  { key: "cash",                      label: "Cash & Equivalents" },
-  { key: "inventory",                 label: "Inventory" },
-  { key: "accounts_receivable",       label: "Accounts Receivable" },
-  { key: "accounts_payable",          label: "Accounts Payable" },
-  { key: "capex",                     label: "Capital Expenditures (CapEx)" },
-  { key: "cfo",                       label: "Cash Flow from Operations" },
-  { key: "depreciation_amortization", label: "Depreciation & Amortization" },
+const FIELD_GROUPS: { label: string; fields: { key: string; label: string }[] }[] = [
+  {
+    label: "Income Statement",
+    fields: [
+      { key: "revenue",                   label: "Revenue" },
+      { key: "cogs",                      label: "Cost of Goods Sold" },
+      { key: "gross_profit",              label: "Gross Profit" },
+      { key: "operating_expenses",        label: "Operating Expenses" },
+      { key: "depreciation_amortization", label: "Depreciation & Amortization" },
+      { key: "ebitda",                    label: "EBITDA" },
+      { key: "interest_expense",          label: "Interest Expense" },
+      { key: "net_income",                label: "Net Income" },
+    ],
+  },
+  {
+    label: "Balance Sheet",
+    fields: [
+      { key: "cash",                label: "Cash & Equivalents" },
+      { key: "accounts_receivable", label: "Accounts Receivable" },
+      { key: "inventory",           label: "Inventory" },
+      { key: "current_assets",      label: "Current Assets" },
+      { key: "total_assets",        label: "Total Assets" },
+      { key: "accounts_payable",    label: "Accounts Payable" },
+      { key: "current_liabilities", label: "Current Liabilities" },
+      { key: "total_debt",          label: "Total Debt" },
+      { key: "total_liabilities",   label: "Total Liabilities" },
+      { key: "equity",              label: "Equity" },
+    ],
+  },
+  {
+    label: "Cash Flow Statement",
+    fields: [
+      { key: "cfo",   label: "Cash Flow from Operations" },
+      { key: "capex", label: "Capital Expenditures (CapEx)" },
+    ],
+  },
 ];
+
+const FIELDS = FIELD_GROUPS.flatMap(g => g.fields);
 
 function fmtNum(v: number | null | undefined): string {
   if (v === null || v === undefined) return "";
@@ -82,6 +99,7 @@ export default function NewAnalysis() {
   const [interestRate, setInterestRate] = useState("10");
   const [province, setProvince] = useState("");
   const [city, setCity] = useState("");
+  const [yearsInBusiness, setYearsInBusiness] = useState("");
   const [step1Error, setStep1Error] = useState("");
   const [step1Loading, setStep1Loading] = useState(false);
 
@@ -135,6 +153,7 @@ export default function NewAnalysis() {
         deal_source: "lender_analysis",
         ...(province.trim() ? { province: province.trim() } : {}),
         ...(city.trim() ? { city: city.trim() } : {}),
+        ...(yearsInBusiness.trim() ? { years_in_business: parseInt(yearsInBusiness) } : {}),
       })
       .select("id")
       .single();
@@ -288,9 +307,18 @@ export default function NewAnalysis() {
       }
     }
 
+    const mrEdits = edits[0] || {};
+    const mrRow = finRows[0];
+    const snapshotRevenue = parseNum(mrEdits["revenue"] ?? fmtNum(mrRow?.revenue));
+    const snapshotEbitda = parseNum(mrEdits["ebitda"] ?? fmtNum(mrRow?.ebitda));
+
     const { error: dealUpdateErr } = await supabase
       .from("deals")
-      .update({ financials_status: "confirmed" })
+      .update({
+        financials_status: "confirmed",
+        ...(snapshotRevenue !== null ? { annual_revenue: snapshotRevenue } : {}),
+        ...(snapshotEbitda !== null ? { ebitda: snapshotEbitda } : {}),
+      })
       .eq("id", dealId);
     if (dealUpdateErr) {
       setConfirmError(`Failed to confirm deal: ${dealUpdateErr.message}`);
@@ -484,14 +512,27 @@ export default function NewAnalysis() {
                 </div>
               </div>
 
-              <div>
-                <label style={labelStyle}>City</label>
-                <input
-                  style={inputStyle}
-                  placeholder="e.g. Toronto"
-                  value={city}
-                  onChange={e => setCity(e.target.value)}
-                />
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
+                <div>
+                  <label style={labelStyle}>City</label>
+                  <input
+                    style={inputStyle}
+                    placeholder="e.g. Toronto"
+                    value={city}
+                    onChange={e => setCity(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Years in Business</label>
+                  <input
+                    style={inputStyle}
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 12"
+                    value={yearsInBusiness}
+                    onChange={e => setYearsInBusiness(e.target.value)}
+                  />
+                </div>
               </div>
             </div>
 
@@ -659,51 +700,63 @@ export default function NewAnalysis() {
               All amounts in CAD. Leave a field blank if the figure does not apply.
             </p>
 
-            {finRows.map((row, rowIdx) => {
-              const isLastRow = (fIdx: number) =>
-                isMobile ? fIdx === FIELDS.length - 1 : fIdx >= FIELDS.length - 2;
-
-              return (
-                <div key={rowIdx} style={{
-                  background: "#fff", borderRadius: 12,
-                  border: `1px solid ${BORDER}`, marginBottom: 24,
-                  overflow: "hidden",
+            {finRows.map((row, rowIdx) => (
+              <div key={rowIdx} style={{
+                background: "#fff", borderRadius: 12,
+                border: `1px solid ${BORDER}`, marginBottom: 24,
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  padding: "14px 20px", background: NAVY, color: "#fff",
+                  display: "flex", alignItems: "center", gap: 10,
                 }}>
-                  <div style={{
-                    padding: "14px 20px", background: NAVY, color: "#fff",
-                    display: "flex", alignItems: "center", gap: 10,
-                  }}>
-                    <span style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 16 }}>
-                      FY{row.fiscal_year}
-                    </span>
-                    {rowIdx === 0 && (
-                      <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.65 }}>Most recent</span>
-                    )}
-                  </div>
-                  <div style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-                  }}>
-                    {FIELDS.map(({ key, label }, fIdx) => (
-                      <div key={key} style={{
-                        padding: "14px 18px",
-                        borderBottom: isLastRow(fIdx) ? "none" : `1px solid ${BORDER}`,
-                        borderRight: !isMobile && fIdx % 2 === 0 ? `1px solid ${BORDER}` : "none",
-                      }}>
-                        <label style={{ ...labelStyle, marginBottom: 5 }}>{label}</label>
-                        <input
-                          style={{ ...inputStyle, fontSize: 13, padding: "8px 10px" }}
-                          type="text"
-                          placeholder="—"
-                          value={edits[rowIdx]?.[key] ?? ""}
-                          onChange={e => setEdit(rowIdx, key, e.target.value)}
-                        />
-                      </div>
-                    ))}
-                  </div>
+                  <span style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 16 }}>
+                    FY{row.fiscal_year}
+                  </span>
+                  {rowIdx === 0 && (
+                    <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.65 }}>Most recent</span>
+                  )}
                 </div>
-              );
-            })}
+
+                {FIELD_GROUPS.map((group) => {
+                  const n = group.fields.length;
+                  return (
+                    <div key={group.label}>
+                      <div style={{
+                        padding: "9px 18px 5px",
+                        borderTop: `1px solid ${BORDER}`,
+                        fontSize: 10, fontWeight: 700,
+                        fontVariant: "small-caps", letterSpacing: "0.07em",
+                        textTransform: "uppercase", color: NAVY,
+                      }}>
+                        {group.label}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr" }}>
+                        {group.fields.map(({ key, label }, fIdx) => {
+                          const isLast = isMobile ? fIdx === n - 1 : fIdx >= n - 2;
+                          return (
+                            <div key={key} style={{
+                              padding: "12px 18px",
+                              borderBottom: isLast ? "none" : `1px solid ${BORDER}`,
+                              borderRight: !isMobile && fIdx % 2 === 0 ? `1px solid ${BORDER}` : "none",
+                            }}>
+                              <label style={{ ...labelStyle, marginBottom: 5 }}>{label}</label>
+                              <input
+                                style={{ ...inputStyle, fontSize: 13, padding: "8px 10px" }}
+                                type="text"
+                                placeholder="—"
+                                value={edits[rowIdx]?.[key] ?? ""}
+                                onChange={e => setEdit(rowIdx, key, e.target.value)}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
 
             {confirmError && (
               <div style={{
