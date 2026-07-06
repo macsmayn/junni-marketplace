@@ -9,7 +9,6 @@ const CREAM = "#FAF8F4";
 const RED = "#DC2626";
 const MUTED = "#7A7060";
 const BORDER = "#E8E2D9";
-const SCORE_DEAL_URL = "https://sypqecydiqdpruarkrvy.supabase.co/functions/v1/score-deal";
 
 const INDUSTRIES = [
   "Agriculture & Agri-Food", "Construction", "Education", "Energy",
@@ -118,7 +117,7 @@ export default function NewAnalysis() {
       .maybeSingle();
 
     if (userErr || !userData) {
-      setStep1Error("Could not verify your account. Please try again.");
+      setStep1Error(userErr ? `Account lookup failed: ${userErr.message}` : "Could not find your account. Please try again.");
       setStep1Loading(false);
       return;
     }
@@ -141,7 +140,7 @@ export default function NewAnalysis() {
       .single();
 
     if (dealErr || !dealData) {
-      setStep1Error("Failed to create analysis. Please try again.");
+      setStep1Error(dealErr ? `Failed to create analysis: ${dealErr.message}` : "Failed to create analysis. Please try again.");
       setStep1Loading(false);
       return;
     }
@@ -156,9 +155,13 @@ export default function NewAnalysis() {
   function processFiles(fileList: FileList | null) {
     if (!fileList) return;
     const selected = Array.from(fileList);
-    const nonPdf = selected.filter(f => f.type !== "application/pdf");
-    if (nonPdf.length > 0) {
-      setFileError("PDF only for now — Excel and Word support coming later.");
+    const allowed = ["pdf", "xlsx", "xls"];
+    const rejected = selected.filter(f => {
+      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+      return !allowed.includes(ext);
+    });
+    if (rejected.length > 0) {
+      setFileError(`PDF or Excel — Word not supported. Remove: ${rejected.map(f => f.name).join(", ")}`);
       return;
     }
     setFileError("");
@@ -176,7 +179,7 @@ export default function NewAnalysis() {
 
   // ── Step 2: extract ─────────────────────────────────────────────────
   async function handleExtract() {
-    if (files.length === 0) { setFileError("Upload at least one PDF."); return; }
+    if (files.length === 0) { setFileError("Upload at least one file."); return; }
     if (!dealId || !userId) return;
     setFileError("");
     setNoFinancials(false);
@@ -187,36 +190,48 @@ export default function NewAnalysis() {
       const { error: upErr } = await supabase.storage
         .from("documents")
         .upload(path, file, { contentType: file.type });
-      if (!upErr) {
-        await supabase.from("documents").insert({
-          deal_id: dealId,
-          uploaded_by: userId,
-          file_name: file.name,
-          file_type: file.type,
-          size_bytes: file.size,
-          storage_path: path,
-          doc_category: "Financial Statement",
-        });
+      if (upErr) {
+        setFileError(`Upload failed for ${file.name}: ${upErr.message}`);
+        setExtracting(false);
+        return;
+      }
+      const { error: docErr } = await supabase.from("documents").insert({
+        deal_id: dealId,
+        uploaded_by: userId,
+        file_name: file.name,
+        file_type: file.type,
+        size_bytes: file.size,
+        storage_path: path,
+        doc_category: "Financial Statement",
+      });
+      if (docErr) {
+        setFileError(`Failed to record document ${file.name}: ${docErr.message}`);
+        setExtracting(false);
+        return;
       }
     }
 
-    try {
-      await fetch(SCORE_DEAL_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deal_id: dealId }),
-      });
-    } catch {
-      // timeout or network error — proceed to check extracted rows
+    const { error: invokeErr } = await supabase.functions.invoke("score-deal", {
+      body: { deal_id: dealId },
+    });
+    if (invokeErr) {
+      setFileError(`Extraction failed: ${invokeErr.message}`);
+      setExtracting(false);
+      return;
     }
 
-    const { data: rows } = await supabase
+    const { data: rows, error: rowsErr } = await supabase
       .from("extracted_financials")
       .select("*")
       .eq("deal_id", dealId)
       .order("fiscal_year", { ascending: false });
 
     setExtracting(false);
+
+    if (rowsErr) {
+      setFileError(`Failed to load extracted data: ${rowsErr.message}`);
+      return;
+    }
 
     if (rows && rows.length > 0) {
       initStep3(rows);
@@ -264,25 +279,32 @@ export default function NewAnalysis() {
           .from("extracted_financials")
           .update({ ...values, borrower_confirmed: true })
           .eq("id", row.id);
-        if (error) { setConfirmError("Failed to save financials. Please try again."); setConfirming(false); return; }
+        if (error) { setConfirmError(`Failed to save FY${row.fiscal_year}: ${error.message}`); setConfirming(false); return; }
       } else {
         const { error } = await supabase
           .from("extracted_financials")
           .insert({ deal_id: dealId, fiscal_year: row.fiscal_year, ...values, borrower_confirmed: true });
-        if (error) { setConfirmError("Failed to save financials. Please try again."); setConfirming(false); return; }
+        if (error) { setConfirmError(`Failed to save FY${row.fiscal_year}: ${error.message}`); setConfirming(false); return; }
       }
     }
 
-    await supabase.from("deals").update({ financials_status: "confirmed" }).eq("id", dealId);
+    const { error: dealUpdateErr } = await supabase
+      .from("deals")
+      .update({ financials_status: "confirmed" })
+      .eq("id", dealId);
+    if (dealUpdateErr) {
+      setConfirmError(`Failed to confirm deal: ${dealUpdateErr.message}`);
+      setConfirming(false);
+      return;
+    }
 
-    try {
-      await fetch(SCORE_DEAL_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deal_id: dealId }),
-      });
-    } catch {
-      // scoring error — analysis page will reflect no score
+    const { error: scoreErr } = await supabase.functions.invoke("score-deal", {
+      body: { deal_id: dealId },
+    });
+    if (scoreErr) {
+      setConfirmError(`Scoring failed: ${scoreErr.message}`);
+      setConfirming(false);
+      return;
     }
 
     setLocation(`/analysis/${dealId}`);
@@ -523,7 +545,7 @@ export default function NewAnalysis() {
               <input
                 id="na-file-input"
                 type="file"
-                accept=".pdf"
+                accept=".pdf,.xlsx,.xls"
                 multiple
                 style={{ display: "none" }}
                 onChange={handleFileSelect}
@@ -533,7 +555,7 @@ export default function NewAnalysis() {
                 Click to upload or drag and drop
               </div>
               <div style={{ fontSize: 12, color: MUTED }}>
-                PDF only for now — Excel and Word support coming later
+                PDF or Excel — Word not supported
               </div>
             </div>
 
