@@ -231,7 +231,7 @@ export default function NewAnalysis() {
     }
 
     const { error: invokeErr } = await supabase.functions.invoke("score-deal", {
-      body: { deal_id: dealId },
+      body: { deal_id: dealId, extract_only: true },
     });
     if (invokeErr) {
       setFileError(`Extraction failed: ${invokeErr.message}`);

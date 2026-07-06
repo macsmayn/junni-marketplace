@@ -14,7 +14,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { deal_id } = await req.json();
+    const { deal_id, extract_only } = await req.json();
     if (!deal_id) {
       return new Response(JSON.stringify({ error: "deal_id is required" }), {
         status: 400,
@@ -342,6 +342,14 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
         }
       }
     }
+
+    if (extract_only) {
+      return new Response(
+        JSON.stringify({ extract_only: true, years_extracted: totalYearsExtracted }),
+        { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      );
+    }
+
     // ─────────────────────────────────────────────────────────────
     // PHASE 2c PART 1: Compute financial ratios, benchmark against
     // industry thresholds, store in computed_metrics.
@@ -1025,7 +1033,7 @@ DEAL DETAILS:
 - Target Interest Rate: ${deal.interest_rate ?? "N/A"}%
 - Annual Revenue: $${Number(deal.annual_revenue ?? 0).toLocaleString()} CAD
 - EBITDA: $${Number(deal.ebitda ?? 0).toLocaleString()} CAD
-- Use of Funds: ${deal.ai_summary ?? "Not specified"}
+- Use of Funds: Not specified by the applicant.
 
 ${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}Return ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
 
