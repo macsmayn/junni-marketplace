@@ -125,9 +125,10 @@ function DefContent({ def, lang }: { def: any; lang: "en" | "fr" }) {
 export default function DealAnalysis() {
   const { dealId } = useParams<{ dealId: string }>();
   const [, setLocation] = useLocation();
-  const { isAuthenticated, isLoading: auth0Loading } = useAuth0();
+  const { isAuthenticated, isLoading: auth0Loading, user } = useAuth0();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
   const [deal, setDeal] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null);
   const [score, setScore] = useState<any>(null);
   const [metrics, setMetrics] = useState<MetricRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,13 +161,15 @@ export default function DealAnalysis() {
     if (!dealId) return;
     (async () => {
       setLoading(true);
-      const [{ data: d }, { data: s, error: sErr }, { data: m }] = await Promise.all([
-        supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate").eq("id", dealId).single(),
+      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }] = await Promise.all([
+        supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate,borrower_id").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,score_source").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
+        supabase.from("users").select("id,role").eq("auth0_id", user?.sub ?? "").maybeSingle(),
       ]);
       if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
+      setCurrentUser(cu ?? null);
       setScore(s);
       const metricRows = (m as MetricRow[]) ?? [];
       setMetrics(metricRows);
@@ -184,7 +187,7 @@ export default function DealAnalysis() {
 
       setLoading(false);
     })();
-  }, [dealId]);
+  }, [dealId, user?.sub]);
 
   if (auth0Loading) return <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "Inter, sans-serif" }}>Loading…</div>;
   if (!isAuthenticated) { setLocation("/login"); return null; }
@@ -198,6 +201,22 @@ export default function DealAnalysis() {
   if (!deal) return (
     <div style={{ minHeight: "100vh", background: CREAM, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif", color: RED }}>
       Deal not found.
+    </div>
+  );
+
+  if (currentUser && currentUser.role !== "admin" && deal.borrower_id && deal.borrower_id !== currentUser.id) return (
+    <div style={{ minHeight: "100vh", background: CREAM, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif" }}>
+      <div style={{ textAlign: "center", padding: 40 }}>
+        <div style={{ fontSize: 32, marginBottom: 16 }}>🔒</div>
+        <div style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 22, color: NAVY, marginBottom: 8 }}>Not authorized</div>
+        <div style={{ color: MUTED, fontSize: 14, marginBottom: 24 }}>You don't have access to this analysis.</div>
+        <button
+          onClick={() => setLocation("/lender-dashboard")}
+          style={{ background: NAVY, color: "#fff", border: "none", borderRadius: 8, padding: "10px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
+        >
+          Back to dashboard
+        </button>
+      </div>
     </div>
   );
 

@@ -194,6 +194,7 @@ export default function Marketplace() {
             created_at
           `)
           .in('status', ['active', 'pending'])
+          .or('deal_source.is.null,deal_source.eq.marketplace')
           .order('created_at', { ascending: false });
 
         if (error) {

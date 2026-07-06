@@ -394,6 +394,7 @@ export default function LenderDashboard() {
               </button>
               {notifOpen && notifPanel}
             </div>
+            <button className="btn btn-gold nav-new" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
             <button className="btn btn-navy nav-new" onClick={() => setLocation('/marketplace')}>Browse Deals →</button>
           </div>
         </div>
@@ -682,6 +683,7 @@ export default function LenderDashboard() {
             </button>
             {notifOpen && notifPanel}
           </div>
+          <button className="d-btn d-btn-gold" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
           <button className="d-btn d-btn-navy" onClick={() => setLocation('/marketplace')}>Browse Deals →</button>
         </div>
       </div>
@@ -697,7 +699,7 @@ export default function LenderDashboard() {
           </div>
           <div className="d-welcome-actions">
             <button className="d-btn d-btn-ghost-white">View Portfolio</button>
-            <button className="d-btn d-btn-gold" onClick={() => setLocation('/marketplace')}>Browse Marketplace →</button>
+            <button className="d-btn d-btn-gold" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
           </div>
         </div>
 

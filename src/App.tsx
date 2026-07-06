@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
+import LenderRoute from "./components/LenderRoute";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import RoleSelect from "./pages/RoleSelect";
@@ -19,6 +20,7 @@ import LenderPortfolio from "./pages/LenderPortfolio";
 import FinancialReview from "./pages/FinancialReview";
 import AdminPanel from "./pages/AdminPanel";
 import DealAnalysis from "./pages/DealAnalysis";
+import NewAnalysis from "./pages/NewAnalysis";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import { supabase } from './lib/supabase'
@@ -69,10 +71,15 @@ function Router() {
           <AdminPanel />
         </AdminRoute>
       </Route>
+      <Route path={"/new-analysis"}>
+        <LenderRoute>
+          <NewAnalysis />
+        </LenderRoute>
+      </Route>
       <Route path={"/analysis/:dealId"}>
-        <ProtectedRoute>
+        <LenderRoute>
           <DealAnalysis />
-        </ProtectedRoute>
+        </LenderRoute>
       </Route>
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}

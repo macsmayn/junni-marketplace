@@ -1037,6 +1037,7 @@ export default function AdminPanel() {
     .a-btn-green { background: #059669; color: #fff; }
     .a-btn-red { background: #DC2626; color: #fff; }
     .a-btn-navy { background: var(--navy); color: #fff; }
+    .a-btn-gold { background: #D4940A; color: #fff; }
 
     .overlay { position: fixed; inset: 0; background: rgba(15,27,48,0.5); z-index: 400; opacity: 0; visibility: hidden; transition: opacity 0.22s; }
     .overlay.open { opacity: 1; visibility: visible; }
@@ -1101,6 +1102,7 @@ export default function AdminPanel() {
     .a-btn:hover { opacity: 0.85; }
     .a-btn-ghost { background: none; border: 1px solid var(--border); color: var(--navy); padding: 8px 14px; font-size: 12px; }
     .a-btn-navy { background: var(--navy); color: #fff; padding: 8px 14px; font-size: 12px; }
+    .a-btn-gold { background: #D4940A; color: #fff; padding: 8px 14px; font-size: 12px; }
     .a-btn-green { background: #059669; color: #fff; padding: 7px 12px; font-size: 11px; }
     .a-btn-red { background: #DC2626; color: #fff; padding: 7px 12px; font-size: 11px; }
 
@@ -1279,6 +1281,7 @@ export default function AdminPanel() {
         <div className="d-topbar-title">Admin Panel</div>
         <div className="d-topbar-right">
           <button className="a-btn a-btn-ghost" onClick={() => alert("Export Data")}>Export Data</button>
+          <button className="a-btn a-btn-gold" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
           <button className="a-btn a-btn-navy" onClick={() => alert("Platform Settings")}>Platform Settings</button>
         </div>
       </div>
