@@ -731,14 +731,13 @@ export default function NewAnalysis() {
                       }}>
                         {group.label}
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr" }}>
                         {group.fields.map(({ key, label }, fIdx) => {
-                          const isLast = isMobile ? fIdx === n - 1 : fIdx >= n - 2;
+                          const isLast = fIdx === n - 1;
                           return (
                             <div key={key} style={{
                               padding: "12px 18px",
                               borderBottom: isLast ? "none" : `1px solid ${BORDER}`,
-                              borderRight: !isMobile && fIdx % 2 === 0 ? `1px solid ${BORDER}` : "none",
                             }}>
                               <label style={{ ...labelStyle, marginBottom: 5 }}>{label}</label>
                               <input
