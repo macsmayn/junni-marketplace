@@ -351,8 +351,9 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
     }
 
     // Supplementary context for the scoring prompt
-    const [{ data: capTableRows }, { data: collateralRows }] = await Promise.all([
-      supabase.from("cap_table_entries").select("holder_name, ownership_pct").eq("deal_id", deal_id).order("ownership_pct", { ascending: false }),
+    const [{ data: suEntries }, { data: capItemsRows }, { data: collateralRows }] = await Promise.all([
+      supabase.from("sources_uses_entries").select("side, label, amount").eq("deal_id", deal_id).order("sort_order"),
+      supabase.from("capitalization_items").select("category, label, amount, rate").eq("deal_id", deal_id).order("sort_order"),
       supabase.from("collateral_assets").select("asset_type, market_value, advance_rate, lending_value").eq("deal_id", deal_id),
     ]);
 
@@ -364,10 +365,32 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
       collateralLine = `\n- Collateral offered: ${collateralRows.length} asset(s), lending value $${Math.round(totalLending).toLocaleString()} against total debt $${Math.round(totalDebt).toLocaleString()} — coverage ${coverage}x.`;
     }
 
-    let capTableLine = "";
-    if (capTableRows && capTableRows.length > 0) {
-      const top3 = (capTableRows as any[]).slice(0, 3).map((r: any) => `${r.holder_name} ${r.ownership_pct ?? "?"}%`).join(", ");
-      capTableLine = `\n- Ownership: ${top3}${capTableRows.length > 3 ? `, +${capTableRows.length - 3} more` : ""}, ${capTableRows.length} holder(s) total.`;
+    let sourcesUsesLine = "";
+    if (suEntries && suEntries.length > 0) {
+      const uses = (suEntries as any[]).filter((e: any) => e.side === "use");
+      const sources = (suEntries as any[]).filter((e: any) => e.side === "source");
+      const totalUses = uses.reduce((s: number, e: any) => s + Number(e.amount), 0);
+      const totalSources = sources.reduce((s: number, e: any) => s + Number(e.amount), 0);
+      const top3Uses = uses.slice(0, 3).map((e: any) => `${e.label} $${Math.round(Number(e.amount)).toLocaleString()}`).join("; ");
+      const srcList = sources.map((e: any) => `${e.label} $${Math.round(Number(e.amount)).toLocaleString()}`).join("; ");
+      const gap = Math.abs(totalUses - totalSources);
+      const balanceWarn = gap > 0 ? ` — WARNING: sources and uses do not balance (gap $${Math.round(gap).toLocaleString()})` : "";
+      sourcesUsesLine = `\n- Sources & Uses: uses total $${Math.round(totalUses).toLocaleString()} (${top3Uses}); sources total $${Math.round(totalSources).toLocaleString()} (${srcList})${balanceWarn}.`;
+    }
+
+    let capLine = "";
+    if (capItemsRows && capItemsRows.length > 0) {
+      const DEBT_CATS = ["Senior Debt", "Subordinated Debt", "Shareholder Loans"];
+      const debtRows = (capItemsRows as any[]).filter((r: any) => DEBT_CATS.includes(r.category));
+      const equityRows = (capItemsRows as any[]).filter((r: any) => !DEBT_CATS.includes(r.category));
+      const totalDebt = debtRows.reduce((s: number, r: any) => s + Number(r.amount), 0);
+      const totalEquity = equityRows.reduce((s: number, r: any) => s + Number(r.amount), 0);
+      const totalCap = totalDebt + totalEquity;
+      const ebitdaVal = Number(deal.ebitda);
+      const debtEbitda = ebitdaVal > 0 ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "n/m";
+      const debtPct = totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "0%";
+      const stack = (capItemsRows as any[]).map((r: any) => `${r.category} $${Math.round(Number(r.amount)).toLocaleString()}${r.rate ? ` @${r.rate}%` : ""}`).join(", ");
+      capLine = `\n- Pro-forma capitalization: total debt $${Math.round(totalDebt).toLocaleString()} across ${debtRows.length} tranche(s) (${debtEbitda} EBITDA, ${debtPct} of total cap), equity $${Math.round(totalEquity).toLocaleString()}. Stack: [${stack}]`;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -1053,7 +1076,7 @@ DEAL DETAILS:
 - Target Interest Rate: ${deal.interest_rate ?? "N/A"}%
 - Annual Revenue: $${Number(deal.annual_revenue ?? 0).toLocaleString()} CAD
 - EBITDA: $${Number(deal.ebitda ?? 0).toLocaleString()} CAD
-- Use of Funds: ${deal.use_of_funds?.trim() ? deal.use_of_funds : "Not specified by the applicant."}${collateralLine}${capTableLine}
+- Use of Funds: ${deal.use_of_funds?.trim() ? deal.use_of_funds : "Not specified by the applicant."}${collateralLine}${sourcesUsesLine}${capLine}
 
 ${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}Return ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
 

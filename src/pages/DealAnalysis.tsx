@@ -139,7 +139,8 @@ export default function DealAnalysis() {
   const [bubbleRect, setBubbleRect] = useState<DOMRect | null>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const [lang, setLang] = useState<"en" | "fr">("en");
-  const [capTable, setCapTable] = useState<any[]>([]);
+  const [sourcesUses, setSourcesUses] = useState<any[]>([]);
+  const [capItems, setCapItems] = useState<any[]>([]);
   const [collateral, setCollateral] = useState<any[]>([]);
 
   useEffect(() => {
@@ -163,19 +164,21 @@ export default function DealAnalysis() {
     if (!dealId) return;
     (async () => {
       setLoading(true);
-      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: cap }, { data: coll }] = await Promise.all([
-        supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt").eq("id", dealId).single(),
+      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }] = await Promise.all([
+        supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt,ebitda").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,score_source").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
         supabase.from("users").select("id,role").eq("auth0_id", user?.sub ?? "").maybeSingle(),
-        supabase.from("cap_table_entries").select("holder_name,role,security_type,ownership_pct,notes").eq("deal_id", dealId).order("ownership_pct", { ascending: false }),
+        supabase.from("sources_uses_entries").select("side,label,amount,sort_order").eq("deal_id", dealId).order("sort_order"),
+        supabase.from("capitalization_items").select("category,label,amount,rate,notes,sort_order").eq("deal_id", dealId).order("sort_order"),
         supabase.from("collateral_assets").select("asset_type,description,market_value,advance_rate,lending_value").eq("deal_id", dealId),
       ]);
       if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
       setCurrentUser(cu ?? null);
       setScore(s);
-      setCapTable(cap ?? []);
+      setSourcesUses(su ?? []);
+      setCapItems(ci ?? []);
       setCollateral(coll ?? []);
       const metricRows = (m as MetricRow[]) ?? [];
       setMetrics(metricRows);
@@ -459,49 +462,128 @@ export default function DealAnalysis() {
           </div>
         )}
 
-        {/* ── Use of Funds ── */}
-        {deal?.use_of_funds && (
+        {/* ── Sources & Uses (fallback: Use of Funds text) ── */}
+        {sourcesUses.length > 0 ? (
+          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 16 }}>Sources & Uses</div>
+            {(() => {
+              const uses = sourcesUses.filter((e: any) => e.side === "use");
+              const sources = sourcesUses.filter((e: any) => e.side === "source");
+              const totalUses = uses.reduce((s: number, e: any) => s + Number(e.amount), 0);
+              const totalSources = sources.reduce((s: number, e: any) => s + Number(e.amount), 0);
+              const gap = Math.abs(totalUses - totalSources);
+              return (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 24 }}>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>Uses</div>
+                      {uses.map((e: any, i: number) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < uses.length - 1 ? "1px solid #E8E2D9" : "none", fontSize: 13 }}>
+                          <span style={{ color: NAVY }}>{e.label}</span>
+                          <span style={{ color: NAVY, fontWeight: 500 }}>${Number(e.amount).toLocaleString()}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 0", marginTop: 4, fontSize: 13, fontWeight: 700, color: NAVY, borderTop: "2px solid #E8E2D9" }}>
+                        <span>Total Uses</span><span>${totalUses.toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>Sources</div>
+                      {sources.map((e: any, i: number) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < sources.length - 1 ? "1px solid #E8E2D9" : "none", fontSize: 13 }}>
+                          <span style={{ color: NAVY }}>{e.label}</span>
+                          <span style={{ color: NAVY, fontWeight: 500 }}>${Number(e.amount).toLocaleString()}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 0", marginTop: 4, fontSize: 13, fontWeight: 700, color: NAVY, borderTop: "2px solid #E8E2D9" }}>
+                        <span>Total Sources</span><span>${totalSources.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {gap > 0 && totalUses + totalSources > 0 && (
+                    <div style={{ marginTop: 14, fontSize: 12, fontWeight: 600, color: RED }}>Out of balance by ${gap.toLocaleString()}</div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        ) : deal?.use_of_funds ? (
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
             <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 10 }}>Use of Funds</div>
             <p style={{ fontSize: 14, color: NAVY, lineHeight: 1.7, margin: 0 }}>{deal.use_of_funds}</p>
           </div>
-        )}
+        ) : null}
 
         {/* ── Capitalization ── */}
-        {capTable.length > 0 && (
-          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 14 }}>Capitalization</div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid #E8E2D9" }}>
-                    {["Holder", "Role", "Security", "Ownership %", "Notes"].map(h => (
-                      <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {capTable.map((row: any, i: number) => (
-                    <tr key={i} style={{ borderBottom: i < capTable.length - 1 ? "1px solid #E8E2D9" : "none" }}>
-                      <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{row.holder_name}</td>
-                      <td style={{ padding: "8px 10px", color: MUTED }}>{row.role}</td>
-                      <td style={{ padding: "8px 10px", color: MUTED }}>{row.security_type}</td>
-                      <td style={{ padding: "8px 10px", color: NAVY }}>{row.ownership_pct != null ? `${row.ownership_pct}%` : "—"}</td>
-                      <td style={{ padding: "8px 10px", color: MUTED, fontSize: 12 }}>{row.notes || "—"}</td>
+        {capItems.length > 0 && (() => {
+          const DEBT_CATS = ["Senior Debt", "Subordinated Debt", "Shareholder Loans"];
+          const CAT_ORDER: Record<string, number> = { "Senior Debt": 0, "Subordinated Debt": 1, "Shareholder Loans": 2, "Preferred Equity": 3, "Common Equity": 4, "Other": 5 };
+          const sorted = [...capItems].sort((a: any, b: any) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99));
+          const totalCap = capItems.reduce((s: number, r: any) => s + Number(r.amount), 0);
+          const totalDebt = capItems.filter((r: any) => DEBT_CATS.includes(r.category)).reduce((s: number, r: any) => s + Number(r.amount), 0);
+          const totalEquity = totalCap - totalDebt;
+          const ebitdaVal = Number(deal?.ebitda);
+          const hasEbitda = ebitdaVal > 0;
+          let cumDebt = 0;
+          return (
+            <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 14 }}>Capitalization</div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #E8E2D9" }}>
+                      {["Instrument", "Category", "Amount", "% of Cap", ...(hasEbitda ? ["× EBITDA"] : [])].map(h => (
+                        <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                  <tr style={{ borderTop: "2px solid #E8E2D9" }}>
-                    <td colSpan={3} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>Total</td>
-                    <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>
-                      {capTable.reduce((sum: number, r: any) => sum + (Number(r.ownership_pct) || 0), 0).toFixed(1)}%
-                    </td>
-                    <td></td>
-                  </tr>
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {sorted.map((row: any, i: number) => {
+                      const amt = Number(row.amount);
+                      const pctCap = totalCap > 0 ? `${(amt / totalCap * 100).toFixed(1)}%` : "—";
+                      let xEbitda = "";
+                      if (hasEbitda && DEBT_CATS.includes(row.category)) { cumDebt += amt; xEbitda = `${(cumDebt / ebitdaVal).toFixed(2)}x`; }
+                      return (
+                        <tr key={i} style={{ borderBottom: i < sorted.length - 1 ? "1px solid #E8E2D9" : "none" }}>
+                          <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{row.label}</td>
+                          <td style={{ padding: "8px 10px", color: MUTED }}>{row.category}</td>
+                          <td style={{ padding: "8px 10px", color: NAVY }}>${amt.toLocaleString()}</td>
+                          <td style={{ padding: "8px 10px", color: MUTED }}>{pctCap}</td>
+                          {hasEbitda && <td style={{ padding: "8px 10px", color: xEbitda ? NAVY : MUTED }}>{xEbitda || "—"}</td>}
+                        </tr>
+                      );
+                    })}
+                    <tr style={{ borderTop: "2px solid #E8E2D9", background: "#FAFAF9" }}>
+                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>Total Debt</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>${totalDebt.toLocaleString()}</td>
+                      <td style={{ padding: "8px 10px", color: MUTED }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</td>
+                      {hasEbitda && <td style={{ padding: "8px 10px", fontWeight: 600, color: NAVY }}>{totalDebt > 0 ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "—"}</td>}
+                    </tr>
+                    <tr style={{ background: "#FAFAF9" }}>
+                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>Total Equity</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>${totalEquity.toLocaleString()}</td>
+                      <td style={{ padding: "8px 10px", color: MUTED }}>{totalCap > 0 ? `${(totalEquity / totalCap * 100).toFixed(1)}%` : "—"}</td>
+                      {hasEbitda && <td></td>}
+                    </tr>
+                    <tr style={{ borderTop: "2px solid #E8E2D9" }}>
+                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>Total Capitalization</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>${totalCap.toLocaleString()}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>100%</td>
+                      {hasEbitda && <td></td>}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop: 12, fontSize: 12, color: MUTED }}>
+                Debt / Total Capitalization: <strong style={{ color: NAVY }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</strong>
+                {hasEbitda && totalDebt > 0 && (
+                  <> · Total Debt / EBITDA: <strong style={{ color: NAVY }}>{(totalDebt / ebitdaVal).toFixed(2)}x</strong> <span style={{ opacity: 0.7 }}>(EBITDA ${ebitdaVal.toLocaleString()})</span></>
+                )}
+                {!hasEbitda && <span style={{ marginLeft: 8, opacity: 0.6 }}>EBITDA unavailable</span>}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ── Collateral & Asset Coverage ── */}
         {collateral.length > 0 && (

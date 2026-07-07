@@ -78,11 +78,16 @@ interface FinRow {
   [key: string]: any;
 }
 
-interface CapRow {
-  holder_name: string;
-  role: string;
-  security_type: string;
-  ownership_pct: string;
+interface SuRow {
+  label: string;
+  amount: string;
+}
+
+interface CapItemRow {
+  category: string;
+  label: string;
+  amount: string;
+  rate: string;
   notes: string;
 }
 
@@ -100,6 +105,13 @@ const COLLATERAL_DEFAULTS: Record<string, number> = {
   "Real Estate": 70,
   "Cash & Securities": 90,
   "Other": 25,
+};
+
+const CAP_CATEGORIES = ["Senior Debt", "Subordinated Debt", "Shareholder Loans", "Preferred Equity", "Common Equity", "Other"] as const;
+const DEBT_CATEGORIES: string[] = ["Senior Debt", "Subordinated Debt", "Shareholder Loans"];
+const CAP_CATEGORY_ORDER: Record<string, number> = {
+  "Senior Debt": 0, "Subordinated Debt": 1, "Shareholder Loans": 2,
+  "Preferred Equity": 3, "Common Equity": 4, "Other": 5,
 };
 
 export default function NewAnalysis() {
@@ -147,10 +159,17 @@ export default function NewAnalysis() {
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState("");
 
-  // Step 3 — cap table
-  const [capOpen, setCapOpen] = useState(false);
-  const [capRows, setCapRows] = useState<CapRow[]>([]);
-  const [capDraft, setCapDraft] = useState<CapRow>({ holder_name: "", role: "Founder", security_type: "Common", ownership_pct: "", notes: "" });
+  // Step 3 — Sources & Uses
+  const [suOpen, setSuOpen] = useState(false);
+  const [usesRows, setUsesRows] = useState<SuRow[]>([]);
+  const [sourcesRows, setSourcesRows] = useState<SuRow[]>([]);
+  const [usesDraft, setUsesDraft] = useState<SuRow>({ label: "", amount: "" });
+  const [sourcesDraft, setSourcesDraft] = useState<SuRow>({ label: "", amount: "" });
+
+  // Step 3 — Capitalization
+  const [capItemOpen, setCapItemOpen] = useState(false);
+  const [capItemRows, setCapItemRows] = useState<CapItemRow[]>([]);
+  const [capItemDraft, setCapItemDraft] = useState<CapItemRow>({ category: "Senior Debt", label: "", amount: "", rate: "", notes: "" });
 
   // Step 3 — collateral
   const [collOpen, setCollOpen] = useState(false);
@@ -313,6 +332,10 @@ export default function NewAnalysis() {
       FIELDS.forEach(({ key }) => { initEdits[i][key] = fmtNum(r[key]); });
     });
     setEdits(initEdits);
+    // Prefill Sources & Uses and Capitalization on first entry only
+    const amt = fmtNum(parseNum(amountRequested) ?? 0);
+    setSourcesRows(prev => prev.length > 0 ? prev : [{ label: "New loan facility (this request)", amount: amt }]);
+    setCapItemRows(prev => prev.length > 0 ? prev : [{ category: "Senior Debt", label: "New facility (this request)", amount: amt, rate: "", notes: "" }]);
     setStep(3);
   }
 
@@ -366,20 +389,37 @@ export default function NewAnalysis() {
       return;
     }
 
-    // Cap table: delete then re-insert
-    const { error: capDelErr } = await supabase.from("cap_table_entries").delete().eq("deal_id", dealId);
-    if (capDelErr) { setConfirmError(`Failed to save cap table: ${capDelErr.message}`); setConfirming(false); return; }
-    const capInsert = capRows.filter(r => r.holder_name.trim()).map(r => ({
+    // Sources & Uses: delete then re-insert
+    const { error: suDelErr } = await supabase.from("sources_uses_entries").delete().eq("deal_id", dealId);
+    if (suDelErr) { setConfirmError(`Failed to save Sources & Uses: ${suDelErr.message}`); setConfirming(false); return; }
+    const suInsert: any[] = [
+      ...usesRows.filter(r => r.label.trim() && r.amount.trim()).map((r, i) => ({
+        deal_id: dealId, side: "use", label: r.label.trim(), amount: parseNum(r.amount) ?? 0, sort_order: i,
+      })),
+      ...sourcesRows.filter(r => r.label.trim() && r.amount.trim()).map((r, i) => ({
+        deal_id: dealId, side: "source", label: r.label.trim(), amount: parseNum(r.amount) ?? 0, sort_order: i,
+      })),
+    ];
+    if (suInsert.length > 0) {
+      const { error: suInsErr } = await supabase.from("sources_uses_entries").insert(suInsert);
+      if (suInsErr) { setConfirmError(`Failed to insert Sources & Uses: ${suInsErr.message}`); setConfirming(false); return; }
+    }
+
+    // Capitalization items: delete then re-insert
+    const { error: ciDelErr } = await supabase.from("capitalization_items").delete().eq("deal_id", dealId);
+    if (ciDelErr) { setConfirmError(`Failed to save capitalization: ${ciDelErr.message}`); setConfirming(false); return; }
+    const ciInsert = capItemRows.filter(r => r.label.trim() && r.amount.trim()).map((r, i) => ({
       deal_id: dealId,
-      holder_name: r.holder_name.trim(),
-      role: r.role,
-      security_type: r.security_type,
-      ownership_pct: parseNum(r.ownership_pct),
+      category: r.category,
+      label: r.label.trim(),
+      amount: parseNum(r.amount) ?? 0,
+      rate: r.rate.trim() ? parseFloat(r.rate) : null,
       notes: r.notes.trim() || null,
+      sort_order: i,
     }));
-    if (capInsert.length > 0) {
-      const { error: capInsErr } = await supabase.from("cap_table_entries").insert(capInsert);
-      if (capInsErr) { setConfirmError(`Failed to insert cap table: ${capInsErr.message}`); setConfirming(false); return; }
+    if (ciInsert.length > 0) {
+      const { error: ciInsErr } = await supabase.from("capitalization_items").insert(ciInsert);
+      if (ciInsErr) { setConfirmError(`Failed to insert capitalization: ${ciInsErr.message}`); setConfirming(false); return; }
     }
 
     // Collateral: delete then re-insert
@@ -414,10 +454,22 @@ export default function NewAnalysis() {
     setLocation(`/analysis/${dealId}`);
   }
 
-  function addCapRow() {
-    if (!capDraft.holder_name.trim()) return;
-    setCapRows(prev => [...prev, { ...capDraft }]);
-    setCapDraft({ holder_name: "", role: "Founder", security_type: "Common", ownership_pct: "", notes: "" });
+  function addUsesRow() {
+    if (!usesDraft.label.trim()) return;
+    setUsesRows(prev => [...prev, { ...usesDraft }]);
+    setUsesDraft({ label: "", amount: "" });
+  }
+
+  function addSourcesRow() {
+    if (!sourcesDraft.label.trim()) return;
+    setSourcesRows(prev => [...prev, { ...sourcesDraft }]);
+    setSourcesDraft({ label: "", amount: "" });
+  }
+
+  function addCapItemRow() {
+    if (!capItemDraft.label.trim()) return;
+    setCapItemRows(prev => [...prev, { ...capItemDraft }]);
+    setCapItemDraft({ category: "Senior Debt", label: "", amount: "", rate: "", notes: "" });
   }
 
   function addCollRow() {
@@ -866,97 +918,218 @@ export default function NewAnalysis() {
               </div>
             ))}
 
-            {/* ─── Capitalization Table (optional) ─── */}
+            {/* ─── Sources & Uses (optional) ─── */}
             <div style={{ marginTop: 32 }}>
               <button
                 type="button"
-                style={{
-                  width: "100%", display: "flex", alignItems: "center",
-                  justifyContent: "space-between", padding: "14px 18px",
-                  background: "#fff", border: `1px solid ${BORDER}`,
-                  borderRadius: capOpen ? "12px 12px 0 0" : 12,
-                  cursor: "pointer", textAlign: "left",
-                }}
-                onClick={() => setCapOpen(o => !o)}
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", background: "#fff", border: `1px solid ${BORDER}`, borderRadius: suOpen ? "12px 12px 0 0" : 12, cursor: "pointer", textAlign: "left" }}
+                onClick={() => setSuOpen(o => !o)}
               >
                 <span>
-                  <span style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 15, color: NAVY }}>Capitalization Table </span>
+                  <span style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 15, color: NAVY }}>Sources & Uses </span>
                   <span style={{ fontSize: 12, color: MUTED, fontFamily: "Inter, sans-serif" }}>(optional)</span>
                 </span>
-                <span style={{ color: MUTED, fontSize: 11, transform: capOpen ? "rotate(180deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▼</span>
+                <span style={{ color: MUTED, fontSize: 11, transform: suOpen ? "rotate(180deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▼</span>
               </button>
-              {capOpen && (
+              {suOpen && (
                 <div style={{ border: `1px solid ${BORDER}`, borderTop: "none", borderRadius: "0 0 12px 12px", background: "#fff" }}>
-                  {capRows.length > 0 && (
-                    <div style={{ overflowX: "auto" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "2fr 100px 120px 70px 2fr 32px", minWidth: 560, padding: "8px 18px", borderBottom: `1px solid ${BORDER}` }}>
-                        {["Holder", "Role", "Security", "%", "Notes", ""].map((h, i) => (
-                          <span key={i} style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, padding: "0 4px" }}>{h}</span>
+                  {/* Uses */}
+                  <div style={{ padding: "16px 18px", borderBottom: `1px solid ${BORDER}` }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>Uses of Funds</div>
+                    {usesRows.length > 0 && (
+                      <div style={{ marginBottom: 10 }}>
+                        {usesRows.map((row, i) => (
+                          <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr auto 32px", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                            <span style={{ fontSize: 13, color: NAVY }}>{row.label}</span>
+                            <span style={{ fontSize: 13, color: NAVY, fontWeight: 500, whiteSpace: "nowrap" }}>${fmtNum(parseNum(row.amount) ?? 0)}</span>
+                            <button type="button" onClick={() => setUsesRows(prev => prev.filter((_, j) => j !== i))}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
+                          </div>
                         ))}
                       </div>
-                      {capRows.map((row, i) => (
-                        <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 100px 120px 70px 2fr 32px", minWidth: 560, padding: "10px 18px", borderBottom: `1px solid ${BORDER}`, alignItems: "center" }}>
-                          <span style={{ fontSize: 13, color: NAVY, fontWeight: 500, padding: "0 4px" }}>{row.holder_name}</span>
-                          <span style={{ fontSize: 13, color: MUTED, padding: "0 4px" }}>{row.role}</span>
-                          <span style={{ fontSize: 13, color: MUTED, padding: "0 4px" }}>{row.security_type}</span>
-                          <span style={{ fontSize: 13, color: NAVY, padding: "0 4px" }}>{row.ownership_pct ? `${row.ownership_pct}%` : "—"}</span>
-                          <span style={{ fontSize: 12, color: MUTED, padding: "0 4px" }}>{row.notes || "—"}</span>
-                          <button type="button" onClick={() => setCapRows(prev => prev.filter((_, j) => j !== i))}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, padding: 0, lineHeight: 1, alignSelf: "center" }}>×</button>
+                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: 8, alignItems: "end" }}>
+                      <div>
+                        <label style={labelStyle}>Item</label>
+                        <input style={inputStyle} placeholder="e.g. Equipment purchase" value={usesDraft.label}
+                          onChange={e => setUsesDraft(p => ({ ...p, label: e.target.value }))} />
+                      </div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={labelStyle}>Amount ($)</label>
+                          <input style={inputStyle} placeholder="e.g. 1,200,000" value={usesDraft.amount}
+                            onChange={e => setUsesDraft(p => ({ ...p, amount: e.target.value }))} />
                         </div>
-                      ))}
-                      {(() => {
-                        const total = capRows.reduce((s, r) => s + (parseFloat(r.ownership_pct) || 0), 0);
-                        const over = total > 100;
-                        return (
-                          <div style={{ padding: "8px 18px", display: "flex", justifyContent: "flex-end", gap: 8, fontSize: 12, borderBottom: `1px solid ${BORDER}` }}>
-                            <span style={{ color: MUTED }}>Total ownership:</span>
-                            <span style={{ fontWeight: 700, color: over ? RED : NAVY }}>{total.toFixed(1)}%{over ? " — exceeds 100%" : ""}</span>
-                          </div>
-                        );
-                      })()}
+                        <button type="button" style={{ ...btnNavy, padding: "10px 16px", fontSize: 13, whiteSpace: "nowrap" }} onClick={addUsesRow}>+ Add</button>
+                      </div>
                     </div>
-                  )}
-                  <div style={{ padding: "16px 18px" }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Add holder</div>
+                  </div>
+                  {/* Sources */}
+                  <div style={{ padding: "16px 18px", borderBottom: `1px solid ${BORDER}` }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>Sources of Funds</div>
+                    {sourcesRows.length > 0 && (
+                      <div style={{ marginBottom: 10 }}>
+                        {sourcesRows.map((row, i) => (
+                          <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr auto 32px", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                            <span style={{ fontSize: 13, color: NAVY }}>{row.label}</span>
+                            <span style={{ fontSize: 13, color: NAVY, fontWeight: 500, whiteSpace: "nowrap" }}>${fmtNum(parseNum(row.amount) ?? 0)}</span>
+                            <button type="button" onClick={() => setSourcesRows(prev => prev.filter((_, j) => j !== i))}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: 8, alignItems: "end" }}>
+                      <div>
+                        <label style={labelStyle}>Item</label>
+                        <input style={inputStyle} placeholder="e.g. New loan facility" value={sourcesDraft.label}
+                          onChange={e => setSourcesDraft(p => ({ ...p, label: e.target.value }))} />
+                      </div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={labelStyle}>Amount ($)</label>
+                          <input style={inputStyle} placeholder="e.g. 1,500,000" value={sourcesDraft.amount}
+                            onChange={e => setSourcesDraft(p => ({ ...p, amount: e.target.value }))} />
+                        </div>
+                        <button type="button" style={{ ...btnNavy, padding: "10px 16px", fontSize: 13, whiteSpace: "nowrap" }} onClick={addSourcesRow}>+ Add</button>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Footer */}
+                  {(usesRows.length > 0 || sourcesRows.length > 0) && (() => {
+                    const totalUses = usesRows.reduce((s, r) => s + (parseNum(r.amount) ?? 0), 0);
+                    const totalSources = sourcesRows.reduce((s, r) => s + (parseNum(r.amount) ?? 0), 0);
+                    const gap = Math.abs(totalUses - totalSources);
+                    return (
+                      <div style={{ padding: "12px 18px", fontSize: 12 }}>
+                        <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+                          <span style={{ color: MUTED }}>Total Uses: <strong style={{ color: NAVY }}>${fmtNum(totalUses)}</strong></span>
+                          <span style={{ color: MUTED }}>Total Sources: <strong style={{ color: NAVY }}>${fmtNum(totalSources)}</strong></span>
+                        </div>
+                        {gap > 0 && totalUses + totalSources > 0 && (
+                          <div style={{ color: RED, fontWeight: 600, marginTop: 6 }}>Out of balance by ${fmtNum(gap)}</div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* ─── Capitalization (optional) ─── */}
+            <div style={{ marginTop: 16 }}>
+              <button
+                type="button"
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", background: "#fff", border: `1px solid ${BORDER}`, borderRadius: capItemOpen ? "12px 12px 0 0" : 12, cursor: "pointer", textAlign: "left" }}
+                onClick={() => setCapItemOpen(o => !o)}
+              >
+                <span>
+                  <span style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 15, color: NAVY }}>Capitalization </span>
+                  <span style={{ fontSize: 12, color: MUTED, fontFamily: "Inter, sans-serif" }}>(optional)</span>
+                </span>
+                <span style={{ color: MUTED, fontSize: 11, transform: capItemOpen ? "rotate(180deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▼</span>
+              </button>
+              {capItemOpen && (
+                <div style={{ border: `1px solid ${BORDER}`, borderTop: "none", borderRadius: "0 0 12px 12px", background: "#fff" }}>
+                  {capItemRows.length > 0 && (() => {
+                    const sortedRows = [...capItemRows].map((r, i) => ({ ...r, origIdx: i }))
+                      .sort((a, b) => (CAP_CATEGORY_ORDER[a.category] ?? 99) - (CAP_CATEGORY_ORDER[b.category] ?? 99));
+                    const totalCap = capItemRows.reduce((s, r) => s + (parseNum(r.amount) ?? 0), 0);
+                    const ebitdaStr = edits[0]?.["ebitda"] ?? fmtNum(finRows[0]?.ebitda);
+                    const ebitdaVal = parseNum(ebitdaStr ?? "");
+                    const hasEbitda = ebitdaVal !== null && ebitdaVal > 0;
+                    const totalDebt = capItemRows.filter(r => DEBT_CATEGORIES.includes(r.category)).reduce((s, r) => s + (parseNum(r.amount) ?? 0), 0);
+                    const totalEquity = capItemRows.filter(r => !DEBT_CATEGORIES.includes(r.category)).reduce((s, r) => s + (parseNum(r.amount) ?? 0), 0);
+                    let cumDebt = 0;
+                    return (
+                      <div style={{ overflowX: "auto" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "2fr 150px 120px 70px 90px 32px", minWidth: 600, padding: "8px 18px", borderBottom: `1px solid ${BORDER}` }}>
+                          {["Instrument", "Category", "Amount", "% Cap", "× EBITDA", ""].map((h, i) => (
+                            <span key={i} style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, padding: "0 4px" }}>{h}</span>
+                          ))}
+                        </div>
+                        {sortedRows.map((row) => {
+                          const amt = parseNum(row.amount) ?? 0;
+                          const pctCap = totalCap > 0 ? `${(amt / totalCap * 100).toFixed(1)}%` : "—";
+                          let xEbitda = "—";
+                          if (DEBT_CATEGORIES.includes(row.category)) {
+                            cumDebt += amt;
+                            xEbitda = hasEbitda ? `${(cumDebt / ebitdaVal!).toFixed(2)}x` : "n/m";
+                          }
+                          return (
+                            <div key={row.origIdx} style={{ display: "grid", gridTemplateColumns: "2fr 150px 120px 70px 90px 32px", minWidth: 600, padding: "10px 18px", borderBottom: `1px solid ${BORDER}`, alignItems: "center" }}>
+                              <span style={{ fontSize: 13, color: NAVY, fontWeight: 500, padding: "0 4px" }}>{row.label}</span>
+                              <span style={{ fontSize: 12, color: MUTED, padding: "0 4px" }}>{row.category}</span>
+                              <span style={{ fontSize: 13, color: NAVY, padding: "0 4px" }}>${fmtNum(amt)}</span>
+                              <span style={{ fontSize: 13, color: MUTED, padding: "0 4px" }}>{pctCap}</span>
+                              <span style={{ fontSize: 13, color: DEBT_CATEGORIES.includes(row.category) && hasEbitda ? NAVY : MUTED, padding: "0 4px" }}>{xEbitda}</span>
+                              <button type="button" onClick={() => setCapItemRows(prev => prev.filter((_, j) => j !== row.origIdx))}
+                                style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, padding: 0, lineHeight: 1, alignSelf: "center" }}>×</button>
+                            </div>
+                          );
+                        })}
+                        <div style={{ display: "grid", gridTemplateColumns: "2fr 150px 120px 70px 90px 32px", minWidth: 600, padding: "8px 18px", borderTop: `2px solid ${BORDER}`, background: "#FAFAF9" }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: MUTED, padding: "0 4px", gridColumn: "1 / 3" }}>Total Debt</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>${fmtNum(totalDebt)}</span>
+                          <span style={{ fontSize: 13, color: MUTED, padding: "0 4px" }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</span>
+                          <span style={{ fontSize: 13, color: NAVY, padding: "0 4px" }}>{hasEbitda ? `${(totalDebt / ebitdaVal!).toFixed(2)}x` : totalDebt > 0 ? "n/m" : "—"}</span>
+                          <span></span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "2fr 150px 120px 70px 90px 32px", minWidth: 600, padding: "8px 18px", borderBottom: `2px solid ${BORDER}`, background: "#FAFAF9" }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: MUTED, padding: "0 4px", gridColumn: "1 / 3" }}>Total Equity</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>${fmtNum(totalEquity)}</span>
+                          <span style={{ fontSize: 13, color: MUTED, padding: "0 4px" }}>{totalCap > 0 ? `${(totalEquity / totalCap * 100).toFixed(1)}%` : "—"}</span>
+                          <span></span><span></span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "2fr 150px 120px 70px 90px 32px", minWidth: 600, padding: "8px 18px" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: NAVY, padding: "0 4px", gridColumn: "1 / 3" }}>Total Capitalization</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>${fmtNum(totalCap)}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>100%</span>
+                          <span></span><span></span>
+                        </div>
+                        <div style={{ padding: "8px 18px 12px", fontSize: 12, color: MUTED }}>
+                          Debt / Total Capitalization: <strong style={{ color: NAVY }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</strong>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {/* Add-row form */}
+                  <div style={{ padding: "16px 18px", borderTop: capItemRows.length > 0 ? `1px solid ${BORDER}` : "none" }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Add instrument</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
                         <div>
-                          <label style={labelStyle}>Holder name</label>
-                          <input style={inputStyle} placeholder="e.g. Jane Smith" value={capDraft.holder_name}
-                            onChange={e => setCapDraft(p => ({ ...p, holder_name: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label style={labelStyle}>Ownership %</label>
-                          <input style={inputStyle} type="number" min="0" max="100" step="0.1" placeholder="e.g. 40"
-                            value={capDraft.ownership_pct}
-                            onChange={e => setCapDraft(p => ({ ...p, ownership_pct: e.target.value }))} />
-                        </div>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
-                        <div>
-                          <label style={labelStyle}>Role</label>
-                          <select style={inputStyle} value={capDraft.role}
-                            onChange={e => setCapDraft(p => ({ ...p, role: e.target.value }))}>
-                            {["Founder", "Investor", "Employee pool", "Other"].map(r => <option key={r}>{r}</option>)}
+                          <label style={labelStyle}>Category</label>
+                          <select style={inputStyle} value={capItemDraft.category}
+                            onChange={e => setCapItemDraft(p => ({ ...p, category: e.target.value }))}>
+                            {CAP_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                           </select>
                         </div>
                         <div>
-                          <label style={labelStyle}>Security type</label>
-                          <select style={inputStyle} value={capDraft.security_type}
-                            onChange={e => setCapDraft(p => ({ ...p, security_type: e.target.value }))}>
-                            {["Common", "Preferred", "Options", "SAFE", "Convertible", "Debt", "Other"].map(s => <option key={s}>{s}</option>)}
-                          </select>
+                          <label style={labelStyle}>Instrument / Label</label>
+                          <input style={inputStyle} placeholder="e.g. Term loan — RBC" value={capItemDraft.label}
+                            onChange={e => setCapItemDraft(p => ({ ...p, label: e.target.value }))} />
                         </div>
                       </div>
-                      <div>
-                        <label style={labelStyle}>Notes</label>
-                        <input style={inputStyle} placeholder="e.g. 4-year vest, 1-year cliff…"
-                          value={capDraft.notes}
-                          onChange={e => setCapDraft(p => ({ ...p, notes: e.target.value }))} />
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 8 }}>
+                        <div>
+                          <label style={labelStyle}>Amount ($)</label>
+                          <input style={inputStyle} placeholder="e.g. 2,000,000" value={capItemDraft.amount}
+                            onChange={e => setCapItemDraft(p => ({ ...p, amount: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Rate % (optional)</label>
+                          <input style={inputStyle} type="number" step="0.1" placeholder="e.g. 8.5" value={capItemDraft.rate}
+                            onChange={e => setCapItemDraft(p => ({ ...p, rate: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Notes (optional)</label>
+                          <input style={inputStyle} placeholder="e.g. 5-year term" value={capItemDraft.notes}
+                            onChange={e => setCapItemDraft(p => ({ ...p, notes: e.target.value }))} />
+                        </div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                        <button type="button" style={{ ...btnNavy, padding: "8px 18px", fontSize: 13 }} onClick={addCapRow}>+ Add holder</button>
+                        <button type="button" style={{ ...btnNavy, padding: "8px 18px", fontSize: 13 }} onClick={addCapItemRow}>+ Add instrument</button>
                       </div>
                     </div>
                   </div>
