@@ -152,6 +152,12 @@ export default function NewAnalysis() {
   // Step 1 — additional optional fields
   const [existingDebt, setExistingDebt] = useState("");
   const [useOfFunds, setUseOfFunds] = useState("");
+  const [revolverLimit, setRevolverLimit] = useState("");
+  const [revolverDrawn, setRevolverDrawn] = useState("");
+  const [enterpriseValue, setEnterpriseValue] = useState("");
+
+  // Step 3 — Capitalization cash override
+  const [capCash, setCapCash] = useState("");
 
   // Step 3
   const [finRows, setFinRows] = useState<FinRow[]>([]);
@@ -213,6 +219,9 @@ export default function NewAnalysis() {
         ...(yearsInBusiness.trim() ? { years_in_business: parseInt(yearsInBusiness) } : {}),
         ...(existingDebt.trim() ? { existing_debt: parseNum(existingDebt) } : {}),
         ...(useOfFunds.trim() ? { use_of_funds: useOfFunds.trim() } : {}),
+        ...(revolverLimit.trim() ? { revolver_limit: parseNum(revolverLimit) } : {}),
+        ...(revolverDrawn.trim() ? { revolver_drawn: parseNum(revolverDrawn) } : {}),
+        ...(enterpriseValue.trim() ? { enterprise_value: parseNum(enterpriseValue) } : {}),
       })
       .select("id")
       .single();
@@ -336,6 +345,8 @@ export default function NewAnalysis() {
     const amt = fmtNum(parseNum(amountRequested) ?? 0);
     setSourcesRows(prev => prev.length > 0 ? prev : [{ label: "New loan facility (this request)", amount: amt }]);
     setCapItemRows(prev => prev.length > 0 ? prev : [{ category: "Senior Debt", label: "New facility (this request)", amount: amt, rate: "", notes: "" }]);
+    // Prefill capCash from most-recent FY confirmed value (first row = most recent)
+    setCapCash(prev => prev !== "" ? prev : (edits[0]?.["cash"] ?? fmtNum(rows[0]?.cash) ?? ""));
     setStep(3);
   }
 
@@ -695,6 +706,38 @@ export default function NewAnalysis() {
                   onChange={e => setUseOfFunds(e.target.value)}
                 />
               </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
+                <div>
+                  <label style={labelStyle}>Authorized Revolver Limit ($)</label>
+                  <input
+                    style={inputStyle}
+                    placeholder="e.g. 1,000,000"
+                    value={revolverLimit}
+                    onChange={e => setRevolverLimit(e.target.value)}
+                  />
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Include the new facility if revolving</div>
+                </div>
+                <div>
+                  <label style={labelStyle}>Revolver Currently Drawn ($)</label>
+                  <input
+                    style={inputStyle}
+                    placeholder="e.g. 400,000"
+                    value={revolverDrawn}
+                    onChange={e => setRevolverDrawn(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Enterprise Value ($, if known)</label>
+                <input
+                  style={inputStyle}
+                  placeholder="e.g. 12,000,000"
+                  value={enterpriseValue}
+                  onChange={e => setEnterpriseValue(e.target.value)}
+                />
+              </div>
             </div>
 
             {step1Error && (
@@ -1031,6 +1074,16 @@ export default function NewAnalysis() {
               </button>
               {capItemOpen && (
                 <div style={{ border: `1px solid ${BORDER}`, borderTop: "none", borderRadius: "0 0 12px 12px", background: "#fff" }}>
+                  {/* Cash input — always shown when open */}
+                  <div style={{ padding: "14px 18px", borderBottom: `1px solid ${BORDER}`, display: "flex", alignItems: "center", gap: 16 }}>
+                    <label style={{ ...labelStyle, marginBottom: 0, whiteSpace: "nowrap" }}>Cash & Equivalents ($)</label>
+                    <input
+                      style={{ ...inputStyle, maxWidth: 200 }}
+                      placeholder="from financials or override"
+                      value={capCash}
+                      onChange={e => setCapCash(e.target.value)}
+                    />
+                  </div>
                   {capItemRows.length > 0 && (() => {
                     const sortedRows = [...capItemRows].map((r, i) => ({ ...r, origIdx: i }))
                       .sort((a, b) => (CAP_CATEGORY_ORDER[a.category] ?? 99) - (CAP_CATEGORY_ORDER[b.category] ?? 99));
@@ -1039,7 +1092,16 @@ export default function NewAnalysis() {
                     const ebitdaVal = parseNum(ebitdaStr ?? "");
                     const hasEbitda = ebitdaVal !== null && ebitdaVal > 0;
                     const totalDebt = capItemRows.filter(r => DEBT_CATEGORIES.includes(r.category)).reduce((s, r) => s + (parseNum(r.amount) ?? 0), 0);
+                    const seniorDebt = capItemRows.filter(r => r.category === "Senior Debt").reduce((s, r) => s + (parseNum(r.amount) ?? 0), 0);
                     const totalEquity = capItemRows.filter(r => !DEBT_CATEGORIES.includes(r.category)).reduce((s, r) => s + (parseNum(r.amount) ?? 0), 0);
+                    const cashVal = parseNum(capCash) ?? 0;
+                    const netDebt = totalDebt - cashVal;
+                    const rl = parseNum(revolverLimit);
+                    const rd = parseNum(revolverDrawn);
+                    const hasRevolver = rl !== null;
+                    const availLiquidity = cashVal + (hasRevolver ? (rl! - (rd ?? 0)) : 0);
+                    const evProvided = parseNum(enterpriseValue);
+                    const evProxy = totalCap - cashVal;
                     let cumDebt = 0;
                     return (
                       <div style={{ overflowX: "auto" }}>
@@ -1087,8 +1149,25 @@ export default function NewAnalysis() {
                           <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>100%</span>
                           <span></span><span></span>
                         </div>
-                        <div style={{ padding: "8px 18px 12px", fontSize: 12, color: MUTED }}>
-                          Debt / Total Capitalization: <strong style={{ color: NAVY }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</strong>
+                        {/* Metrics panel */}
+                        <div style={{ padding: "14px 18px", borderTop: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 8 }}>
+                          {[
+                            { label: "Senior Debt / EBITDA", value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal!).toFixed(2)}x` : "n/m" },
+                            { label: "Total Debt / EBITDA", value: hasEbitda ? `${(totalDebt / ebitdaVal!).toFixed(2)}x` : "n/m" },
+                            { label: "Net Debt / EBITDA", value: hasEbitda ? `${(netDebt / ebitdaVal!).toFixed(2)}x` : "n/m" },
+                            ...(hasRevolver ? [{ label: "Authorized Revolver Limit", value: `$${fmtNum(rl)}` }] : []),
+                            { label: `Available Liquidity${!hasRevolver ? " (cash only — no revolver data)" : ""}`, value: `$${fmtNum(availLiquidity)}` },
+                            { label: evProvided !== null ? "EV (provided)" : "EV (proxy: total cap net of cash)", value: `$${fmtNum(evProvided !== null ? evProvided : evProxy)}` },
+                          ].map(({ label, value }) => (
+                            <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                              <span style={{ color: MUTED }}>{label}</span>
+                              <span style={{ fontWeight: 600, color: NAVY }}>{value}</span>
+                            </div>
+                          ))}
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                            <span style={{ color: MUTED }}>Debt / Total Capitalization</span>
+                            <span style={{ fontWeight: 600, color: NAVY }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</span>
+                          </div>
                         </div>
                       </div>
                     );

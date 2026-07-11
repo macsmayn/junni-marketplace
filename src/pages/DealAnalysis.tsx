@@ -142,6 +142,7 @@ export default function DealAnalysis() {
   const [sourcesUses, setSourcesUses] = useState<any[]>([]);
   const [capItems, setCapItems] = useState<any[]>([]);
   const [collateral, setCollateral] = useState<any[]>([]);
+  const [confirmedCash, setConfirmedCash] = useState<number | null>(null);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900);
@@ -164,14 +165,15 @@ export default function DealAnalysis() {
     if (!dealId) return;
     (async () => {
       setLoading(true);
-      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }] = await Promise.all([
-        supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt,ebitda").eq("id", dealId).single(),
+      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }] = await Promise.all([
+        supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,score_source").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
         supabase.from("users").select("id,role").eq("auth0_id", user?.sub ?? "").maybeSingle(),
         supabase.from("sources_uses_entries").select("side,label,amount,sort_order").eq("deal_id", dealId).order("sort_order"),
         supabase.from("capitalization_items").select("category,label,amount,rate,notes,sort_order").eq("deal_id", dealId).order("sort_order"),
         supabase.from("collateral_assets").select("asset_type,description,market_value,advance_rate,lending_value").eq("deal_id", dealId),
+        supabase.from("extracted_financials").select("cash").eq("deal_id", dealId).eq("borrower_confirmed", true).order("fiscal_year", { ascending: false }).limit(1).maybeSingle(),
       ]);
       if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
@@ -180,6 +182,7 @@ export default function DealAnalysis() {
       setSourcesUses(su ?? []);
       setCapItems(ci ?? []);
       setCollateral(coll ?? []);
+      setConfirmedCash(finMR?.cash ?? null);
       const metricRows = (m as MetricRow[]) ?? [];
       setMetrics(metricRows);
 
@@ -521,9 +524,18 @@ export default function DealAnalysis() {
           const sorted = [...capItems].sort((a: any, b: any) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99));
           const totalCap = capItems.reduce((s: number, r: any) => s + Number(r.amount), 0);
           const totalDebt = capItems.filter((r: any) => DEBT_CATS.includes(r.category)).reduce((s: number, r: any) => s + Number(r.amount), 0);
+          const seniorDebt = capItems.filter((r: any) => r.category === "Senior Debt").reduce((s: number, r: any) => s + Number(r.amount), 0);
           const totalEquity = totalCap - totalDebt;
           const ebitdaVal = Number(deal?.ebitda);
           const hasEbitda = ebitdaVal > 0;
+          const cashVal = Number(confirmedCash) || 0;
+          const netDebt = totalDebt - cashVal;
+          const rl = deal?.revolver_limit != null ? Number(deal.revolver_limit) : null;
+          const rd = deal?.revolver_drawn != null ? Number(deal.revolver_drawn) : null;
+          const hasRevolver = rl !== null;
+          const availLiquidity = cashVal + (hasRevolver ? (rl! - (rd ?? 0)) : 0);
+          const evProvided = deal?.enterprise_value != null ? Number(deal.enterprise_value) : null;
+          const evProxy = totalCap - cashVal;
           let cumDebt = 0;
           return (
             <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
@@ -574,12 +586,23 @@ export default function DealAnalysis() {
                   </tbody>
                 </table>
               </div>
-              <div style={{ marginTop: 12, fontSize: 12, color: MUTED }}>
-                Debt / Total Capitalization: <strong style={{ color: NAVY }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</strong>
-                {hasEbitda && totalDebt > 0 && (
-                  <> · Total Debt / EBITDA: <strong style={{ color: NAVY }}>{(totalDebt / ebitdaVal).toFixed(2)}x</strong> <span style={{ opacity: 0.7 }}>(EBITDA ${ebitdaVal.toLocaleString()})</span></>
-                )}
-                {!hasEbitda && <span style={{ marginLeft: 8, opacity: 0.6 }}>EBITDA unavailable</span>}
+              <div style={{ marginTop: 16, borderTop: "1px solid #E8E2D9", paddingTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+                {[
+                  { label: "Senior Debt / EBITDA", value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
+                  { label: "Total Debt / EBITDA", value: hasEbitda ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
+                  { label: "Net Debt / EBITDA", value: hasEbitda ? `${(netDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
+                  ...(hasRevolver ? [{ label: "Authorized Revolver Limit", value: `$${rl!.toLocaleString()}` }] : []),
+                  { label: `Available Liquidity${!hasRevolver ? " (cash only — no revolver data)" : ""}`, value: `$${availLiquidity.toLocaleString()}` },
+                  { label: evProvided !== null ? "EV (provided)" : "EV (proxy: total cap net of cash)", value: `$${(evProvided !== null ? evProvided : evProxy).toLocaleString()}` },
+                  { label: "Debt / Total Capitalization", value: totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—" },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                    <span style={{ color: MUTED }}>{label}</span>
+                    <span style={{ fontWeight: 600, color: NAVY }}>{value}</span>
+                  </div>
+                ))}
+                {!hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>EBITDA unavailable — leverage multiples shown as n/m</div>}
+                {hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7 }}>EBITDA ${ebitdaVal.toLocaleString()}{cashVal > 0 ? ` · Cash $${cashVal.toLocaleString()}` : ""}</div>}
               </div>
             </div>
           );

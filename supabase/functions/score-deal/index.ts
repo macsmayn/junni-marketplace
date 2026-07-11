@@ -32,7 +32,7 @@ Deno.serve(async (req: Request) => {
     const { data: deal, error: dealError } = await supabase
       .from("deals")
       .select(
-        "title, industry, amount_requested, term_months, interest_rate, annual_revenue, ebitda, years_in_business, province, ai_summary, financials_status, existing_debt, existing_debt_service, use_of_funds"
+        "title, industry, amount_requested, term_months, interest_rate, annual_revenue, ebitda, years_in_business, province, ai_summary, financials_status, existing_debt, existing_debt_service, use_of_funds, revolver_limit, revolver_drawn, enterprise_value"
       )
       .eq("id", deal_id)
       .single();
@@ -351,10 +351,11 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
     }
 
     // Supplementary context for the scoring prompt
-    const [{ data: suEntries }, { data: capItemsRows }, { data: collateralRows }] = await Promise.all([
+    const [{ data: suEntries }, { data: capItemsRows }, { data: collateralRows }, { data: mrFin }] = await Promise.all([
       supabase.from("sources_uses_entries").select("side, label, amount").eq("deal_id", deal_id).order("sort_order"),
       supabase.from("capitalization_items").select("category, label, amount, rate").eq("deal_id", deal_id).order("sort_order"),
       supabase.from("collateral_assets").select("asset_type, market_value, advance_rate, lending_value").eq("deal_id", deal_id),
+      supabase.from("extracted_financials").select("cash").eq("deal_id", deal_id).eq("borrower_confirmed", true).order("fiscal_year", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
     let collateralLine = "";
@@ -382,15 +383,25 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
     if (capItemsRows && capItemsRows.length > 0) {
       const DEBT_CATS = ["Senior Debt", "Subordinated Debt", "Shareholder Loans"];
       const debtRows = (capItemsRows as any[]).filter((r: any) => DEBT_CATS.includes(r.category));
+      const seniorRows = (capItemsRows as any[]).filter((r: any) => r.category === "Senior Debt");
       const equityRows = (capItemsRows as any[]).filter((r: any) => !DEBT_CATS.includes(r.category));
       const totalDebt = debtRows.reduce((s: number, r: any) => s + Number(r.amount), 0);
+      const seniorDebt = seniorRows.reduce((s: number, r: any) => s + Number(r.amount), 0);
       const totalEquity = equityRows.reduce((s: number, r: any) => s + Number(r.amount), 0);
       const totalCap = totalDebt + totalEquity;
       const ebitdaVal = Number(deal.ebitda);
-      const debtEbitda = ebitdaVal > 0 ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "n/m";
+      const hasEbitda = ebitdaVal > 0;
+      const cashVal = Number((mrFin as any)?.cash) || 0;
+      const netDebt = totalDebt - cashVal;
+      const rl = deal.revolver_limit != null ? Number(deal.revolver_limit) : null;
+      const rd = deal.revolver_drawn != null ? Number(deal.revolver_drawn) : null;
+      const availLiquidity = cashVal + (rl !== null ? (rl - (rd ?? 0)) : 0);
+      const debtEbitda = hasEbitda ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "n/m";
+      const seniorEbitda = hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal).toFixed(2)}x` : "n/m";
+      const netDebtEbitda = hasEbitda ? `${(netDebt / ebitdaVal).toFixed(2)}x` : "n/m";
       const debtPct = totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "0%";
       const stack = (capItemsRows as any[]).map((r: any) => `${r.category} $${Math.round(Number(r.amount)).toLocaleString()}${r.rate ? ` @${r.rate}%` : ""}`).join(", ");
-      capLine = `\n- Pro-forma capitalization: total debt $${Math.round(totalDebt).toLocaleString()} across ${debtRows.length} tranche(s) (${debtEbitda} EBITDA, ${debtPct} of total cap), equity $${Math.round(totalEquity).toLocaleString()}. Stack: [${stack}]`;
+      capLine = `\n- Pro-forma capitalization: total debt $${Math.round(totalDebt).toLocaleString()} across ${debtRows.length} tranche(s) (${debtPct} of total cap), equity $${Math.round(totalEquity).toLocaleString()}. Stack: [${stack}]. Senior Debt/EBITDA: ${seniorEbitda}. Total Debt/EBITDA: ${debtEbitda}. Net Debt/EBITDA: ${netDebtEbitda} (Net Debt = $${Math.round(netDebt).toLocaleString()}). Available liquidity: $${Math.round(availLiquidity).toLocaleString()}${rl !== null ? ` (cash $${Math.round(cashVal).toLocaleString()} + revolver availability $${Math.round(rl - (rd ?? 0)).toLocaleString()})` : " (cash only)"}.`;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -1076,7 +1087,7 @@ DEAL DETAILS:
 - Target Interest Rate: ${deal.interest_rate ?? "N/A"}%
 - Annual Revenue: $${Number(deal.annual_revenue ?? 0).toLocaleString()} CAD
 - EBITDA: $${Number(deal.ebitda ?? 0).toLocaleString()} CAD
-- Use of Funds: ${deal.use_of_funds?.trim() ? deal.use_of_funds : "Not specified by the applicant."}${collateralLine}${sourcesUsesLine}${capLine}
+- Use of Funds: ${deal.use_of_funds?.trim() ? deal.use_of_funds : "Not specified by the applicant."}${collateralLine}${sourcesUsesLine || capLine ? `\n\nIMPORTANT FRAMING NOTE: The capitalization and sources-&-uses figures below are LENDER-ENTERED PRO-FORMA deal structure for the proposed transaction. They are NOT from the borrower's historical statements and are EXPECTED to differ from the computed historical ratios. Do NOT treat differences between pro-forma capitalization and historical computed leverage as a discrepancy, red flag, or reconciliation item. Do NOT flag the requested loan amount differing from total sources & uses as an inconsistency — a facility may fund only part of a transaction.` : ""}${sourcesUsesLine}${capLine}
 
 ${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}Return ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
 
