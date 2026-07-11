@@ -593,14 +593,21 @@ export default function DealAnalysis() {
                   { label: "Net Debt / EBITDA", value: hasEbitda ? `${(netDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
                   ...(hasRevolver ? [{ label: "Authorized Revolver Limit", value: `$${rl!.toLocaleString()}` }] : []),
                   { label: `Available Liquidity${!hasRevolver ? " (cash only — no revolver data)" : ""}`, value: `$${availLiquidity.toLocaleString()}` },
-                  { label: evProvided !== null ? "EV (provided)" : "EV (proxy: total cap net of cash)", value: `$${(evProvided !== null ? evProvided : evProxy).toLocaleString()}` },
+                  (() => {
+                    if (evProvided !== null) return { label: "EV (provided)", value: `$${evProvided.toLocaleString()}` };
+                    if (totalEquity > 0 && evProxy > 0) return { label: "EV (proxy: total cap net of cash)", value: `$${evProxy.toLocaleString()}` };
+                    return { label: "EV (proxy: total cap net of cash)", value: "n/m", hint: "(add equity to capitalization for EV)" };
+                  })(),
                   { label: "Debt / Total Capitalization", value: totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—" },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                    <span style={{ color: MUTED }}>{label}</span>
+                ].map(({ label, value, hint }: { label: string; value: string; hint?: string }) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, alignItems: "baseline" }}>
+                    <span style={{ color: MUTED }}>{label}{hint ? <span style={{ opacity: 0.65, marginLeft: 6, fontSize: 11 }}>{hint}</span> : null}</span>
                     <span style={{ fontWeight: 600, color: NAVY }}>{value}</span>
                   </div>
                 ))}
+                {totalEquity === 0 && (
+                  <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>No equity entered — Debt/Cap and EV reflect a debt-only capitalization.</div>
+                )}
                 {!hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>EBITDA unavailable — leverage multiples shown as n/m</div>}
                 {hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7 }}>EBITDA ${ebitdaVal.toLocaleString()}{cashVal > 0 ? ` · Cash $${cashVal.toLocaleString()}` : ""}</div>}
               </div>

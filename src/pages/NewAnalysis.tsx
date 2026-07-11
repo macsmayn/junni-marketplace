@@ -982,9 +982,17 @@ export default function NewAnalysis() {
                     {usesRows.length > 0 && (
                       <div style={{ marginBottom: 10 }}>
                         {usesRows.map((row, i) => (
-                          <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr auto 32px", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                            <span style={{ fontSize: 13, color: NAVY }}>{row.label}</span>
-                            <span style={{ fontSize: 13, color: NAVY, fontWeight: 500, whiteSpace: "nowrap" }}>${fmtNum(parseNum(row.amount) ?? 0)}</span>
+                          <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 160px 32px", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                            <input
+                              style={{ ...inputStyle, fontSize: 13, padding: "6px 10px" }}
+                              value={row.label}
+                              onChange={e => setUsesRows(prev => prev.map((r, j) => j === i ? { ...r, label: e.target.value } : r))}
+                            />
+                            <input
+                              style={{ ...inputStyle, fontSize: 13, padding: "6px 10px" }}
+                              value={row.amount}
+                              onChange={e => setUsesRows(prev => prev.map((r, j) => j === i ? { ...r, amount: e.target.value } : r))}
+                            />
                             <button type="button" onClick={() => setUsesRows(prev => prev.filter((_, j) => j !== i))}
                               style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
                           </div>
@@ -1013,9 +1021,17 @@ export default function NewAnalysis() {
                     {sourcesRows.length > 0 && (
                       <div style={{ marginBottom: 10 }}>
                         {sourcesRows.map((row, i) => (
-                          <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr auto 32px", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                            <span style={{ fontSize: 13, color: NAVY }}>{row.label}</span>
-                            <span style={{ fontSize: 13, color: NAVY, fontWeight: 500, whiteSpace: "nowrap" }}>${fmtNum(parseNum(row.amount) ?? 0)}</span>
+                          <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 160px 32px", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                            <input
+                              style={{ ...inputStyle, fontSize: 13, padding: "6px 10px" }}
+                              value={row.label}
+                              onChange={e => setSourcesRows(prev => prev.map((r, j) => j === i ? { ...r, label: e.target.value } : r))}
+                            />
+                            <input
+                              style={{ ...inputStyle, fontSize: 13, padding: "6px 10px" }}
+                              value={row.amount}
+                              onChange={e => setSourcesRows(prev => prev.map((r, j) => j === i ? { ...r, amount: e.target.value } : r))}
+                            />
                             <button type="button" onClick={() => setSourcesRows(prev => prev.filter((_, j) => j !== i))}
                               style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, padding: 0, lineHeight: 1 }}>×</button>
                           </div>
@@ -1119,10 +1135,24 @@ export default function NewAnalysis() {
                             xEbitda = hasEbitda ? `${(cumDebt / ebitdaVal!).toFixed(2)}x` : "n/m";
                           }
                           return (
-                            <div key={row.origIdx} style={{ display: "grid", gridTemplateColumns: "2fr 150px 120px 70px 90px 32px", minWidth: 600, padding: "10px 18px", borderBottom: `1px solid ${BORDER}`, alignItems: "center" }}>
-                              <span style={{ fontSize: 13, color: NAVY, fontWeight: 500, padding: "0 4px" }}>{row.label}</span>
-                              <span style={{ fontSize: 12, color: MUTED, padding: "0 4px" }}>{row.category}</span>
-                              <span style={{ fontSize: 13, color: NAVY, padding: "0 4px" }}>${fmtNum(amt)}</span>
+                            <div key={row.origIdx} style={{ display: "grid", gridTemplateColumns: "2fr 150px 120px 70px 90px 32px", minWidth: 600, padding: "6px 18px", borderBottom: `1px solid ${BORDER}`, alignItems: "center", gap: 4 }}>
+                              <input
+                                style={{ ...inputStyle, fontSize: 13, padding: "5px 8px" }}
+                                value={row.label}
+                                onChange={e => setCapItemRows(prev => prev.map((r, j) => j === row.origIdx ? { ...r, label: e.target.value } : r))}
+                              />
+                              <select
+                                style={{ ...inputStyle, fontSize: 12, padding: "5px 6px" }}
+                                value={row.category}
+                                onChange={e => setCapItemRows(prev => prev.map((r, j) => j === row.origIdx ? { ...r, category: e.target.value } : r))}
+                              >
+                                {CAP_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                              </select>
+                              <input
+                                style={{ ...inputStyle, fontSize: 13, padding: "5px 8px" }}
+                                value={row.amount}
+                                onChange={e => setCapItemRows(prev => prev.map((r, j) => j === row.origIdx ? { ...r, amount: e.target.value } : r))}
+                              />
                               <span style={{ fontSize: 13, color: MUTED, padding: "0 4px" }}>{pctCap}</span>
                               <span style={{ fontSize: 13, color: DEBT_CATEGORIES.includes(row.category) && hasEbitda ? NAVY : MUTED, padding: "0 4px" }}>{xEbitda}</span>
                               <button type="button" onClick={() => setCapItemRows(prev => prev.filter((_, j) => j !== row.origIdx))}
@@ -1157,10 +1187,14 @@ export default function NewAnalysis() {
                             { label: "Net Debt / EBITDA", value: hasEbitda ? `${(netDebt / ebitdaVal!).toFixed(2)}x` : "n/m" },
                             ...(hasRevolver ? [{ label: "Authorized Revolver Limit", value: `$${fmtNum(rl)}` }] : []),
                             { label: `Available Liquidity${!hasRevolver ? " (cash only — no revolver data)" : ""}`, value: `$${fmtNum(availLiquidity)}` },
-                            { label: evProvided !== null ? "EV (provided)" : "EV (proxy: total cap net of cash)", value: `$${fmtNum(evProvided !== null ? evProvided : evProxy)}` },
-                          ].map(({ label, value }) => (
-                            <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                              <span style={{ color: MUTED }}>{label}</span>
+                            (() => {
+                              if (evProvided !== null) return { label: "EV (provided)", value: `$${fmtNum(evProvided)}` };
+                              if (totalEquity > 0 && evProxy > 0) return { label: "EV (proxy: total cap net of cash)", value: `$${fmtNum(evProxy)}` };
+                              return { label: "EV (proxy: total cap net of cash)", value: "n/m", hint: "(add equity to capitalization for EV)" };
+                            })(),
+                          ].map(({ label, value, hint }: { label: string; value: string; hint?: string }) => (
+                            <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, alignItems: "baseline" }}>
+                              <span style={{ color: MUTED }}>{label}{hint ? <span style={{ opacity: 0.65, marginLeft: 6, fontSize: 11 }}>{hint}</span> : null}</span>
                               <span style={{ fontWeight: 600, color: NAVY }}>{value}</span>
                             </div>
                           ))}
@@ -1168,6 +1202,9 @@ export default function NewAnalysis() {
                             <span style={{ color: MUTED }}>Debt / Total Capitalization</span>
                             <span style={{ fontWeight: 600, color: NAVY }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</span>
                           </div>
+                          {totalEquity === 0 && (
+                            <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>No equity entered — Debt/Cap and EV reflect a debt-only capitalization.</div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1249,11 +1286,33 @@ export default function NewAnalysis() {
                         const ar = parseFloat(row.advance_rate) || 0;
                         const lv = mv * ar / 100;
                         return (
-                          <div key={i} style={{ display: "grid", gridTemplateColumns: "140px 2fr 120px 80px 120px 32px", minWidth: 580, padding: "10px 18px", borderBottom: `1px solid ${BORDER}`, alignItems: "center" }}>
-                            <span style={{ fontSize: 13, color: NAVY, fontWeight: 500, padding: "0 4px" }}>{row.asset_type}</span>
-                            <span style={{ fontSize: 12, color: MUTED, padding: "0 4px" }}>{row.description || "—"}</span>
-                            <span style={{ fontSize: 13, color: NAVY, padding: "0 4px" }}>${fmtNum(mv)}</span>
-                            <span style={{ fontSize: 13, color: MUTED, padding: "0 4px" }}>{row.advance_rate}%</span>
+                          <div key={i} style={{ display: "grid", gridTemplateColumns: "140px 2fr 120px 80px 120px 32px", minWidth: 580, padding: "6px 18px", borderBottom: `1px solid ${BORDER}`, alignItems: "center", gap: 4 }}>
+                            <select
+                              style={{ ...inputStyle, fontSize: 12, padding: "5px 6px" }}
+                              value={row.asset_type}
+                              onChange={e => {
+                                const type = e.target.value;
+                                setCollRows(prev => prev.map((r, j) => j === i ? { ...r, asset_type: type, advance_rate: String(COLLATERAL_DEFAULTS[type] ?? 25) } : r));
+                              }}
+                            >
+                              {Object.keys(COLLATERAL_DEFAULTS).map(t => <option key={t}>{t}</option>)}
+                            </select>
+                            <input
+                              style={{ ...inputStyle, fontSize: 12, padding: "5px 8px" }}
+                              value={row.description}
+                              onChange={e => setCollRows(prev => prev.map((r, j) => j === i ? { ...r, description: e.target.value } : r))}
+                            />
+                            <input
+                              style={{ ...inputStyle, fontSize: 13, padding: "5px 8px" }}
+                              value={row.market_value}
+                              onChange={e => setCollRows(prev => prev.map((r, j) => j === i ? { ...r, market_value: e.target.value } : r))}
+                            />
+                            <input
+                              style={{ ...inputStyle, fontSize: 13, padding: "5px 8px" }}
+                              type="number" min="0" max="100" step="1"
+                              value={row.advance_rate}
+                              onChange={e => setCollRows(prev => prev.map((r, j) => j === i ? { ...r, advance_rate: e.target.value } : r))}
+                            />
                             <span style={{ fontSize: 13, color: NAVY, fontWeight: 500, padding: "0 4px" }}>${fmtNum(lv)}</span>
                             <button type="button" onClick={() => setCollRows(prev => prev.filter((_, j) => j !== i))}
                               style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, padding: 0, lineHeight: 1, alignSelf: "center" }}>×</button>
