@@ -138,6 +138,10 @@ export default function NewAnalysis() {
   const [yearsInBusiness, setYearsInBusiness] = useState("");
   const [step1Error, setStep1Error] = useState("");
   const [step1Loading, setStep1Loading] = useState(false);
+  const [step1FieldErrors, setStep1FieldErrors] = useState<Set<string>>(new Set());
+
+  // Draft add-button errors: field key → error message
+  const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
 
   // After step 1
   const [dealId, setDealId] = useState<string | null>(null);
@@ -185,10 +189,16 @@ export default function NewAnalysis() {
   // ── Step 1 ──────────────────────────────────────────────────────────
   async function handleStep1() {
     setStep1Error("");
-    if (!companyName.trim()) { setStep1Error("Company name is required."); return; }
-    if (!industry) { setStep1Error("Industry is required."); return; }
+    const missing = new Set<string>();
+    if (!companyName.trim()) missing.add("companyName");
+    if (!industry) missing.add("industry");
     const amount = parseNum(amountRequested);
-    if (!amount || amount <= 0) { setStep1Error("A valid loan amount is required."); return; }
+    if (!amount || amount <= 0) missing.add("amountRequested");
+    if (missing.size > 0) {
+      setStep1FieldErrors(missing);
+      return;
+    }
+    setStep1FieldErrors(new Set());
 
     setStep1Loading(true);
     const { data: userData, error: userErr } = await supabase
@@ -466,25 +476,29 @@ export default function NewAnalysis() {
   }
 
   function addUsesRow() {
-    if (!usesDraft.label.trim()) return;
+    if (!usesDraft.label.trim()) { setDraftErrors(p => ({ ...p, usesLabel: "Enter a label first" })); return; }
+    setDraftErrors(p => { const n = { ...p }; delete n.usesLabel; return n; });
     setUsesRows(prev => [...prev, { ...usesDraft }]);
     setUsesDraft({ label: "", amount: "" });
   }
 
   function addSourcesRow() {
-    if (!sourcesDraft.label.trim()) return;
+    if (!sourcesDraft.label.trim()) { setDraftErrors(p => ({ ...p, sourcesLabel: "Enter a label first" })); return; }
+    setDraftErrors(p => { const n = { ...p }; delete n.sourcesLabel; return n; });
     setSourcesRows(prev => [...prev, { ...sourcesDraft }]);
     setSourcesDraft({ label: "", amount: "" });
   }
 
   function addCapItemRow() {
-    if (!capItemDraft.label.trim()) return;
+    if (!capItemDraft.label.trim()) { setDraftErrors(p => ({ ...p, capLabel: "Enter a label first" })); return; }
+    setDraftErrors(p => { const n = { ...p }; delete n.capLabel; return n; });
     setCapItemRows(prev => [...prev, { ...capItemDraft }]);
     setCapItemDraft({ category: "Senior Debt", label: "", amount: "", rate: "", notes: "" });
   }
 
   function addCollRow() {
-    if (!collDraft.market_value.trim()) return;
+    if (!collDraft.market_value.trim()) { setDraftErrors(p => ({ ...p, collMarketValue: "Enter a market value first" })); return; }
+    setDraftErrors(p => { const n = { ...p }; delete n.collMarketValue; return n; });
     setCollRows(prev => [...prev, { ...collDraft }]);
     setCollDraft({ asset_type: "Accounts Receivable", description: "", market_value: "", advance_rate: "75" });
   }
@@ -604,30 +618,37 @@ export default function NewAnalysis() {
               <div>
                 <label style={labelStyle}>Company Name *</label>
                 <input
-                  style={inputStyle}
+                  style={{ ...inputStyle, ...(step1FieldErrors.has("companyName") ? { borderColor: RED } : {}) }}
                   placeholder="e.g. Acme Manufacturing Inc."
                   value={companyName}
-                  onChange={e => setCompanyName(e.target.value)}
+                  onChange={e => { setCompanyName(e.target.value); if (e.target.value.trim()) setStep1FieldErrors(p => { const n = new Set(p); n.delete("companyName"); return n; }); }}
                 />
+                {step1FieldErrors.has("companyName") && <div style={{ color: RED, fontSize: 11, marginTop: 4 }}>Required</div>}
               </div>
 
               <div>
                 <label style={labelStyle}>Industry *</label>
-                <select style={inputStyle} value={industry} onChange={e => setIndustry(e.target.value)}>
+                <select
+                  style={{ ...inputStyle, ...(step1FieldErrors.has("industry") ? { borderColor: RED } : {}) }}
+                  value={industry}
+                  onChange={e => { setIndustry(e.target.value); if (e.target.value) setStep1FieldErrors(p => { const n = new Set(p); n.delete("industry"); return n; }); }}
+                >
                   <option value="">Select industry…</option>
                   {INDUSTRIES.map(ind => <option key={ind} value={ind}>{ind}</option>)}
                 </select>
+                {step1FieldErrors.has("industry") && <div style={{ color: RED, fontSize: 11, marginTop: 4 }}>Required</div>}
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
                 <div>
                   <label style={labelStyle}>Amount Requested (CAD) *</label>
                   <input
-                    style={inputStyle}
+                    style={{ ...inputStyle, ...(step1FieldErrors.has("amountRequested") ? { borderColor: RED } : {}) }}
                     placeholder="e.g. 2,500,000"
                     value={amountRequested}
-                    onChange={e => setAmountRequested(e.target.value)}
+                    onChange={e => { setAmountRequested(e.target.value); if (parseNum(e.target.value) ?? 0 > 0) setStep1FieldErrors(p => { const n = new Set(p); n.delete("amountRequested"); return n; }); }}
                   />
+                  {step1FieldErrors.has("amountRequested") && <div style={{ color: RED, fontSize: 11, marginTop: 4 }}>Required</div>}
                 </div>
                 <div>
                   <label style={labelStyle}>Term (months)</label>
@@ -739,6 +760,16 @@ export default function NewAnalysis() {
                 />
               </div>
             </div>
+
+            {step1FieldErrors.size > 0 && (
+              <div style={{ marginTop: 16, color: RED, fontSize: 13 }}>
+                {`Missing required fields: ${[
+                  step1FieldErrors.has("companyName") ? "Company Name" : "",
+                  step1FieldErrors.has("industry") ? "Industry" : "",
+                  step1FieldErrors.has("amountRequested") ? "Amount Requested" : "",
+                ].filter(Boolean).join(", ")}`}
+              </div>
+            )}
 
             {step1Error && (
               <div style={{
@@ -1002,8 +1033,13 @@ export default function NewAnalysis() {
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: 8, alignItems: "end" }}>
                       <div>
                         <label style={labelStyle}>Item</label>
-                        <input style={inputStyle} placeholder="e.g. Equipment purchase" value={usesDraft.label}
-                          onChange={e => setUsesDraft(p => ({ ...p, label: e.target.value }))} />
+                        <input
+                          style={{ ...inputStyle, ...(draftErrors.usesLabel ? { borderColor: RED } : {}) }}
+                          placeholder="e.g. Equipment purchase"
+                          value={usesDraft.label}
+                          onChange={e => { setUsesDraft(p => ({ ...p, label: e.target.value })); if (e.target.value.trim()) setDraftErrors(p => { const n = { ...p }; delete n.usesLabel; return n; }); }}
+                        />
+                        {draftErrors.usesLabel && <div style={{ color: RED, fontSize: 11, marginTop: 3 }}>{draftErrors.usesLabel}</div>}
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
                         <div style={{ flex: 1 }}>
@@ -1041,8 +1077,13 @@ export default function NewAnalysis() {
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: 8, alignItems: "end" }}>
                       <div>
                         <label style={labelStyle}>Item</label>
-                        <input style={inputStyle} placeholder="e.g. New loan facility" value={sourcesDraft.label}
-                          onChange={e => setSourcesDraft(p => ({ ...p, label: e.target.value }))} />
+                        <input
+                          style={{ ...inputStyle, ...(draftErrors.sourcesLabel ? { borderColor: RED } : {}) }}
+                          placeholder="e.g. New loan facility"
+                          value={sourcesDraft.label}
+                          onChange={e => { setSourcesDraft(p => ({ ...p, label: e.target.value })); if (e.target.value.trim()) setDraftErrors(p => { const n = { ...p }; delete n.sourcesLabel; return n; }); }}
+                        />
+                        {draftErrors.sourcesLabel && <div style={{ color: RED, fontSize: 11, marginTop: 3 }}>{draftErrors.sourcesLabel}</div>}
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
                         <div style={{ flex: 1 }}>
@@ -1223,8 +1264,13 @@ export default function NewAnalysis() {
                         </div>
                         <div>
                           <label style={labelStyle}>Instrument / Label</label>
-                          <input style={inputStyle} placeholder="e.g. Term loan — RBC" value={capItemDraft.label}
-                            onChange={e => setCapItemDraft(p => ({ ...p, label: e.target.value }))} />
+                          <input
+                            style={{ ...inputStyle, ...(draftErrors.capLabel ? { borderColor: RED } : {}) }}
+                            placeholder="e.g. Term loan — RBC"
+                            value={capItemDraft.label}
+                            onChange={e => { setCapItemDraft(p => ({ ...p, label: e.target.value })); if (e.target.value.trim()) setDraftErrors(p => { const n = { ...p }; delete n.capLabel; return n; }); }}
+                          />
+                          {draftErrors.capLabel && <div style={{ color: RED, fontSize: 11, marginTop: 3 }}>{draftErrors.capLabel}</div>}
                         </div>
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 8 }}>
@@ -1370,8 +1416,13 @@ export default function NewAnalysis() {
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
                         <div>
                           <label style={labelStyle}>Market value ($)</label>
-                          <input style={inputStyle} placeholder="e.g. 250,000" value={collDraft.market_value}
-                            onChange={e => setCollDraft(p => ({ ...p, market_value: e.target.value }))} />
+                          <input
+                            style={{ ...inputStyle, ...(draftErrors.collMarketValue ? { borderColor: RED } : {}) }}
+                            placeholder="e.g. 250,000"
+                            value={collDraft.market_value}
+                            onChange={e => { setCollDraft(p => ({ ...p, market_value: e.target.value })); if (e.target.value.trim()) setDraftErrors(p => { const n = { ...p }; delete n.collMarketValue; return n; }); }}
+                          />
+                          {draftErrors.collMarketValue && <div style={{ color: RED, fontSize: 11, marginTop: 3 }}>{draftErrors.collMarketValue}</div>}
                         </div>
                         <div>
                           <label style={labelStyle}>Advance rate (%)</label>
