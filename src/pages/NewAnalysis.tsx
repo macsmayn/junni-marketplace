@@ -351,10 +351,6 @@ export default function NewAnalysis() {
       FIELDS.forEach(({ key }) => { initEdits[i][key] = fmtNum(r[key]); });
     });
     setEdits(initEdits);
-    // Prefill Sources & Uses and Capitalization on first entry only
-    const amt = fmtNum(parseNum(amountRequested) ?? 0);
-    setSourcesRows(prev => prev.length > 0 ? prev : [{ label: "New loan facility (this request)", amount: amt }]);
-    setCapItemRows(prev => prev.length > 0 ? prev : [{ category: "Senior Debt", label: "New facility (this request)", amount: amt, rate: "", notes: "" }]);
     // Prefill capCash from most-recent FY confirmed value (first row = most recent)
     setCapCash(prev => prev !== "" ? prev : (edits[0]?.["cash"] ?? fmtNum(rows[0]?.cash) ?? ""));
     setStep(3);
@@ -410,20 +406,23 @@ export default function NewAnalysis() {
       return;
     }
 
-    // Sources & Uses: delete then re-insert
-    const { error: suDelErr } = await supabase.from("sources_uses_entries").delete().eq("deal_id", dealId);
-    if (suDelErr) { setConfirmError(`Failed to save Sources & Uses: ${suDelErr.message}`); setConfirming(false); return; }
-    const suInsert: any[] = [
-      ...usesRows.filter(r => r.label.trim() && r.amount.trim()).map((r, i) => ({
-        deal_id: dealId, side: "use", label: r.label.trim(), amount: parseNum(r.amount) ?? 0, sort_order: i,
-      })),
-      ...sourcesRows.filter(r => r.label.trim() && r.amount.trim()).map((r, i) => ({
-        deal_id: dealId, side: "source", label: r.label.trim(), amount: parseNum(r.amount) ?? 0, sort_order: i,
-      })),
-    ];
-    if (suInsert.length > 0) {
-      const { error: suInsErr } = await supabase.from("sources_uses_entries").insert(suInsert);
-      if (suInsErr) { setConfirmError(`Failed to insert Sources & Uses: ${suInsErr.message}`); setConfirming(false); return; }
+    // Sources & Uses: delete then re-insert (skip entirely when no valid uses rows)
+    const validUsesRows = usesRows.filter(r => r.label.trim() && r.amount.trim());
+    if (validUsesRows.length > 0) {
+      const { error: suDelErr } = await supabase.from("sources_uses_entries").delete().eq("deal_id", dealId);
+      if (suDelErr) { setConfirmError(`Failed to save Sources & Uses: ${suDelErr.message}`); setConfirming(false); return; }
+      const suInsert: any[] = [
+        ...validUsesRows.map((r, i) => ({
+          deal_id: dealId, side: "use", label: r.label.trim(), amount: parseNum(r.amount) ?? 0, sort_order: i,
+        })),
+        ...sourcesRows.filter(r => r.label.trim() && r.amount.trim()).map((r, i) => ({
+          deal_id: dealId, side: "source", label: r.label.trim(), amount: parseNum(r.amount) ?? 0, sort_order: i,
+        })),
+      ];
+      if (suInsert.length > 0) {
+        const { error: suInsErr } = await supabase.from("sources_uses_entries").insert(suInsert);
+        if (suInsErr) { setConfirmError(`Failed to insert Sources & Uses: ${suInsErr.message}`); setConfirming(false); return; }
+      }
     }
 
     // Capitalization items: delete then re-insert
@@ -726,6 +725,7 @@ export default function NewAnalysis() {
                   value={useOfFunds}
                   onChange={e => setUseOfFunds(e.target.value)}
                 />
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>(recommended — the analysis will flag it as a risk if left blank)</div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
@@ -1074,6 +1074,13 @@ export default function NewAnalysis() {
                         ))}
                       </div>
                     )}
+                    {!sourcesRows.some(r => r.label === "New loan facility (this request)") && (
+                      <button type="button"
+                        style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", marginBottom: 10, display: "inline-block" }}
+                        onClick={() => setSourcesRows(prev => [...prev, { label: "New loan facility (this request)", amount: fmtNum(parseNum(amountRequested) ?? 0) }])}>
+                        + New loan facility (${fmtNum(parseNum(amountRequested) ?? 0)})
+                      </button>
+                    )}
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: 8, alignItems: "end" }}>
                       <div>
                         <label style={labelStyle}>Item</label>
@@ -1250,8 +1257,18 @@ export default function NewAnalysis() {
                       </div>
                     );
                   })()}
+                  {/* Ghost chip for new facility */}
+                  {!capItemRows.some(r => r.label === "New facility (this request)") && (
+                    <div style={{ padding: "10px 18px", borderTop: `1px solid ${BORDER}` }}>
+                      <button type="button"
+                        style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", display: "inline-block" }}
+                        onClick={() => setCapItemRows(prev => [...prev, { category: "Senior Debt", label: "New facility (this request)", amount: fmtNum(parseNum(amountRequested) ?? 0), rate: "", notes: "" }])}>
+                        + New facility — Senior Debt (${fmtNum(parseNum(amountRequested) ?? 0)})
+                      </button>
+                    </div>
+                  )}
                   {/* Add-row form */}
-                  <div style={{ padding: "16px 18px", borderTop: capItemRows.length > 0 ? `1px solid ${BORDER}` : "none" }}>
+                  <div style={{ padding: "16px 18px", borderTop: `1px solid ${BORDER}` }}>
                     <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Add instrument</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>

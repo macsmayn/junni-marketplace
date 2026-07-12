@@ -128,10 +128,9 @@ export function toDealTerms(
     const annualService = rMonthly === 0
       ? (deal.amount_requested / n) * 12
       : (deal.amount_requested * rMonthly / (1 - Math.pow(1 + rMonthly, -n))) * 12;
-    // principal portion ≈ annual service minus first-year interest on the new facility
-    const newInterest = deal.amount_requested * (annualRatePct / 100);
-    const p = annualService - newInterest;
-    newFacilityPrincipal = p > 0 ? p : annualService; // fall back to full service if degenerate
+    // new facility contributes its full annual debt service (principal + interest),
+    // since its interest is not in historical interest_expense
+    newFacilityPrincipal = annualService;
   }
 
   return {

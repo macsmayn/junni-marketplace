@@ -149,7 +149,13 @@ const fDscr: Fn = (f, d) => {
     return { value: null, status: "needs_review", detail: "EBITDA <= 0 (coverage not meaningful)" };
   if (e === null || interest === null || principal === null)
     return { value: null, status: "needs_input", detail: "requires EBITDA, interest, principal (deal terms)" };
-  return ratio(e, interest + principal, "EBITDA / DebtService");
+  const denom = interest + principal;
+  if (denom === 0) return { value: null, status: "needs_review", detail: "zero debt service" };
+  return {
+    value: e / denom,
+    status: "computed",
+    detail: `EBITDA ${Math.round(e).toLocaleString()} / (historical interest ${Math.round(interest).toLocaleString()} + annual debt service ${Math.round(principal).toLocaleString()})`,
+  };
 };
 
 const fCurrentRatio: Fn = (f) =>
