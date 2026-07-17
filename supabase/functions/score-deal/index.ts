@@ -70,12 +70,7 @@ Read this ENTIRE document including ALL notes to the financial statements. Do no
 
 This document likely contains TWO fiscal years (current and comparative prior year). Extract BOTH as separate entries in the statements array.
 
-CRITICAL — UNIT SCALE AND CURRENCY:
-Financial statements almost always declare a unit scale in the header or column headings, such as "Expressed in thousands", "in millions", "$000s", or "(in thousands of Canadian dollars)". You MUST find this declaration and convert every monetary figure to its ACTUAL full dollar value before returning it.
-- If the statement says "in thousands" and shows revenue of 7,060 → return 7060000
-- If the statement says "in millions" and shows revenue of 7,060 → return 7060000000
-- If no scale is declared, assume the numbers are already in actual dollars (do not scale).
-Every monetary value in your JSON output must be the FULL actual dollar amount, never the abbreviated printed figure.
+UNITS — CRITICAL: Financial statements often state a scaling factor in the header, title, or column captions (e.g. 'in thousands', 'in $000s', '(000s)', 'in millions', 'CAD $ millions', 'except per share amounts'). You MUST detect it and convert EVERY monetary figure to actual dollars before returning it. If the statement is in thousands, multiply every dollar figure by 1,000; if in millions, by 1,000,000. Example: a revenue line printed as 9,720 in a statement headed 'in thousands' must be returned as 9720000. Do NOT return the printed figure unscaled. Percentages, ratios, share counts, and per-share amounts are NOT scaled. Also return a field units_detected with one of: 'units', 'thousands', 'millions' — and units_evidence: the exact header text you based it on (or 'none found').
 
 Also detect the reporting CURRENCY (e.g. USD, CAD, EUR). Add a "currency" field to each statement entry with the 3-letter currency code. Do NOT convert between currencies — just report the figures in their original currency and label which currency it is.
 
@@ -130,12 +125,14 @@ Return ONLY valid JSON with no markdown fences or commentary. Use this exact sha
       "debt_detail": <object with current_portion, long_term, rates, maturities if disclosed — or null>,
       "notes_summary": "<material disclosures from notes: debt covenants, maturities, contingencies, related-party transactions, leases, guarantees>",
       "extraction_confidence": "<high | medium | low>",
-      "raw_notes": "<anything flagged as unclear or ambiguous>"
+      "raw_notes": "<anything flagged as unclear or ambiguous>",
+      "units_detected": "<units | thousands | millions>",
+      "units_evidence": "<exact header text or 'none found'>"
     }
   ]
 }
 
-All monetary values must be plain numbers (not strings), scaled to FULL actual dollar amounts. Use null for any field not present in the document.`;
+All monetary values must be plain numbers (not strings), scaled to FULL actual dollar amounts. Use null for any monetary field not present in the document. units_detected and units_evidence are required for every statement entry.`;
 
       // Shared upsert helper — used by both consolidated and per-document paths
       const upsertStatements = async (statements: any[], sourceDocId: string | null) => {
@@ -206,7 +203,11 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
         const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
         try {
           const parsed = JSON.parse(cleaned);
-          return parsed.statements ?? [];
+          const stmts = parsed.statements ?? [];
+          stmts.forEach((s: any) => {
+            console.log(`[score-deal] ${label} FY${s.fiscal_year} — units_detected: ${s.units_detected ?? "n/a"}, units_evidence: ${s.units_evidence ?? "n/a"}`);
+          });
+          return stmts;
         } catch (_e) {
           console.error(`[score-deal] JSON parse failed (${label}). Raw:`, raw.slice(0, 300));
           return [];

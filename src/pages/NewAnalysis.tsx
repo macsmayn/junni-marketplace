@@ -935,6 +935,12 @@ export default function NewAnalysis() {
               All amounts in CAD. Leave a field blank if the figure does not apply.
             </p>
 
+            {finRows.length > 0 && typeof finRows[0].revenue === "number" && finRows[0].revenue > 0 && finRows[0].revenue < 100000 && (
+              <div style={{ background: "#FFFBEB", border: "1px solid #F59E0B", borderRadius: 8, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "#92400E", lineHeight: 1.5 }}>
+                ⚠ These figures look unusually small — the statement may be presented in thousands. Check the statement header and correct the values below before confirming.
+              </div>
+            )}
+
             {finRows.map((row, rowIdx) => (
               <div key={rowIdx} style={{
                 background: "#fff", borderRadius: 12,
