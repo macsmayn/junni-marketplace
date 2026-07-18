@@ -333,9 +333,10 @@ export default function DealAnalysis() {
         {/* ── 3. Metric table (counted = true) ── */}
         {byTier.length > 0 && (
           <div style={{ marginBottom: 24 }}>
-            <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 14px" }}>
+            <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 4px" }}>
               Scored Metrics
             </h2>
+            <p style={{ margin: "0 0 14px", fontSize: 12, color: MUTED }}>Computed from the borrower's confirmed historical financial statements.</p>
             {byTier.map(({ tier, rows }) => (
               <div key={tier} style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: MUTED, marginBottom: 6, paddingLeft: 2 }}>
@@ -539,7 +540,8 @@ export default function DealAnalysis() {
           let cumDebt = 0;
           return (
             <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 14 }}>Capitalization</div>
+              <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 4 }}>Capitalization</div>
+              <p style={{ margin: "0 0 14px", fontSize: 12, color: MUTED }}>Pro-forma transaction structure — reflects the proposed deal, not the borrower's historical balance sheet.</p>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
@@ -588,9 +590,9 @@ export default function DealAnalysis() {
               </div>
               <div style={{ marginTop: 16, borderTop: "1px solid #E8E2D9", paddingTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                 {[
-                  { label: "Senior Debt / EBITDA", value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
-                  { label: "Total Debt / EBITDA", value: hasEbitda ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
-                  { label: "Net Debt / EBITDA", value: hasEbitda ? `${(netDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
+                  { label: "Senior Debt / EBITDA (pro-forma)", value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
+                  { label: "Total Debt / EBITDA (pro-forma)", value: hasEbitda ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
+                  { label: "Net Debt / EBITDA (pro-forma)", value: hasEbitda ? `${(netDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
                   ...(hasRevolver ? [{ label: "Authorized Revolver Limit", value: `$${rl!.toLocaleString()}` }] : []),
                   { label: `Available Liquidity${!hasRevolver ? " (cash only — no revolver data)" : ""}`, value: `$${availLiquidity.toLocaleString()}` },
                   (() => {
@@ -598,7 +600,7 @@ export default function DealAnalysis() {
                     if (totalEquity > 0 && evProxy > 0) return { label: "EV (proxy: total cap net of cash)", value: `$${evProxy.toLocaleString()}` };
                     return { label: "EV (proxy: total cap net of cash)", value: "n/m", hint: "(add equity to capitalization for EV)" };
                   })(),
-                  { label: "Debt / Total Capitalization", value: totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—" },
+                  { label: "Debt / Total Capitalization (pro-forma)", value: totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—" },
                 ].map(({ label, value, hint }: { label: string; value: string; hint?: string }) => (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, alignItems: "baseline" }}>
                     <span style={{ color: MUTED }}>{label}{hint ? <span style={{ opacity: 0.65, marginLeft: 6, fontSize: 11 }}>{hint}</span> : null}</span>
