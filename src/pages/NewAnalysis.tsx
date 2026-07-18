@@ -170,7 +170,12 @@ export default function NewAnalysis() {
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState("");
   const [sanityOverride, setSanityOverride] = useState(false);
-  const [appliedScale, setAppliedScale] = useState<"units" | "thousands" | "millions">("units");
+
+  // Step 2 — units confirmation gate
+  const [pendingRows, setPendingRows] = useState<any[] | null>(null);
+  const [pendingUnits, setPendingUnits] = useState<"units" | "thousands" | "millions" | null>(null);
+  const [unitsGateError, setUnitsGateError] = useState("");
+  const [unitsApplying, setUnitsApplying] = useState(false);
 
   // Step 3 — Sources & Uses
   const [suOpen, setSuOpen] = useState(false);
@@ -334,7 +339,11 @@ export default function NewAnalysis() {
     }
 
     if (rows && rows.length > 0) {
-      initStep3(rows);
+      // Default the gate selection to detected units (if present and not 'units'),
+      // but leave unconfirmed — lender must explicitly click Continue
+      const detected = rows[0]?.units_detected as "units" | "thousands" | "millions" | null;
+      setPendingUnits(detected && detected !== "units" ? detected : null);
+      setPendingRows(rows);
     } else {
       setNoFinancials(true);
     }
@@ -363,26 +372,55 @@ export default function NewAnalysis() {
     setEdits(prev => ({ ...prev, [rowIdx]: { ...prev[rowIdx], [key]: val } }));
   }
 
-  function applyUnitScale(newScale: "units" | "thousands" | "millions") {
-    if (newScale === appliedScale) return;
+  async function handleUnitsConfirm() {
+    if (!pendingRows || pendingUnits === null || !dealId) return;
+    setUnitsGateError("");
+    setUnitsApplying(true);
+
     const scaleValues = { units: 1, thousands: 1_000, millions: 1_000_000 };
-    const factor = scaleValues[newScale] / scaleValues[appliedScale];
-    if (newScale !== "units") {
-      const ok = window.confirm(`This rescales all figures by ${factor.toLocaleString()}× — proceed?`);
-      if (!ok) return;
-    }
-    setEdits(prev => {
-      const next: Record<number, Record<string, string>> = {};
-      Object.entries(prev).forEach(([idx, rowEdits]) => {
-        next[Number(idx)] = { ...rowEdits };
+    const factor = scaleValues[pendingUnits];
+
+    let scaledRows = pendingRows;
+
+    if (factor > 1) {
+      scaledRows = pendingRows.map(row => {
+        const r = { ...row };
         FIELDS.forEach(({ key }) => {
-          const val = parseNum(rowEdits[key] ?? "");
-          if (val !== null) next[Number(idx)][key] = fmtNum(val * factor);
+          if (r[key] != null && typeof r[key] === "number") r[key] = r[key] * factor;
         });
+        return r;
       });
-      return next;
-    });
-    setAppliedScale(newScale);
+
+      for (const row of scaledRows) {
+        if (!row.id) continue;
+        const updateObj: Record<string, number | null> = {};
+        FIELDS.forEach(({ key }) => { updateObj[key] = row[key] ?? null; });
+        const { error } = await supabase
+          .from("extracted_financials")
+          .update(updateObj)
+          .eq("id", row.id);
+        if (error) {
+          setUnitsGateError(`Failed to save corrected figures: ${error.message}`);
+          setUnitsApplying(false);
+          return;
+        }
+      }
+    }
+
+    const { error: dealErr } = await supabase
+      .from("deals")
+      .update({ units_override: pendingUnits })
+      .eq("id", dealId);
+    if (dealErr) {
+      setUnitsGateError(`Failed to save units: ${dealErr.message}`);
+      setUnitsApplying(false);
+      return;
+    }
+
+    setUnitsApplying(false);
+    setPendingRows(null);
+    setPendingUnits(null);
+    initStep3(scaledRows);
   }
 
   async function handleConfirm() {
@@ -421,7 +459,6 @@ export default function NewAnalysis() {
       .from("deals")
       .update({
         financials_status: "confirmed",
-        units_override: appliedScale,
         ...(snapshotRevenue !== null ? { annual_revenue: snapshotRevenue } : {}),
         ...(snapshotEbitda !== null ? { ebitda: snapshotEbitda } : {}),
       })
@@ -941,7 +978,7 @@ export default function NewAnalysis() {
               </div>
             )}
 
-            {!extracting && !noFinancials && (
+            {!extracting && !noFinancials && pendingRows === null && (
               <div style={{ marginTop: 32, display: "flex", justifyContent: "flex-end", gap: 12 }}>
                 <button style={btnGhost} onClick={() => setStep(1)}>← Back</button>
                 <button
@@ -951,6 +988,77 @@ export default function NewAnalysis() {
                 >
                   Extract financials →
                 </button>
+              </div>
+            )}
+
+            {!extracting && pendingRows !== null && pendingRows.length > 0 && (
+              <div style={{ marginTop: 28, background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "22px 24px" }}>
+                <div style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 18, color: NAVY, marginBottom: 6 }}>
+                  Confirm statement units
+                </div>
+                <div style={{ fontSize: 13, color: MUTED, marginBottom: 18, lineHeight: 1.5 }}>
+                  Detected: <strong style={{ color: NAVY }}>{pendingRows[0]?.units_detected ?? "not detected"}</strong>
+                  {" — from: \""}
+                  <em>{pendingRows[0]?.units_evidence ?? "—"}</em>
+                  {'"'}
+                </div>
+
+                <div style={{ background: CREAM, borderRadius: 8, padding: "12px 14px", marginBottom: 20 }}>
+                  <div style={{ fontWeight: 600, color: NAVY, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Raw extracted figures (as-is)</div>
+                  {(["revenue", "total_assets", "ebitda"] as const).map(key => {
+                    const labels: Record<string, string> = { revenue: "Revenue", total_assets: "Total Assets", ebitda: "EBITDA" };
+                    const val = pendingRows[0]?.[key];
+                    return (
+                      <div key={key} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13 }}>
+                        <span style={{ color: MUTED }}>{labels[key]}</span>
+                        <strong style={{ color: NAVY }}>
+                          {val != null ? `$${Math.round(val).toLocaleString()}` : "—"}
+                        </strong>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontWeight: 600, color: NAVY, fontSize: 13, marginBottom: 12 }}>
+                    Confirm the units these figures are in:
+                  </div>
+                  {([
+                    { value: "units" as const, label: "Actual dollars — no conversion needed" },
+                    { value: "thousands" as const, label: "Thousands — multiply all figures by 1,000" },
+                    { value: "millions" as const, label: "Millions — multiply all figures by 1,000,000" },
+                  ]).map(opt => (
+                    <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, cursor: "pointer", fontSize: 13 }}>
+                      <input
+                        type="radio"
+                        name="units-gate"
+                        value={opt.value}
+                        checked={pendingUnits === opt.value}
+                        onChange={() => setPendingUnits(opt.value)}
+                        style={{ flexShrink: 0 }}
+                      />
+                      <span style={{ color: NAVY }}>{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                {unitsGateError && (
+                  <div style={{ color: RED, fontSize: 13, marginBottom: 12 }}>{unitsGateError}</div>
+                )}
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <button style={{ ...btnGhost, fontSize: 13, padding: "8px 16px" }}
+                    onClick={() => { setPendingRows(null); setPendingUnits(null); setUnitsGateError(""); }}>
+                    ← Re-extract
+                  </button>
+                  <button
+                    style={(pendingUnits === null || unitsApplying) ? { ...btnGold, opacity: 0.6, cursor: "not-allowed" } : btnGold}
+                    disabled={pendingUnits === null || unitsApplying}
+                    onClick={handleUnitsConfirm}
+                  >
+                    {unitsApplying ? "Applying…" : "Continue to review →"}
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -991,30 +1099,6 @@ export default function NewAnalysis() {
                 {sanity.warns.map(w => (
                   <div key={w.code} style={{ color: "#92400E", fontSize: 13, marginBottom: 4 }}>• {w.message}</div>
                 ))}
-              </div>
-            )}
-
-            {finRows.length > 0 && (
-              <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px 14px", marginBottom: 20, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", fontSize: 13 }}>
-                <span style={{ color: MUTED, flex: 1 }}>
-                  <strong style={{ color: NAVY }}>Statement units:</strong>{" "}
-                  {finRows[0]?.units_detected ?? "not detected"}
-                  {" — detected from: \""}
-                  <em>{finRows[0]?.units_evidence ?? "—"}</em>
-                  {'"'}
-                </span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <label style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>Apply units:</label>
-                  <select
-                    value={appliedScale}
-                    onChange={e => applyUnitScale(e.target.value as "units" | "thousands" | "millions")}
-                    style={{ ...inputStyle, padding: "5px 8px", fontSize: 13, width: "auto" }}
-                  >
-                    <option value="units">Actual dollars</option>
-                    <option value="thousands">Thousands</option>
-                    <option value="millions">Millions</option>
-                  </select>
-                </div>
               </div>
             )}
 
