@@ -58,6 +58,11 @@ Deno.serve(async (req: Request) => {
 
     if (!financialDocs || financialDocs.length === 0) {
       console.log(`[score-deal] No financial statements — using structured data.`);
+    } else if (!extract_only) {
+      // Scoring path: documents exist but we must NOT re-extract — confirmed figures in
+      // extracted_financials have already been units-corrected by the lender. Re-running
+      // Phase 2a would overwrite them with raw (unscaled) model output.
+      console.log(`[score-deal] ${financialDocs.length} financial statement document(s) found — scoring path, skipping Phase 2a re-extraction to preserve confirmed figures.`);
     } else {
       console.log(`[score-deal] ${financialDocs.length} financial statement document(s) found — beginning Phase 2a extraction.`);
 
