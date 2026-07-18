@@ -170,6 +170,7 @@ export default function NewAnalysis() {
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState("");
   const [sanityOverride, setSanityOverride] = useState(false);
+  const [appliedScale, setAppliedScale] = useState<"units" | "thousands" | "millions">("units");
 
   // Step 3 — Sources & Uses
   const [suOpen, setSuOpen] = useState(false);
@@ -362,6 +363,28 @@ export default function NewAnalysis() {
     setEdits(prev => ({ ...prev, [rowIdx]: { ...prev[rowIdx], [key]: val } }));
   }
 
+  function applyUnitScale(newScale: "units" | "thousands" | "millions") {
+    if (newScale === appliedScale) return;
+    const scaleValues = { units: 1, thousands: 1_000, millions: 1_000_000 };
+    const factor = scaleValues[newScale] / scaleValues[appliedScale];
+    if (newScale !== "units") {
+      const ok = window.confirm(`This rescales all figures by ${factor.toLocaleString()}× — proceed?`);
+      if (!ok) return;
+    }
+    setEdits(prev => {
+      const next: Record<number, Record<string, string>> = {};
+      Object.entries(prev).forEach(([idx, rowEdits]) => {
+        next[Number(idx)] = { ...rowEdits };
+        FIELDS.forEach(({ key }) => {
+          const val = parseNum(rowEdits[key] ?? "");
+          if (val !== null) next[Number(idx)][key] = fmtNum(val * factor);
+        });
+      });
+      return next;
+    });
+    setAppliedScale(newScale);
+  }
+
   async function handleConfirm() {
     if (!dealId) return;
     setConfirmError("");
@@ -398,6 +421,7 @@ export default function NewAnalysis() {
       .from("deals")
       .update({
         financials_status: "confirmed",
+        units_override: appliedScale,
         ...(snapshotRevenue !== null ? { annual_revenue: snapshotRevenue } : {}),
         ...(snapshotEbitda !== null ? { ebitda: snapshotEbitda } : {}),
       })
@@ -967,6 +991,30 @@ export default function NewAnalysis() {
                 {sanity.warns.map(w => (
                   <div key={w.code} style={{ color: "#92400E", fontSize: 13, marginBottom: 4 }}>• {w.message}</div>
                 ))}
+              </div>
+            )}
+
+            {finRows.length > 0 && (
+              <div style={{ background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px 14px", marginBottom: 20, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", fontSize: 13 }}>
+                <span style={{ color: MUTED, flex: 1 }}>
+                  <strong style={{ color: NAVY }}>Statement units:</strong>{" "}
+                  {finRows[0]?.units_detected ?? "not detected"}
+                  {" — detected from: \""}
+                  <em>{finRows[0]?.units_evidence ?? "—"}</em>
+                  {'"'}
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <label style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>Apply units:</label>
+                  <select
+                    value={appliedScale}
+                    onChange={e => applyUnitScale(e.target.value as "units" | "thousands" | "millions")}
+                    style={{ ...inputStyle, padding: "5px 8px", fontSize: 13, width: "auto" }}
+                  >
+                    <option value="units">Actual dollars</option>
+                    <option value="thousands">Thousands</option>
+                    <option value="millions">Millions</option>
+                  </select>
+                </div>
               </div>
             )}
 

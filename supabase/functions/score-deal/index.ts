@@ -171,6 +171,8 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
               notes_summary: stmt.notes_summary ?? null,
               extraction_confidence: stmt.extraction_confidence ?? null,
               raw_notes: stmt.raw_notes ?? null,
+              units_detected: stmt.units_detected ?? null,
+              units_evidence: stmt.units_evidence ?? null,
             },
             { onConflict: "deal_id,fiscal_year" }
           );
