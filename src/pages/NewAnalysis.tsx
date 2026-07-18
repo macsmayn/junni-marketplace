@@ -380,10 +380,8 @@ export default function NewAnalysis() {
     const scaleValues = { units: 1, thousands: 1_000, millions: 1_000_000 };
     const factor = scaleValues[pendingUnits];
 
-    let scaledRows = pendingRows;
-
     if (factor > 1) {
-      scaledRows = pendingRows.map(row => {
+      const scaledRows = pendingRows.map(row => {
         const r = { ...row };
         FIELDS.forEach(({ key }) => {
           if (r[key] != null && typeof r[key] === "number") r[key] = r[key] * factor;
@@ -391,19 +389,38 @@ export default function NewAnalysis() {
         return r;
       });
 
+      let updatedCount = 0;
       for (const row of scaledRows) {
-        if (!row.id) continue;
+        if (!row.id) {
+          console.warn(`[units-gate] FY${row.fiscal_year} has no id — skipping`);
+          continue;
+        }
         const updateObj: Record<string, number | null> = {};
         FIELDS.forEach(({ key }) => { updateObj[key] = row[key] ?? null; });
-        const { error } = await supabase
+        console.log(`[units-gate] Updating FY${row.fiscal_year} id=${row.id}`, updateObj);
+        const { data: updData, error } = await supabase
           .from("extracted_financials")
           .update(updateObj)
-          .eq("id", row.id);
+          .eq("id", row.id)
+          .select("id");
+        console.log(`[units-gate] Result FY${row.fiscal_year}:`, { data: updData, error });
         if (error) {
-          setUnitsGateError(`Failed to save corrected figures: ${error.message}`);
+          setUnitsGateError(`Failed to save corrected figures (FY${row.fiscal_year}): ${error.message}`);
           setUnitsApplying(false);
           return;
         }
+        if (!updData || updData.length === 0) {
+          setUnitsGateError(`Scaled figures for FY${row.fiscal_year} were not written — the row may be read-only or was not found. Contact support if this persists.`);
+          setUnitsApplying(false);
+          return;
+        }
+        updatedCount++;
+      }
+
+      if (updatedCount === 0) {
+        setUnitsGateError("No rows were updated — the extracted rows may be missing IDs. Re-extract and try again.");
+        setUnitsApplying(false);
+        return;
       }
     }
 
@@ -417,10 +434,22 @@ export default function NewAnalysis() {
       return;
     }
 
+    // Re-fetch DB-confirmed rows so Step 3 reads the same source of truth as the engine
+    const { data: confirmedRows, error: refetchErr } = await supabase
+      .from("extracted_financials")
+      .select("*")
+      .eq("deal_id", dealId)
+      .order("fiscal_year", { ascending: false });
+    if (refetchErr || !confirmedRows || confirmedRows.length === 0) {
+      setUnitsGateError(`Figures saved but failed to reload: ${refetchErr?.message ?? "no rows returned"}`);
+      setUnitsApplying(false);
+      return;
+    }
+
     setUnitsApplying(false);
     setPendingRows(null);
     setPendingUnits(null);
-    initStep3(scaledRows);
+    initStep3(confirmedRows);
   }
 
   async function handleConfirm() {
