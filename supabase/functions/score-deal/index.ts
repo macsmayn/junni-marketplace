@@ -97,9 +97,12 @@ WORKING CAPITAL AND CASH FLOW FIELDS — read these from the balance sheet and c
 - depreciation_amortization: D&A add-back from operating activities on the cash flow statement, or from the notes. Combine depreciation + amortization into one figure.
 If no cash flow statement is provided, set capex, cfo, and depreciation_amortization to null — do not estimate them.
 
+MD&A / MANAGEMENT DISCUSSION: Beyond the financial statements, the document(s) may contain a Management Discussion & Analysis (MD&A) section, management commentary, or other narrative business context. Read all such narrative content in full and produce a concise digest (max ~200 words) capturing ONLY decision-relevant credit information: customer or supplier concentration, management's explanation of revenue/margin changes, forward guidance or outlook, named business risks, litigation or contingencies, liquidity or covenant commentary, and material events. Return this as a TOP-LEVEL JSON field mda_digest (not per-statement). If there is no narrative/MD&A content, return mda_digest: null. Do NOT invent content — digest only what is written. Do NOT include financial figures that contradict the extracted statements; the statements are the source of truth for numbers.
+
 Return ONLY valid JSON with no markdown fences or commentary. Use this exact shape:
 
 {
+  "mda_digest": "<concise ~200-word digest of MD&A and management commentary, or null>",
   "statements": [
     {
       "fiscal_year": <integer year e.g. 2024>,
@@ -140,7 +143,7 @@ Return ONLY valid JSON with no markdown fences or commentary. Use this exact sha
 All monetary values must be plain numbers (not strings), scaled to FULL actual dollar amounts. Use null for any monetary field not present in the document. units_detected and units_evidence are required for every statement entry.`;
 
       // Shared upsert helper — used by both consolidated and per-document paths
-      const upsertStatements = async (statements: any[], sourceDocId: string | null) => {
+      const upsertStatements = async (statements: any[], sourceDocId: string | null, mda_digest: string | null) => {
         for (const stmt of statements) {
           if (!stmt.fiscal_year) continue;
           const { error: upsertErr } = await supabase.from("extracted_financials").upsert(
@@ -178,6 +181,7 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
               raw_notes: stmt.raw_notes ?? null,
               units_detected: stmt.units_detected ?? null,
               units_evidence: stmt.units_evidence ?? null,
+              mda_digest: mda_digest ?? null,
             },
             { onConflict: "deal_id,fiscal_year" }
           );
@@ -190,7 +194,7 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
       };
 
       // Shared Claude call + parse helper
-      const callExtractionApi = async (messages: any[], label: string): Promise<any[]> => {
+      const callExtractionApi = async (messages: any[], label: string): Promise<{ stmts: any[]; mda_digest: string | null }> => {
         const res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
@@ -203,7 +207,7 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
         if (!res.ok) {
           const errText = await res.text();
           console.error(`[score-deal] Anthropic extraction error (${label}):`, errText);
-          return [];
+          return { stmts: [], mda_digest: null };
         }
         const data = await res.json();
         const raw: string = data.content[0].text;
@@ -211,13 +215,15 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
         try {
           const parsed = JSON.parse(cleaned);
           const stmts = parsed.statements ?? [];
+          const mda_digest: string | null = parsed.mda_digest ?? null;
           stmts.forEach((s: any) => {
             console.log(`[score-deal] ${label} FY${s.fiscal_year} — units_detected: ${s.units_detected ?? "n/a"}, units_evidence: ${s.units_evidence ?? "n/a"}`);
           });
-          return stmts;
+          console.log(`[score-deal] ${label} mda_digest: ${mda_digest ? mda_digest.slice(0, 80) + "…" : "null"}`);
+          return { stmts, mda_digest };
         } catch (_e) {
           console.error(`[score-deal] JSON parse failed (${label}). Raw:`, raw.slice(0, 300));
-          return [];
+          return { stmts: [], mda_digest: null };
         }
       };
 
@@ -305,8 +311,8 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
               : [{ role: "user", content: [
                   { type: "text", text: extractionPrompt + "\n\nSPREADSHEET CONTENTS:\n" + doc.content },
                 ] }];
-            const statements = await callExtractionApi(messages, doc.fileName);
-            await upsertStatements(statements, doc.docId);
+            const { stmts, mda_digest } = await callExtractionApi(messages, doc.fileName);
+            await upsertStatements(stmts, doc.docId, mda_digest);
           } catch (err) {
             console.error(`[score-deal] Per-document extraction error for "${doc.fileName}":`, err);
           }
@@ -327,12 +333,12 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
         contentBlocks.push({ type: "text", text: extractionPrompt });
 
         try {
-          const statements = await callExtractionApi(
+          const { stmts, mda_digest } = await callExtractionApi(
             [{ role: "user", content: contentBlocks }],
             `consolidated (${preparedDocs.length} docs)`
           );
           const firstDocId = preparedDocs[0]?.docId ?? null;
-          await upsertStatements(statements, firstDocId);
+          await upsertStatements(stmts, firstDocId, mda_digest);
         } catch (consolidatedErr) {
           console.error(`[score-deal] Consolidated extraction error:`, consolidatedErr);
         }
@@ -1082,6 +1088,11 @@ FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
       console.log(`[score-deal] Incorporating ${answeredQuestions.length} answered question(s) into scoring prompt.`);
     }
 
+    const mdaDigest = confirmedFinancials?.[0]?.mda_digest ?? null;
+    const mdaBlock = mdaDigest
+      ? `MANAGEMENT DISCUSSION CONTEXT (qualitative, from the borrower's MD&A/management commentary): ${mdaDigest}\nUse this to inform Strengths and Risks and add color to the narrative — it may surface risks the ratios cannot show (customer concentration, litigation, guidance). However, the computed financial ratios remain the sole source of truth for all financial assessments and numbers — do NOT let the MD&A override, contradict, or restate the computed figures.`
+      : `No management discussion (MD&A) or qualitative document was provided. Base the narrative on the financial statements and computed ratios, and note briefly that qualitative business context (MD&A/management commentary) was not available and would strengthen the assessment.`;
+
     // Build the credit scoring prompt
     const prompt = `You are a senior SME credit analyst at a Canadian debt marketplace. Score the following deal using the structured financial data provided.
 
@@ -1098,7 +1109,7 @@ DEAL DETAILS:
 - Use of Funds: ${deal.use_of_funds?.trim() ? deal.use_of_funds : "Not specified by the applicant."}
 If Use of Funds is 'Not specified by the applicant', you MUST include the unspecified use of funds as one of the risks.${collateralLine}${sourcesUsesLine || capLine ? `\n\nIMPORTANT FRAMING NOTE: The capitalization and sources-&-uses figures below are LENDER-ENTERED PRO-FORMA deal structure for the proposed transaction. They are NOT from the borrower's historical statements and are EXPECTED to differ from the computed historical ratios. Do NOT treat differences between pro-forma capitalization and historical computed leverage as a discrepancy, red flag, or reconciliation item. Do NOT flag the requested loan amount differing from total sources & uses as an inconsistency — a facility may fund only part of a transaction.` : ""}${sourcesUsesLine}${capLine}
 
-${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}Return ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
+${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}${mdaBlock}\n\nReturn ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
 
 {
   "summary": "<4-6 sentence credit assessment covering the borrower's financial health, debt capacity, and overall creditworthiness>",
