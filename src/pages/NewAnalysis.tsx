@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase } from "../lib/supabase";
+import { checkFinancials } from "../lib/financialSanity";
 
 const NAVY = "#1B2B4B";
 const GOLD = "#D4940A";
@@ -168,6 +169,7 @@ export default function NewAnalysis() {
   const [edits, setEdits] = useState<Record<number, Record<string, string>>>({});
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState("");
+  const [sanityOverride, setSanityOverride] = useState(false);
 
   // Step 3 — Sources & Uses
   const [suOpen, setSuOpen] = useState(false);
@@ -533,6 +535,17 @@ export default function NewAnalysis() {
   };
 
   const STEP_LABELS = ["Company & Terms", "Documents", "Review & Score"];
+
+  // ── Sanity check (live from current edits) ───────────────────────────
+  const sanity = checkFinancials({
+    revenue:          parseNum(edits[0]?.["revenue"]          ?? ""),
+    cogs:             parseNum(edits[0]?.["cogs"]             ?? ""),
+    gross_profit:     parseNum(edits[0]?.["gross_profit"]     ?? ""),
+    ebitda:           parseNum(edits[0]?.["ebitda"]           ?? ""),
+    total_assets:     parseNum(edits[0]?.["total_assets"]     ?? ""),
+    total_liabilities:parseNum(edits[0]?.["total_liabilities"]?? ""),
+    equity:           parseNum(edits[0]?.["equity"]           ?? ""),
+  }, parseNum(amountRequested));
 
   // ── Render ───────────────────────────────────────────────────────────
   return (
@@ -935,9 +948,25 @@ export default function NewAnalysis() {
               All amounts in CAD. Leave a field blank if the figure does not apply.
             </p>
 
-            {finRows.length > 0 && typeof finRows[0].revenue === "number" && finRows[0].revenue > 0 && finRows[0].revenue < 100000 && (
-              <div style={{ background: "#FFFBEB", border: "1px solid #F59E0B", borderRadius: 8, padding: "12px 16px", marginBottom: 20, fontSize: 13, color: "#92400E", lineHeight: 1.5 }}>
-                ⚠ These figures look unusually small — the statement may be presented in thousands. Check the statement header and correct the values below before confirming.
+            {sanity.blocks.length > 0 && (
+              <div style={{ background: "#FEF2F2", border: `1px solid ${RED}`, borderRadius: 8, padding: "14px 16px", marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, color: RED, fontSize: 13, marginBottom: 8 }}>Figures require verification before scoring</div>
+                {sanity.blocks.map(b => (
+                  <div key={b.code} style={{ color: RED, fontSize: 13, marginBottom: 4 }}>• {b.message}</div>
+                ))}
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 12, cursor: "pointer", fontSize: 12, color: MUTED }}>
+                  <input type="checkbox" checked={sanityOverride} onChange={e => setSanityOverride(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
+                  I have verified these figures against the source statement and confirm they are correct
+                </label>
+              </div>
+            )}
+
+            {sanity.warns.length > 0 && (
+              <div style={{ background: "#FFFBEB", border: "1px solid #F59E0B", borderRadius: 8, padding: "14px 16px", marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, color: "#92400E", fontSize: 13, marginBottom: 8 }}>Figures to review</div>
+                {sanity.warns.map(w => (
+                  <div key={w.code} style={{ color: "#92400E", fontSize: 13, marginBottom: 4 }}>• {w.message}</div>
+                ))}
               </div>
             )}
 
@@ -1492,8 +1521,8 @@ export default function NewAnalysis() {
                 ← Back
               </button>
               <button
-                style={confirming ? { ...btnGold, opacity: 0.6, cursor: "not-allowed" } : btnGold}
-                disabled={confirming}
+                style={(confirming || (sanity.blocks.length > 0 && !sanityOverride)) ? { ...btnGold, opacity: 0.6, cursor: "not-allowed" } : btnGold}
+                disabled={confirming || (sanity.blocks.length > 0 && !sanityOverride)}
                 onClick={handleConfirm}
               >
                 {confirming ? "Scoring…" : "Confirm & Score →"}
