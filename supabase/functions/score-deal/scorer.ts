@@ -8,6 +8,11 @@
 // Ported from the tested Python prototype (4 behavior cases verified).
 // ============================================================================
 
+export interface DistressCutoff {
+  threshold: number;
+  severe_if: "below" | "above";
+}
+
 export interface ScoringConfig {
   weight_critical: number;
   weight_important: number;
@@ -18,6 +23,8 @@ export interface ScoringConfig {
   points_weak: number;
   critical_floor_enabled: boolean;
   critical_weak_caps_score_at: number;
+  critical_weak_min_count: number;
+  critical_distress_cutoffs: Record<string, DistressCutoff>;
   label_bands: Array<{ min: number; label: string }>;
 }
 
@@ -32,6 +39,16 @@ export const DEFAULT_CONFIG: ScoringConfig = {
   points_weak: 20,
   critical_floor_enabled: true,
   critical_weak_caps_score_at: 49,
+  critical_weak_min_count: 2,
+  // Distress cutoffs — a single Weak Critical whose value crosses this threshold
+  // triggers the floor alone (no count needed). Flagged for expert review.
+  critical_distress_cutoffs: {
+    "dscr":                  { threshold: 1.0,  severe_if: "below" },
+    "debt service coverage": { threshold: 1.0,  severe_if: "below" },
+    "net debt / ebitda":     { threshold: 6.0,  severe_if: "above" },
+    "interest coverage":     { threshold: 1.0,  severe_if: "below" },
+    "current ratio":         { threshold: 0.75, severe_if: "below" },
+  },
   label_bands: [
     { min: 80, label: "Strong" },
     { min: 60, label: "Adequate" },
@@ -47,6 +64,7 @@ export interface GradedMetric {
   tier: MetricTier;
   grade?: MetricGrade | null;
   status: string; // "computed" | "needs_input" | "needs_review" | "needs_document_or_input" | ...
+  value?: number | null;
 }
 
 export interface ScoreRow {
@@ -64,6 +82,7 @@ export interface ScoreResult {
   overall_score: number | null;
   risk_label: string;
   critical_floor_applied: boolean;
+  capped_reason: "severe_critical" | "multiple_weak_criticals" | null;
   coverage_pct: number;
   metrics_scored: number;
   metrics_total: number;
@@ -97,6 +116,19 @@ function labelFor(score: number, cfg: ScoringConfig): string {
   return "Weak";
 }
 
+function isSevereCritical(m: GradedMetric, cfg: ScoringConfig): boolean {
+  if (m.value === null || m.value === undefined) return false;
+  const n = m.name.toLowerCase();
+  const entries = Object.entries(cfg.critical_distress_cutoffs)
+    .filter(([k]) => n.includes(k))
+    .sort((a, b) => b[0].length - a[0].length); // longest (most specific) match wins
+  if (entries.length === 0) return false;
+  const [, cutoff] = entries[0];
+  return cutoff.severe_if === "below"
+    ? m.value < cutoff.threshold
+    : m.value > cutoff.threshold;
+}
+
 export function scoreDeal(
   graded: GradedMetric[],
   cfg: ScoringConfig = DEFAULT_CONFIG
@@ -104,7 +136,8 @@ export function scoreDeal(
   const rows: ScoreRow[] = [];
   let totalWeighted = 0;
   let totalWeight = 0;
-  let criticalWeakHit = false;
+  let criticalWeakCount = 0;
+  let criticalSevereHit = false;
   const counts: Record<string, number> = {
     scored: 0, needs_input: 0, needs_review: 0, qualitative: 0, other: 0,
   };
@@ -121,7 +154,10 @@ export function scoreDeal(
       totalWeighted += contribution;
       totalWeight += w;
       counts.scored++;
-      if (m.tier === "Critical" && m.grade === "Weak") criticalWeakHit = true;
+      if (m.tier === "Critical" && m.grade === "Weak") {
+        criticalWeakCount++;
+        if (isSevereCritical(m, cfg)) criticalSevereHit = true;
+      }
       rows.push({
         name: m.name, tier: m.tier, grade: m.grade as string,
         points: pts, weight: w, contribution, counted: true,
@@ -141,16 +177,19 @@ export function scoreDeal(
   if (totalWeight === 0) {
     return {
       overall_score: null, risk_label: "Insufficient data",
-      critical_floor_applied: false, coverage_pct: 0,
+      critical_floor_applied: false, capped_reason: null, coverage_pct: 0,
       metrics_scored: 0, metrics_total: graded.length, counts, rows,
     };
   }
 
   let rawScore = totalWeighted / totalWeight;
   let capped = false;
-  if (cfg.critical_floor_enabled && criticalWeakHit && rawScore > cfg.critical_weak_caps_score_at) {
+  let cappedReason: "severe_critical" | "multiple_weak_criticals" | null = null;
+  const floorTriggered = criticalSevereHit || criticalWeakCount >= cfg.critical_weak_min_count;
+  if (cfg.critical_floor_enabled && floorTriggered && rawScore > cfg.critical_weak_caps_score_at) {
     rawScore = cfg.critical_weak_caps_score_at;
     capped = true;
+    cappedReason = criticalSevereHit ? "severe_critical" : "multiple_weak_criticals";
   }
 
   const totalConsidered =
@@ -161,6 +200,7 @@ export function scoreDeal(
     overall_score: Math.round(rawScore * 10) / 10,
     risk_label: labelFor(rawScore, cfg),
     critical_floor_applied: capped,
+    capped_reason: cappedReason,
     coverage_pct: coverage,
     metrics_scored: counts.scored,
     metrics_total: totalConsidered,

@@ -141,6 +141,7 @@ export async function runScoreEngine(
       tier: m.importance_tier,
       grade: grade as GradedMetric["grade"],
       status: statusForScorer,
+      value: resolved.value,
     });
 
     perMetric.push({
