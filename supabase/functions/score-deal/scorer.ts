@@ -43,8 +43,8 @@ export const DEFAULT_CONFIG: ScoringConfig = {
   // Distress cutoffs — a single Weak Critical whose value crosses this threshold
   // triggers the floor alone (no count needed). Flagged for expert review.
   critical_distress_cutoffs: {
-    "dscr":                  { threshold: 1.0,  severe_if: "below" },
-    "debt service coverage": { threshold: 1.0,  severe_if: "below" },
+    "dscr":                  { threshold: 0.75, severe_if: "below" },
+    "debt service coverage": { threshold: 0.75, severe_if: "below" },
     "net debt / ebitda":     { threshold: 6.0,  severe_if: "above" },
     "interest coverage":     { threshold: 1.0,  severe_if: "below" },
     "current ratio":         { threshold: 0.75, severe_if: "below" },
