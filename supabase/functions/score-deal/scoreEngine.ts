@@ -43,6 +43,7 @@ export interface FrameworkMetric {
   metric_id: string;
   name: string;
   importance_tier: MetricTier;     // canonical tier (lender override applied upstream if present)
+  primary_resolution?: string | null; // 'FS' | 'DOC' | 'EXT' | 'INPUT' — only 'FS' is formula-scored
   strong_band: string | null;
   adequate_band: string | null;
   weak_band: string | null;
@@ -108,6 +109,25 @@ export async function runScoreEngine(
   for (const m of metrics) {
     // A lender may have disabled this metric — excluded from score AND coverage.
     if (m.enabled === false) continue;
+
+    // Non-FS metrics (DOC, EXT, INPUT) require a document or external source —
+    // skip the resolver entirely and mark as needs_document_or_input so they
+    // lower coverage honestly without polluting the formula score.
+    if (m.primary_resolution && m.primary_resolution !== "FS") {
+      graded.push({
+        name: m.name, tier: m.importance_tier,
+        grade: "Qualitative", status: "needs_document_or_input", value: null,
+      });
+      perMetric.push({
+        metric_id: m.metric_id, name: m.name, tier: m.importance_tier,
+        value: null, grade: "Qualitative", status: "needs_document_or_input",
+        counted: false,
+        compute_detail: `primary_resolution=${m.primary_resolution} — requires document or external source`,
+        grade_reason: `Excluded from formula scoring (source: ${m.primary_resolution})`,
+        bands: { strong: m.strong_band, adequate: m.adequate_band, weak: m.weak_band },
+      });
+      continue;
+    }
 
     // 1) Resolve the value from financials + deal terms.
     const resolved = resolveMetric(m.name, ctx.financials, ctx.terms);

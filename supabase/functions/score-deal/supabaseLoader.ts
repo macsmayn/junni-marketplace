@@ -66,7 +66,7 @@ export function makeSupabaseLoader(
       const { data: metricRows, error: mErr } = await supabase
         .from("metrics")
         .select(
-          "id, metric_name, importance_tier, " +
+          "id, metric_name, importance_tier, primary_resolution, " +
           "metric_threshold_bands ( strong, adequate, weak )"
         )
         .eq("version_id", versionId)
@@ -135,6 +135,7 @@ export function makeSupabaseLoader(
           metric_id: row.id,
           name: row.metric_name,
           importance_tier: tier,
+          primary_resolution: row.primary_resolution ?? null,
           strong_band: strong,
           adequate_band: adequate,
           weak_band: weak,
