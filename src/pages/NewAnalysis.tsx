@@ -938,6 +938,10 @@ export default function NewAnalysis() {
               </div>
             </div>
 
+            <p style={{ margin: "12px 0 0", fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+              Tip: upload the MD&amp;A or management commentary alongside the financials — the analysis will read it for business context (customer concentration, outlook, risks). Any informative PDF works.
+            </p>
+
             {fileError && (
               <div style={{
                 marginTop: 10, padding: "8px 12px",
@@ -1460,6 +1464,16 @@ export default function NewAnalysis() {
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", display: "inline-block" }}
                         onClick={() => setCapItemRows(prev => [...prev, { category: "Senior Debt", label: "New facility (this request)", amount: fmtNum(parseNum(amountRequested) ?? 0), rate: "", notes: "" }])}>
                         + New facility — Senior Debt (${fmtNum(parseNum(amountRequested) ?? 0)})
+                      </button>
+                    </div>
+                  )}
+                  {/* Ghost chip for common equity from extracted book equity */}
+                  {!capItemRows.some(r => r.category === "Common Equity") && parseNum(edits[0]?.["equity"] ?? "") !== null && (
+                    <div style={{ padding: "10px 18px", borderTop: `1px solid ${BORDER}` }}>
+                      <button type="button"
+                        style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", display: "inline-block" }}
+                        onClick={() => setCapItemRows(prev => [...prev, { category: "Common Equity", label: "Common Equity", amount: fmtNum(parseNum(edits[0]?.["equity"] ?? "") ?? 0), rate: "", notes: "" }])}>
+                        + Common Equity (${fmtNum(parseNum(edits[0]?.["equity"] ?? "") ?? 0)})
                       </button>
                     </div>
                   )}

@@ -270,6 +270,30 @@ const fOcfDebt: Fn = (f) => {
   return { value: (cfo / td) * 100, status: "computed", detail: "CFO / TotalDebt %" };
 };
 
+const fDaysCashOnHand: Fn = (f) => {
+  const cash = num(f.cash), opex = num(f.operating_expenses);
+  if (cash === null || opex === null)
+    return { value: null, status: "needs_input", detail: "requires cash & operating expenses" };
+  if (opex === 0) return { value: null, status: "needs_review", detail: "operating expenses = 0" };
+  return { value: cash / (opex / 365), status: "computed", detail: "Cash / (OpEx / 365) (days)" };
+};
+const fOperatingRatio: Fn = (f) =>
+  ratio(num(f.operating_expenses), num(f.revenue), "OpEx / Revenue", true, false);
+const fNetDirectDebt: Fn = (f) => {
+  const td = num(f.total_debt), cash = num(f.cash);
+  if (td === null)
+    return { value: null, status: "needs_input", detail: "requires total debt" };
+  return { value: cash === null ? td : td - cash, status: "computed", detail: "TotalDebt − Cash" };
+};
+const fNetDebtCapital: Fn = (f) => {
+  const nd = deriveNetDebt(f), td = num(f.total_debt), eq = num(f.equity);
+  if (nd === null || td === null || eq === null)
+    return { value: null, status: "needs_input", detail: "requires total debt, cash, equity" };
+  const capital = td + eq;
+  if (capital <= 0) return { value: null, status: "needs_review", detail: "total capital <= 0" };
+  return ratio(nd, capital, "(TotalDebt−Cash) / (TotalDebt+Equity)", true, false);
+};
+
 // ---------- registry: normalized-name fragment -> function ----------
 const REGISTRY: Array<[string, Fn]> = [
   ["net debt / ebitda", fNetDebtEbitda],
@@ -321,6 +345,12 @@ const REGISTRY: Array<[string, Fn]> = [
   ["cash conversion cycle", fCashConversionCycle],
   ["free cash flow (fcf) / fcf yield", fFcfYield],
   ["fcf yield", fFcfYield],
+  // silent-fail additions:
+  ["days cash on hand", fDaysCashOnHand],
+  ["operating ratio", fOperatingRatio],
+  ["net direct debt", fNetDirectDebt],
+  ["net debt / capital", fNetDebtCapital],
+  ["gearing", fNetDebtCapital],
 ];
 
 /**

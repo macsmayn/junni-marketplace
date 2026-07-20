@@ -167,7 +167,7 @@ export default function DealAnalysis() {
       setLoading(true);
       const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }] = await Promise.all([
         supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value").eq("id", dealId).single(),
-        supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,score_source").eq("deal_id", dealId).maybeSingle(),
+        supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
         supabase.from("users").select("id,role").eq("auth0_id", user?.sub ?? "").maybeSingle(),
         supabase.from("sources_uses_entries").select("side,label,amount,sort_order").eq("deal_id", dealId).order("sort_order"),
@@ -308,7 +308,11 @@ export default function DealAnalysis() {
                 )}
                 {score.critical_floor_applied && (
                   <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: RED, borderRadius: 99, padding: "2px 9px", letterSpacing: "0.04em" }}>
-                    ⚠ CRITICAL FLOOR APPLIED
+                    {score.capped_reason === "severe_critical"
+                      ? "⚠ Score capped: a critical metric is in distress (below viability threshold)"
+                      : score.capped_reason === "multiple_weak_criticals"
+                      ? "⚠ Score capped: two or more critical metrics are weak"
+                      : "⚠ CRITICAL FLOOR APPLIED"}
                   </span>
                 )}
               </div>
@@ -320,6 +324,19 @@ export default function DealAnalysis() {
                   {score.coverage_pct != null && (
                     <span style={{ color: MUTED }}>({score.coverage_pct}% coverage)</span>
                   )}
+                </div>
+              )}
+              {score.coverage_pct != null && (
+                <div>
+                  <span style={{
+                    display: "inline-block", fontSize: 10, fontWeight: 700, color: "#fff", borderRadius: 99, padding: "2px 9px", letterSpacing: "0.04em",
+                    background: score.coverage_pct >= 60 ? "#059669" : score.coverage_pct >= 30 ? "#D4940A" : score.coverage_pct >= 20 ? "#EA580C" : "#7A7060",
+                  }}>
+                    {score.coverage_pct >= 60 ? "High confidence" : score.coverage_pct >= 30 ? "Moderate confidence" : score.coverage_pct >= 20 ? "Low confidence" : "Indicative only"}
+                  </span>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
+                    Confidence reflects how many of this industry's metrics could be computed from the financial statements provided.
+                  </div>
                 </div>
               )}
             </div>
