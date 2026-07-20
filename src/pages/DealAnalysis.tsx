@@ -307,13 +307,13 @@ export default function DealAnalysis() {
                   </span>
                 )}
                 {score.critical_floor_applied && (
-                  <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: RED, borderRadius: 99, padding: "2px 9px", letterSpacing: "0.04em" }}>
-                    {score.capped_reason === "severe_critical"
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: RED, borderRadius: 99, padding: "2px 9px", letterSpacing: "0.04em" }}>{
+                    score.capped_reason === "severe_critical"
                       ? "⚠ Score capped: a critical metric is in distress (below viability threshold)"
                       : score.capped_reason === "multiple_weak_criticals"
                       ? "⚠ Score capped: two or more critical metrics are weak"
-                      : "⚠ CRITICAL FLOOR APPLIED"}
-                  </span>
+                      : "⚠ CRITICAL FLOOR APPLIED"
+                  }</span>
                 )}
               </div>
               {metrics.length > 0 && (

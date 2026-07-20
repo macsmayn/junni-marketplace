@@ -196,6 +196,7 @@ export async function persistEngineResult(
       metrics: llmNarrative.metrics ?? null,
       coverage_pct: engine.score.coverage_pct,
       critical_floor_applied: engine.score.critical_floor_applied,
+      capped_reason: engine.score.capped_reason ?? null,
       score_source: "engine",
       model_used: "junni-engine-v1",
     },
