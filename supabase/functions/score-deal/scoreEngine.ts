@@ -179,7 +179,7 @@ export async function runScoreEngine(
   }
 
   // 4) Score the graded set.
-  const score = scoreDeal(graded, cfg);
+  const score = scoreDeal(graded, cfg, ctx.industry_id);
 
   // Stitch the scorer's counted/points back onto the per-metric detail so the
   // stored result has everything the UI needs to explain the number.

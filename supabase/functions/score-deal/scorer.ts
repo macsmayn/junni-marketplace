@@ -25,6 +25,7 @@ export interface ScoringConfig {
   critical_weak_caps_score_at: number;
   critical_weak_min_count: number;
   critical_distress_cutoffs: Record<string, DistressCutoff>;
+  critical_distress_cutoffs_by_industry?: Record<string, Record<string, DistressCutoff>>;
   label_bands: Array<{ min: number; label: string }>;
 }
 
@@ -48,6 +49,13 @@ export const DEFAULT_CONFIG: ScoringConfig = {
     "net debt / ebitda":     { threshold: 6.0,  severe_if: "above" },
     "interest coverage":     { threshold: 1.0,  severe_if: "below" },
     "current ratio":         { threshold: 0.75, severe_if: "below" },
+  },
+  // Per-industry overrides: keys must match keys in critical_distress_cutoffs exactly.
+  // Financial Services carries leverage that would be distressed in other sectors.
+  critical_distress_cutoffs_by_industry: {
+    "Financial Services": {
+      "net debt / ebitda": { threshold: 10.0, severe_if: "above" },
+    },
   },
   label_bands: [
     { min: 80, label: "Strong" },
@@ -116,14 +124,17 @@ function labelFor(score: number, cfg: ScoringConfig): string {
   return "Weak";
 }
 
-function isSevereCritical(m: GradedMetric, cfg: ScoringConfig): boolean {
+function isSevereCritical(m: GradedMetric, cfg: ScoringConfig, industry?: string | null): boolean {
   if (m.value === null || m.value === undefined) return false;
   const n = m.name.toLowerCase();
   const entries = Object.entries(cfg.critical_distress_cutoffs)
     .filter(([k]) => n.includes(k))
     .sort((a, b) => b[0].length - a[0].length); // longest (most specific) match wins
   if (entries.length === 0) return false;
-  const [, cutoff] = entries[0];
+  const [key] = entries[0];
+  // Check for a per-industry override before falling back to the global cutoff.
+  const industryOverrides = industry && cfg.critical_distress_cutoffs_by_industry?.[industry];
+  const cutoff = (industryOverrides && industryOverrides[key]) ?? entries[0][1];
   return cutoff.severe_if === "below"
     ? m.value < cutoff.threshold
     : m.value > cutoff.threshold;
@@ -131,7 +142,8 @@ function isSevereCritical(m: GradedMetric, cfg: ScoringConfig): boolean {
 
 export function scoreDeal(
   graded: GradedMetric[],
-  cfg: ScoringConfig = DEFAULT_CONFIG
+  cfg: ScoringConfig = DEFAULT_CONFIG,
+  industry?: string | null
 ): ScoreResult {
   const rows: ScoreRow[] = [];
   let totalWeighted = 0;
@@ -156,7 +168,7 @@ export function scoreDeal(
       counts.scored++;
       if (m.tier === "Critical" && m.grade === "Weak") {
         criticalWeakCount++;
-        if (isSevereCritical(m, cfg)) criticalSevereHit = true;
+        if (isSevereCritical(m, cfg, industry)) criticalSevereHit = true;
       }
       rows.push({
         name: m.name, tier: m.tier, grade: m.grade as string,
