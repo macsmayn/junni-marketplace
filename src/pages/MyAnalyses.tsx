@@ -14,9 +14,7 @@ const ORANGE = "#EA580C";
 
 function fmtCurrency(n: number | null): string {
   if (n == null) return "—";
-  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (Math.abs(n) >= 1_000) return `$${Math.round(n / 1_000).toLocaleString()}K`;
-  return `$${n.toLocaleString()}`;
+  return `$${Math.round(n).toLocaleString("en-US")}`;
 }
 
 function fmtDate(s: string): string {
@@ -212,7 +210,7 @@ export default function MyAnalyses() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: isMobile ? "24px 16px 60px" : "40px 32px 80px" }}>
+      <div style={{ maxWidth: 1400, margin: "0 auto", padding: isMobile ? "24px 16px 60px" : "40px 40px 80px" }}>
 
         {/* ── Page header ── */}
         <div style={{
@@ -326,8 +324,8 @@ export default function MyAnalyses() {
                       onMouseEnter={e => (e.currentTarget.style.background = "#F5F2ED")}
                       onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                     >
-                      <td style={{ ...tdStyle, fontWeight: 600, color: NAVY, maxWidth: 180 }}>
-                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <td style={{ ...tdStyle, fontWeight: 600, color: NAVY, minWidth: 200, maxWidth: 320 }}>
+                        <div style={{ lineHeight: 1.4 }}>
                           {a.title}
                         </div>
                       </td>
@@ -423,30 +421,36 @@ export default function MyAnalyses() {
                       </div>
                     )}
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                     {a.coverage_pct != null && (
-                      <span style={{
-                        fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
-                        background: confidenceColor(a.coverage_pct), color: "#fff",
-                      }}>
-                        {confidenceLabel(a.coverage_pct)}
-                      </span>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 9, color: MUTED, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>Data confidence</div>
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
+                          background: confidenceColor(a.coverage_pct), color: "#fff",
+                        }}>
+                          {confidenceLabel(a.coverage_pct)}
+                        </span>
+                      </div>
                     )}
                     {a.risk_label && (
-                      <span style={{
-                        fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 99,
-                        background: scoreColor(a.overall_score) + "1A",
-                        color: scoreColor(a.overall_score),
-                        border: `1px solid ${scoreColor(a.overall_score)}40`,
-                      }}>
-                        {a.risk_label}
-                      </span>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 9, color: MUTED, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>Rating</div>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 99,
+                          background: scoreColor(a.overall_score) + "1A",
+                          color: scoreColor(a.overall_score),
+                          border: `1px solid ${scoreColor(a.overall_score)}40`,
+                        }}>
+                          {a.risk_label}
+                        </span>
+                      </div>
                     )}
                   </div>
                 </div>
 
                 {/* Title + industry */}
-                <div style={{ fontWeight: 700, fontSize: 15, color: NAVY, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: NAVY, marginBottom: 3, lineHeight: 1.35 }}>
                   {a.title}
                 </div>
                 <div style={{ fontSize: 12, color: MUTED, marginBottom: 14 }}>{a.industry}</div>
