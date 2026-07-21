@@ -423,8 +423,8 @@ export default function MyAnalyses() {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                     {a.coverage_pct != null && (
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 9, color: MUTED, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>Data confidence</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                        <span style={{ fontSize: 10, color: MUTED }}>Data confidence:</span>
                         <span style={{
                           fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
                           background: confidenceColor(a.coverage_pct), color: "#fff",
@@ -434,8 +434,8 @@ export default function MyAnalyses() {
                       </div>
                     )}
                     {a.risk_label && (
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 9, color: MUTED, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>Rating</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                        <span style={{ fontSize: 10, color: MUTED }}>Rating:</span>
                         <span style={{
                           fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 99,
                           background: scoreColor(a.overall_score) + "1A",
