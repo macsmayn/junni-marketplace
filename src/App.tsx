@@ -1,7 +1,8 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { useEffect } from "react";
+import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -27,35 +28,39 @@ import TermsOfService from "./pages/TermsOfService";
 import { supabase } from './lib/supabase'
 
 
+function Redirect({ to }: { to: string }) {
+  const [, setLocation] = useLocation();
+  useEffect(() => { setLocation(to); }, []);
+  return null;
+}
+
 function Router() {
   return (
     <Switch>
-      <Route path={"/"} component={Home} />
+      <Route path={"/"}>
+        <Redirect to="/login" />
+      </Route>
       <Route path={"/login"} component={Login} />
       <Route path={"/role-select"} component={RoleSelect} />
-      <Route path={"/marketplace"} component={Marketplace} />
-      <Route path={"/deals/:id"} component={DealDetail} />
+      <Route path={"/marketplace"}>
+        <Redirect to="/lender-dashboard" />
+      </Route>
+      <Route path={"/deals/:id"}>
+        <Redirect to="/lender-dashboard" />
+      </Route>
       <Route path={"/deals/:id/review-financials"}>
-        <ProtectedRoute>
-          <FinancialReview />
-        </ProtectedRoute>
+        <Redirect to="/lender-dashboard" />
       </Route>
       <Route path={"/privacy"} component={PrivacyPolicy} />
       <Route path={"/terms"} component={TermsOfService} />
       <Route path={"/onboarding"}>
-        <ProtectedRoute>
-          <BorrowerOnboarding />
-        </ProtectedRoute>
+        <Redirect to="/lender-dashboard" />
       </Route>
       <Route path={"/lender-onboarding"}>
-        <ProtectedRoute>
-          <LenderOnboarding />
-        </ProtectedRoute>
+        <Redirect to="/lender-dashboard" />
       </Route>
       <Route path={"/borrower-dashboard"}>
-        <ProtectedRoute>
-          <BorrowerDashboard />
-        </ProtectedRoute>
+        <Redirect to="/lender-dashboard" />
       </Route>
       <Route path={"/lender-dashboard"}>
         <ProtectedRoute>
@@ -63,9 +68,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path={"/lender-portfolio"}>
-        <ProtectedRoute>
-          <LenderPortfolio />
-        </ProtectedRoute>
+        <Redirect to="/lender-dashboard" />
       </Route>
       <Route path={"/admin"}>
         <AdminRoute>

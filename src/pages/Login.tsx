@@ -339,12 +339,12 @@ export default function Login() {
       <div className="login-wrapper">
         {/* Left Panel */}
         <div className="login-left">
-          <h1>Access your account.</h1>
-          <p>Manage your deals, track funding progress, and monitor your portfolio in real time.</p>
+          <h1>Credit analysis for private lenders.</h1>
+          <p>Log in to score, benchmark, and generate analyst-grade credit memos.</p>
           <ul className="login-features">
-            <li>Real-time deal tracking</li>
-            <li>Transparent bid competition</li>
-            <li>Instant fund transfers</li>
+            <li>AI-powered credit scoring from financial statements</li>
+            <li>Analyst-grade credit memos in minutes</li>
+            <li>Industry-benchmarked risk metrics</li>
             <li>24/7 dashboard access</li>
           </ul>
         </div>
