@@ -293,6 +293,7 @@ export default function LenderDashboard() {
           .btn-gold { background: var(--gold); color: #fff; }
           .btn-navy { background: var(--navy); color: #fff; }
           .btn-ghost-white { background: none; border: 1px solid rgba(255,255,255,0.3); color: #fff; }
+          .btn-ghost-navy { background: none; border: 1px solid var(--border); color: var(--navy); }
           .nav-new { font-size: 12px; padding: 8px 12px; }
 
           .content { padding: 16px 14px 40px; display: flex; flex-direction: column; gap: 22px; }
@@ -394,6 +395,7 @@ export default function LenderDashboard() {
               </button>
               {notifOpen && notifPanel}
             </div>
+            <button className="btn btn-ghost-navy nav-new" onClick={() => setLocation('/my-analyses')}>My Analyses</button>
             <button className="btn btn-gold nav-new" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
             <button className="btn btn-navy nav-new" onClick={() => setLocation('/marketplace')}>Browse Deals →</button>
           </div>
@@ -683,6 +685,7 @@ export default function LenderDashboard() {
             </button>
             {notifOpen && notifPanel}
           </div>
+          <button className="d-btn d-btn-ghost" onClick={() => setLocation('/my-analyses')}>My Analyses</button>
           <button className="d-btn d-btn-gold" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
           <button className="d-btn d-btn-navy" onClick={() => setLocation('/marketplace')}>Browse Deals →</button>
         </div>

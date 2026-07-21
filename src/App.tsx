@@ -21,6 +21,7 @@ import FinancialReview from "./pages/FinancialReview";
 import AdminPanel from "./pages/AdminPanel";
 import DealAnalysis from "./pages/DealAnalysis";
 import NewAnalysis from "./pages/NewAnalysis";
+import MyAnalyses from "./pages/MyAnalyses";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import { supabase } from './lib/supabase'
@@ -74,6 +75,11 @@ function Router() {
       <Route path={"/new-analysis"}>
         <LenderRoute>
           <NewAnalysis />
+        </LenderRoute>
+      </Route>
+      <Route path={"/my-analyses"}>
+        <LenderRoute>
+          <MyAnalyses />
         </LenderRoute>
       </Route>
       <Route path={"/analysis/:dealId"}>
