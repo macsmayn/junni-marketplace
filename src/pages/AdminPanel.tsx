@@ -1169,6 +1169,9 @@ export default function AdminPanel() {
             </button>
             <span className="nav-title">Admin Panel</span>
           </div>
+          <div>
+            <button className="a-btn a-btn-ghost" style={{ fontSize: 11, padding: "6px 10px" }} onClick={() => setLocation('/my-analyses')}>My Analyses</button>
+          </div>
         </div>
 
         <div className={`overlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)}></div>
@@ -1281,6 +1284,7 @@ export default function AdminPanel() {
         <div className="d-topbar-title">Admin Panel</div>
         <div className="d-topbar-right">
           <button className="a-btn a-btn-ghost" onClick={() => alert("Export Data")}>Export Data</button>
+          <button className="a-btn a-btn-ghost" onClick={() => setLocation('/my-analyses')}>My Analyses</button>
           <button className="a-btn a-btn-gold" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
           <button className="a-btn a-btn-navy" onClick={() => alert("Platform Settings")}>Platform Settings</button>
         </div>
