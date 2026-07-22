@@ -19,7 +19,6 @@ function timeAgo(dateStr: string): string {
 
 export default function LenderDashboard() {
   const [, setLocation] = useLocation();
-  const [persona, setPersona] = useState("lender");
   const [lang, setLang] = useState("en");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [topbarVisible, setTopbarVisible] = useState(true);
@@ -176,60 +175,6 @@ export default function LenderDashboard() {
     </div>
   );
 
-  const personas: Record<string, any> = {
-    borrower: {
-      sidebarLabel: "BORROWER",
-      navItems: [
-        { icon: "◉", text: "Dashboard", badge: null, active: true },
-        { icon: "📋", text: "My Deals", badge: "2", active: false },
-        { icon: "💼", text: "Bids Received", badge: "8", active: false },
-        { icon: "📄", text: "Documents", badge: null, active: false },
-      ],
-      accountItems: [
-        { icon: "🏪", text: "Marketplace", badge: null },
-        { icon: "⚙️", text: "Settings", badge: null },
-      ],
-      userName: "Marc Pellerin",
-      userAvatar: "MP",
-      userRole: "Borrower",
-    },
-    lender: {
-      sidebarLabel: "LENDER",
-      navItems: [
-        { icon: "◉", text: "Dashboard", badge: null, active: true },
-        { icon: "🏪", text: "Marketplace", badge: null, active: false },
-        { icon: "💼", text: "My Bids", badge: null, active: false },
-        { icon: "📊", text: "Portfolio", badge: null, active: false },
-        { icon: "❤️", text: "Saved Deals", badge: null, active: false },
-      ],
-      accountItems: [
-        { icon: "⚙️", text: "Settings", badge: null },
-      ],
-      userName: lenderName,
-      userAvatar: lenderInitials,
-      userRole: "Lender",
-    },
-    admin: {
-      sidebarLabel: "ADMIN",
-      navItems: [
-        { icon: "◉", text: "Overview", badge: null, active: true },
-        { icon: "📋", text: "Deals", badge: "12", active: false },
-        { icon: "👥", text: "Users", badge: null, active: false },
-        { icon: "🔍", text: "KYC Review", badge: "3", active: false },
-        { icon: "💼", text: "Bids", badge: null, active: false },
-      ],
-      accountItems: [
-        { icon: "📊", text: "Analytics", badge: null },
-        { icon: "⚙️", text: "Settings", badge: null },
-      ],
-      userName: "Admin",
-      userAvatar: "A",
-      userRole: "Full Access",
-    },
-  };
-
-  const currentPersona = personas[persona] || personas.lender;
-
   if (auth0Loading || loading) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#FAF8F4", fontFamily: "Inter, sans-serif", color: "#1B2B4B", fontSize: "16px", fontWeight: 600 }}>
@@ -251,18 +196,9 @@ export default function LenderDashboard() {
             --border: #E8E2D9; --text-muted: #7A7060; --green: #059669; --amber: #D97706;
           }
           html, body { background: var(--cream); color: var(--navy); font-family: 'Inter', sans-serif; }
-          body { padding-top: 96px; min-height: 100vh; }
+          body { padding-top: 56px; min-height: 100vh; }
 
-          .demo-banner { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: var(--navy); z-index: 300; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; gap: 8px; }
-          .demo-left { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
-          .demo-dot { width: 7px; height: 7px; background: #F59E0B; border-radius: 50%; }
-          .demo-label { font-size: 9px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
-          .demo-pills { display: flex; gap: 3px; }
-          .demo-pill { background: transparent; color: rgba(255,255,255,0.5); border: none; padding: 4px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; white-space: nowrap; }
-          .demo-pill.active { background: var(--gold); color: #fff; }
-          .demo-exit { background: none; border: 1px solid rgba(255,255,255,0.45); color: #fff; padding: 4px 7px; border-radius: 5px; font-size: 9px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; white-space: nowrap; flex-shrink: 0; }
-
-          .navbar { position: fixed; top: 40px; left: 0; right: 0; height: 56px; background: #fff; border-bottom: 1px solid var(--border); z-index: 250; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; }
+          .navbar { position: fixed; top: 0; left: 0; right: 0; height: 56px; background: #fff; border-bottom: 1px solid var(--border); z-index: 250; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; }
           .nav-left { display: flex; align-items: center; gap: 10px; }
           .hamburger { background: none; border: none; cursor: pointer; padding: 4px; display: flex; flex-direction: column; gap: 4px; width: 30px; }
           .hamburger span { display: block; height: 2px; background: var(--navy); border-radius: 2px; }
@@ -349,19 +285,6 @@ export default function LenderDashboard() {
           .sb-role { font-size: 11px; color: rgba(255,255,255,0.4); }
         `}</style>
 
-        <div className="demo-banner">
-          <div className="demo-left">
-            <div className="demo-dot"></div>
-            <span className="demo-label">Demo Mode</span>
-          </div>
-          <div className="demo-pills">
-            <button className={`demo-pill ${persona === 'borrower' ? 'active' : ''}`} onClick={() => setPersona('borrower')}>Borrower</button>
-            <button className={`demo-pill ${persona === 'lender' ? 'active' : ''}`} onClick={() => setPersona('lender')}>Lender</button>
-            <button className={`demo-pill ${persona === 'admin' ? 'active' : ''}`} onClick={() => setPersona('admin')}>Admin</button>
-          </div>
-          <button className="demo-exit" onClick={() => setLocation('/')}>Exit Demo</button>
-        </div>
-
         <div className="navbar">
           <div className="nav-left">
             <button className="hamburger" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Menu">
@@ -388,19 +311,11 @@ export default function LenderDashboard() {
             <img src={LOGO_NAVY} alt="Junni" className="sb-logo" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} />
             <button className="sb-close" onClick={() => setSidebarOpen(false)}>✕</button>
           </div>
-          <div className="sb-section">{currentPersona.sidebarLabel}</div>
-          {currentPersona.navItems.map((item: any, idx: number) => (
-            <a key={idx} className={`sb-item ${item.active ? 'active' : ''}`} href="#" onClick={(e) => e.preventDefault()}>
-              <span>{item.icon}</span>{item.text}
-              {item.badge && <span className="sb-badge">{item.badge}</span>}
-            </a>
-          ))}
+          <div className="sb-section">LENDER</div>
+          <a className="sb-item active" href="#" onClick={(e) => e.preventDefault()}>
+            <span>◉</span>Dashboard
+          </a>
           <div className="sb-section">ACCOUNT</div>
-          {currentPersona.accountItems.map((item: any, idx: number) => (
-            <a key={idx} className="sb-item" href="#" onClick={(e) => e.preventDefault()}>
-              <span>{item.icon}</span>{item.text}
-            </a>
-          ))}
           <button
             onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
             style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
@@ -409,10 +324,10 @@ export default function LenderDashboard() {
           </button>
           <div className="sb-bottom">
             <div className="sb-user">
-              <div className="sb-avatar">{currentPersona.userAvatar}</div>
+              <div className="sb-avatar">{lenderInitials}</div>
               <div>
-                <div className="sb-name">{currentPersona.userName}</div>
-                <div className="sb-role">{currentPersona.userRole}</div>
+                <div className="sb-name">{lenderName}</div>
+                <div className="sb-role">Lender</div>
               </div>
             </div>
           </div>
@@ -445,16 +360,7 @@ export default function LenderDashboard() {
         }
         html, body { background: var(--cream); color: var(--navy); font-family: 'Inter', sans-serif; }
 
-        .d-demo-banner { position: fixed; top: 0; left: 0; right: 0; height: 40px; background: var(--navy); z-index: 300; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; gap: 20px; }
-        .d-demo-left { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-        .d-demo-dot { width: 7px; height: 7px; background: #F59E0B; border-radius: 50%; }
-        .d-demo-label { font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
-        .d-demo-pills { display: flex; gap: 6px; }
-        .d-demo-pill { background: transparent; color: rgba(255,255,255,0.5); border: none; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; }
-        .d-demo-pill.active { background: var(--gold); color: #fff; }
-        .d-demo-exit { background: none; border: 1px solid rgba(255,255,255,0.5); color: #fff; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; flex-shrink: 0; }
-
-        .d-sidebar { position: fixed; top: 40px; left: 0; width: 220px; height: calc(100vh - 40px); background: var(--navy); overflow-y: auto; z-index: 200; display: flex; flex-direction: column; }
+        .d-sidebar { position: fixed; top: 0; left: 0; width: 220px; height: 100vh; background: var(--navy); overflow-y: auto; z-index: 200; display: flex; flex-direction: column; }
         .d-sb-head { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .d-sb-logo { width: 120px; height: auto; display: block; }
         .d-sb-section { padding: 16px 14px 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.3); }
@@ -468,7 +374,7 @@ export default function LenderDashboard() {
         .d-sb-name { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.85); }
         .d-sb-role { font-size: 10px; color: rgba(255,255,255,0.4); }
 
-        .d-topbar { position: fixed; top: 40px; left: 220px; right: 0; height: 60px; background: #fff; border-bottom: 1px solid var(--border); z-index: 250; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; transition: transform 0.3s ease; }
+        .d-topbar { position: fixed; top: 0; left: 220px; right: 0; height: 60px; background: #fff; border-bottom: 1px solid var(--border); z-index: 250; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; transition: transform 0.3s ease; }
         .d-topbar.hidden { transform: translateY(-100%); }
         .d-topbar-title { font-size: 16px; font-weight: 700; color: var(--navy); }
         .d-topbar-right { display: flex; align-items: center; gap: 14px; }
@@ -483,7 +389,7 @@ export default function LenderDashboard() {
         .d-btn-ghost { background: none; border: 1px solid var(--border); color: var(--navy); padding: 7px 14px; font-size: 12px; }
         .d-btn-ghost-white { background: none; border: 1px solid rgba(255,255,255,0.3); color: #fff; padding: 10px 16px; font-size: 13px; }
 
-        .d-main { margin-left: 220px; padding-top: 100px; padding-left: 30px; padding-right: 30px; padding-bottom: 40px; }
+        .d-main { margin-left: 220px; padding-top: 60px; padding-left: 30px; padding-right: 30px; padding-bottom: 40px; }
 
         .d-welcome { background: var(--navy); border-radius: 16px; padding: 28px 32px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
         .d-welcome h2 { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -0.5px; margin-bottom: 6px; }
@@ -533,38 +439,16 @@ export default function LenderDashboard() {
         .d-sc-rate { font-size: 12px; color: var(--text-muted); text-align: right; }
       `}</style>
 
-      {/* DEMO BANNER */}
-      <div className="d-demo-banner">
-        <div className="d-demo-left">
-          <div className="d-demo-dot"></div>
-          <span className="d-demo-label">Demo Mode</span>
-        </div>
-        <div className="d-demo-pills">
-          <button className={`d-demo-pill ${persona === 'borrower' ? 'active' : ''}`} onClick={() => setPersona('borrower')}>Borrower</button>
-          <button className={`d-demo-pill ${persona === 'lender' ? 'active' : ''}`} onClick={() => setPersona('lender')}>Lender</button>
-          <button className={`d-demo-pill ${persona === 'admin' ? 'active' : ''}`} onClick={() => setPersona('admin')}>Admin</button>
-        </div>
-        <button className="d-demo-exit" onClick={() => setLocation('/')}>Exit Demo</button>
-      </div>
-
       {/* SIDEBAR */}
       <div className="d-sidebar">
         <div className="d-sb-head">
           <img src={LOGO_NAVY} alt="Junni" className="d-sb-logo" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} />
         </div>
-        <div className="d-sb-section">{currentPersona.sidebarLabel}</div>
-        {currentPersona.navItems.map((item: any, idx: number) => (
-          <button key={idx} className={`d-sb-item ${item.active ? 'active' : ''}`}>
-            <span>{item.icon}</span>{item.text}
-            {item.badge && <span className="d-sb-badge">{item.badge}</span>}
-          </button>
-        ))}
+        <div className="d-sb-section">LENDER</div>
+        <button className="d-sb-item active">
+          <span>◉</span>Dashboard
+        </button>
         <div className="d-sb-section">ACCOUNT</div>
-        {currentPersona.accountItems.map((item: any, idx: number) => (
-          <button key={idx} className="d-sb-item">
-            <span>{item.icon}</span>{item.text}
-          </button>
-        ))}
         <button
           onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
           style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
@@ -573,10 +457,10 @@ export default function LenderDashboard() {
         </button>
         <div className="d-sb-bottom">
           <div className="d-sb-user">
-            <div className="d-sb-avatar">{currentPersona.userAvatar}</div>
+            <div className="d-sb-avatar">{lenderInitials}</div>
             <div>
-              <div className="d-sb-name">{currentPersona.userName}</div>
-              <div className="d-sb-role">{currentPersona.userRole}</div>
+              <div className="d-sb-name">{lenderName}</div>
+              <div className="d-sb-role">Lender</div>
             </div>
           </div>
         </div>
