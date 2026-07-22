@@ -1,12 +1,13 @@
-﻿import { useEffect } from "react";
+﻿import { useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 
 const LOGO_BEIGE = "/junni-logo-beige.png";
 
 export default function Login() {
-  const { loginWithRedirect, isAuthenticated } = useAuth0();
+  const { loginWithRedirect, isAuthenticated, isLoading } = useAuth0();
   const [, setLocation] = useLocation();
+  const redirectCalled = useRef(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -14,10 +15,24 @@ export default function Login() {
     }
   }, [isAuthenticated, setLocation]);
 
+  useEffect(() => {
+    if (isLoading || isAuthenticated || redirectCalled.current) return;
+    redirectCalled.current = true;
+    loginWithRedirect();
+  }, [isLoading, isAuthenticated, loginWithRedirect]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     loginWithRedirect();
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#FAF8F4", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif", color: "#7A7060", fontSize: 14 }}>
+        Redirecting to sign in…
+      </div>
+    );
+  }
 
   return (
     <div className="login-page">
