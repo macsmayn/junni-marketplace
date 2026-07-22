@@ -143,6 +143,16 @@ export default function DealAnalysis() {
   const [capItems, setCapItems] = useState<any[]>([]);
   const [collateral, setCollateral] = useState<any[]>([]);
   const [confirmedCash, setConfirmedCash] = useState<number | null>(null);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [questionsLoading, setQuestionsLoading] = useState(true);
+  const [showResolved, setShowResolved] = useState(false);
+  const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({});
+  const [savingAnswer, setSavingAnswer] = useState<string | null>(null);
+  const [savingStatus, setSavingStatus] = useState<string | null>(null);
+  const [addingQuestion, setAddingQuestion] = useState(false);
+  const [newQuestionText, setNewQuestionText] = useState("");
+  const [newQuestionPriority, setNewQuestionPriority] = useState("medium");
+  const [addingSaving, setAddingSaving] = useState(false);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900);
@@ -165,7 +175,7 @@ export default function DealAnalysis() {
     if (!dealId) return;
     (async () => {
       setLoading(true);
-      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }] = await Promise.all([
+      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }, { data: qsData }] = await Promise.all([
         supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
@@ -174,6 +184,7 @@ export default function DealAnalysis() {
         supabase.from("capitalization_items").select("category,label,amount,rate,notes,sort_order").eq("deal_id", dealId).order("sort_order"),
         supabase.from("collateral_assets").select("asset_type,description,market_value,advance_rate,lending_value").eq("deal_id", dealId),
         supabase.from("extracted_financials").select("cash").eq("deal_id", dealId).eq("borrower_confirmed", true).order("fiscal_year", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("credit_questions").select("*").eq("deal_id", dealId).order("created_at"),
       ]);
       if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
@@ -183,6 +194,12 @@ export default function DealAnalysis() {
       setCapItems(ci ?? []);
       setCollateral(coll ?? []);
       setConfirmedCash(finMR?.cash ?? null);
+      const loadedQs = qsData ?? [];
+      setQuestions(loadedQs);
+      const initAnswers: Record<string, string> = {};
+      for (const q of loadedQs) { if (q.answer) initAnswers[q.id] = q.answer; }
+      setQuestionAnswers(initAnswers);
+      setQuestionsLoading(false);
       const metricRows = (m as MetricRow[]) ?? [];
       setMetrics(metricRows);
 
@@ -243,6 +260,40 @@ export default function DealAnalysis() {
       setDefinitionBubble(metricName);
       setBubbleRect(rect);
     }
+  };
+
+  const handleQuestionStatusChange = async (id: string, newStatus: string) => {
+    setSavingStatus(id);
+    setQuestions(prev => prev.map(q => q.id === id ? { ...q, status: newStatus } : q));
+    await supabase.from("credit_questions").update({ status: newStatus }).eq("id", id);
+    setSavingStatus(null);
+  };
+
+  const handleAnswerSave = async (id: string) => {
+    const text = questionAnswers[id] ?? "";
+    setSavingAnswer(id);
+    const now = new Date().toISOString();
+    setQuestions(prev => prev.map(q => q.id === id ? { ...q, answer: text, status: "answered", answered_at: now } : q));
+    await supabase.from("credit_questions").update({ answer: text, answered_at: now, status: "answered" }).eq("id", id);
+    setSavingAnswer(null);
+  };
+
+  const handleAddQuestion = async () => {
+    if (!newQuestionText.trim() || !dealId) return;
+    setAddingSaving(true);
+    const { data: inserted } = await supabase.from("credit_questions").insert({
+      deal_id: dealId,
+      question_text: newQuestionText.trim(),
+      priority: newQuestionPriority,
+      source: "user",
+      question_type: "user_added",
+      status: "open",
+    }).select().single();
+    if (inserted) setQuestions(prev => [...prev, inserted]);
+    setNewQuestionText("");
+    setNewQuestionPriority("medium");
+    setAddingQuestion(false);
+    setAddingSaving(false);
   };
 
   return (
@@ -482,6 +533,234 @@ export default function DealAnalysis() {
             </div>
           </div>
         )}
+
+        {/* ── 6. Diligence Questions ── */}
+        {(() => {
+          const Q_PRI: Record<string, number> = { high: 0, medium: 1, low: 2 };
+          const sortedQs = [...questions].sort((a, b) => {
+            const d = (Q_PRI[a.priority] ?? 1) - (Q_PRI[b.priority] ?? 1);
+            if (d !== 0) return d;
+            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          });
+          const outstanding = sortedQs.filter(q => q.status === "open" || q.status === "asked");
+          const resolved = sortedQs.filter(q => q.status === "answered" || q.status === "dismissed");
+          const openCount = outstanding.length;
+
+          const priBadge = (priority: string) => {
+            const cfg = priority === "high"
+              ? { color: RED,  bg: "rgba(220,38,38,0.08)",   label: "High" }
+              : priority === "medium"
+              ? { color: GOLD, bg: "rgba(212,148,10,0.08)",  label: "Medium" }
+              : { color: MUTED,bg: "rgba(122,112,96,0.08)",  label: "Low" };
+            return (
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", padding: "2px 7px", borderRadius: 99, background: cfg.bg, color: cfg.color, textTransform: "uppercase" as const }}>
+                {cfg.label}
+              </span>
+            );
+          };
+
+          const srcChip = (source: string) => {
+            const cfg = source === "ai"
+              ? { label: "AI-flagged",   color: NAVY, bg: "rgba(27,43,75,0.07)" }
+              : source === "user"
+              ? { label: "Added by you", color: GOLD, bg: "rgba(212,148,10,0.10)" }
+              : { label: "Rule-based",   color: MUTED,bg: "rgba(122,112,96,0.07)" };
+            return (
+              <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: cfg.bg, color: cfg.color }}>
+                {cfg.label}
+              </span>
+            );
+          };
+
+          const fmtMetric = (s: string) => s.replace(/_/g, " ").replace(/^\w/, c => c.toUpperCase());
+
+          const STATUS_OPTS = [
+            { value: "open",      label: "Open" },
+            { value: "asked",     label: "Asked" },
+            { value: "answered",  label: "Answered" },
+            { value: "dismissed", label: "Dismissed" },
+          ];
+
+          const renderCard = (q: any) => {
+            const draft = questionAnswers[q.id] ?? (q.answer ?? "");
+            const savingA = savingAnswer === q.id;
+            const savingS = savingStatus === q.id;
+            return (
+              <div key={q.id} style={{ border: "1px solid #E8E2D9", borderRadius: 10, padding: isMobile ? "14px" : "18px", background: "#fff" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 10 }}>
+                  {priBadge(q.priority)}
+                  {srcChip(q.source)}
+                  {q.related_metric && (
+                    <span style={{ fontSize: 10, color: MUTED, fontFamily: "monospace", padding: "2px 6px", background: "rgba(27,43,75,0.04)", borderRadius: 4 }}>
+                      {fmtMetric(q.related_metric)}
+                    </span>
+                  )}
+                </div>
+                <p style={{ margin: "0 0 14px", fontSize: 14, color: NAVY, lineHeight: 1.6, fontWeight: 500 }}>{q.question_text}</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center", marginBottom: 14 }}>
+                  <span style={{ fontSize: 11, color: MUTED, marginRight: 2 }}>Status:</span>
+                  {STATUS_OPTS.map(opt => {
+                    const active = q.status === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        disabled={savingS}
+                        onClick={() => !active && handleQuestionStatusChange(q.id, opt.value)}
+                        style={{
+                          padding: "3px 10px", borderRadius: 99, border: "1px solid",
+                          fontSize: 11, fontWeight: active ? 700 : 500,
+                          fontFamily: "Inter, sans-serif", cursor: active || savingS ? "default" : "pointer",
+                          background: active ? NAVY : "transparent",
+                          color: active ? "#fff" : MUTED,
+                          borderColor: active ? NAVY : "#D8D2C8",
+                          opacity: savingS ? 0.6 : 1,
+                        }}
+                      >{opt.label}</button>
+                    );
+                  })}
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 6 }}>Answer</div>
+                  <textarea
+                    value={draft}
+                    placeholder="Record the borrower's response or your notes here…"
+                    onChange={e => setQuestionAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                    style={{
+                      width: "100%", minHeight: 72, padding: "8px 10px",
+                      border: "1px solid #E8E2D9", borderRadius: 6,
+                      fontFamily: "Inter, sans-serif", fontSize: 13, color: NAVY,
+                      resize: "vertical", outline: "none", boxSizing: "border-box",
+                      lineHeight: 1.55, background: draft ? "#fff" : CREAM,
+                    }}
+                  />
+                  {q.answered_at && (
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>
+                      Answered {new Date(q.answered_at).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })}
+                    </div>
+                  )}
+                  <button
+                    disabled={savingA || !draft.trim()}
+                    onClick={() => handleAnswerSave(q.id)}
+                    style={{
+                      marginTop: 8, padding: "6px 14px", borderRadius: 6,
+                      border: "none", background: NAVY, color: "#fff",
+                      fontSize: 12, fontWeight: 600,
+                      cursor: savingA || !draft.trim() ? "not-allowed" : "pointer",
+                      fontFamily: "Inter, sans-serif",
+                      opacity: savingA || !draft.trim() ? 0.5 : 1,
+                    }}
+                  >{savingA ? "Saving…" : "Save answer"}</button>
+                </div>
+              </div>
+            );
+          };
+
+          return (
+            <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
+              <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 20px" }}>
+                Diligence Questions{openCount > 0 ? ` (${openCount} open)` : questions.length > 0 ? " (all resolved)" : ""}
+              </h2>
+
+              {questionsLoading ? (
+                <div style={{ color: MUTED, fontSize: 13, padding: "8px 0" }}>Loading questions…</div>
+              ) : questions.length === 0 ? (
+                <div style={{ color: MUTED, fontSize: 13, padding: "8px 0 16px" }}>No diligence questions generated for this analysis.</div>
+              ) : (
+                <>
+                  {outstanding.length > 0 ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      {outstanding.map(renderCard)}
+                    </div>
+                  ) : (
+                    <div style={{ color: MUTED, fontSize: 13, padding: "4px 0 8px" }}>All questions resolved.</div>
+                  )}
+                  {resolved.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <button
+                        onClick={() => setShowResolved(v => !v)}
+                        style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "Inter, sans-serif" }}
+                      >
+                        <span style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>
+                          {showResolved ? "▲ Hide" : "▼ Show"} answered/dismissed ({resolved.length})
+                        </span>
+                      </button>
+                      {showResolved && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+                          {resolved.map(renderCard)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div style={{ marginTop: questions.length === 0 ? 0 : 20, paddingTop: questions.length === 0 ? 0 : 16, borderTop: questions.length === 0 ? "none" : "1px solid #E8E2D9" }}>
+                {!addingQuestion ? (
+                  <button
+                    onClick={() => setAddingQuestion(true)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      background: "none", border: "1px dashed #C8C0B0",
+                      borderRadius: 8, padding: "8px 14px",
+                      fontSize: 12, fontWeight: 600, color: MUTED,
+                      cursor: "pointer", fontFamily: "Inter, sans-serif",
+                    }}
+                  >＋ Add question</button>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>New question</div>
+                    <textarea
+                      value={newQuestionText}
+                      autoFocus
+                      placeholder="What additional information do you need from the borrower?"
+                      onChange={e => setNewQuestionText(e.target.value)}
+                      style={{
+                        width: "100%", minHeight: 80, padding: "8px 10px",
+                        border: `1px solid ${NAVY}`, borderRadius: 6,
+                        fontFamily: "Inter, sans-serif", fontSize: 13, color: NAVY,
+                        resize: "vertical", outline: "none", boxSizing: "border-box", lineHeight: 1.55,
+                      }}
+                    />
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>Priority:</span>
+                        {(["high", "medium", "low"] as const).map(p => (
+                          <button
+                            key={p}
+                            onClick={() => setNewQuestionPriority(p)}
+                            style={{
+                              padding: "2px 10px", borderRadius: 99, border: "1px solid",
+                              fontSize: 11, fontWeight: newQuestionPriority === p ? 700 : 400,
+                              fontFamily: "Inter, sans-serif", cursor: "pointer",
+                              background: newQuestionPriority === p ? NAVY : "transparent",
+                              color: newQuestionPriority === p ? "#fff" : MUTED,
+                              borderColor: newQuestionPriority === p ? NAVY : "#D8D2C8",
+                            }}
+                          >{p.charAt(0).toUpperCase() + p.slice(1)}</button>
+                        ))}
+                      </div>
+                      <button
+                        disabled={!newQuestionText.trim() || addingSaving}
+                        onClick={handleAddQuestion}
+                        style={{
+                          padding: "6px 14px", borderRadius: 6, border: "none",
+                          background: NAVY, color: "#fff", fontSize: 12, fontWeight: 600,
+                          cursor: !newQuestionText.trim() || addingSaving ? "not-allowed" : "pointer",
+                          fontFamily: "Inter, sans-serif",
+                          opacity: !newQuestionText.trim() || addingSaving ? 0.5 : 1,
+                        }}
+                      >{addingSaving ? "Saving…" : "Add"}</button>
+                      <button
+                        onClick={() => { setAddingQuestion(false); setNewQuestionText(""); setNewQuestionPriority("medium"); }}
+                        style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #E8E2D9", background: "transparent", color: MUTED, fontSize: 12, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
+                      >Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── Sources & Uses (fallback: Use of Funds text) ── */}
         {sourcesUses.length > 0 ? (
