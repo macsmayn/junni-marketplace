@@ -1,15 +1,13 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase } from '../lib/supabase';
-
-const LOGO_BEIGE = "/junni-logo-beige.png";
+import { supabase, setSupabaseAuthToken } from '../lib/supabase';
 
 export default function RoleSelect() {
   const [, setLocation] = useLocation();
-  const { logout, isLoading, user } = useAuth0();
-  const [activeRole, setActiveRole] = useState<string | null>(null);
+  const { isLoading, user, getIdTokenClaims } = useAuth0();
   const [checkingAdmin, setCheckingAdmin] = useState(true);
+  const [readError, setReadError] = useState(false);
 
   useEffect(() => {
     if (isLoading) return;
@@ -18,14 +16,33 @@ export default function RoleSelect() {
       return;
     }
     (async () => {
-      const { data: existingUser } = await supabase
+      // Set token before read to avoid the race with App.tsx's async getIdTokenClaims
+      const claims = await getIdTokenClaims();
+      setSupabaseAuthToken(claims?.__raw ?? null);
+
+      const { data: existingUser, error } = await supabase
         .from('users')
         .select('role')
         .eq('auth0_id', user.sub)
         .maybeSingle();
-      if (existingUser?.role === 'borrower') { setLocation('/borrower-dashboard'); return; }
-      if (existingUser?.role === 'lender')   { setLocation('/lender-dashboard'); return; }
-      if (existingUser?.role === 'admin')    { setLocation('/admin'); return; }
+
+      if (error) {
+        console.error('[RoleSelect] users read failed:', error);
+        setReadError(true);
+        setCheckingAdmin(false);
+        return;
+      }
+
+      if (existingUser) {
+        if (existingUser.role === 'admin')    { setLocation('/admin'); return; }
+        if (existingUser.role === 'lender')   { setLocation('/lender-dashboard'); return; }
+        if (existingUser.role === 'borrower') { setLocation('/borrower-dashboard'); return; }
+        // Unknown role but row exists — do not re-insert, default to lender dashboard
+        setLocation('/lender-dashboard');
+        return;
+      }
+
+      // No row found — genuine new user; DB default sets role='lender'
       await supabase.from('users').upsert({
         auth0_id: user.sub,
         email: user.email,
@@ -35,38 +52,18 @@ export default function RoleSelect() {
     })();
   }, [isLoading, user?.email]);
 
-  const upsertUser = async (role: 'borrower' | 'lender') => {
-    if (!user) {
-      console.error('No Auth0 user found');
-      return;
-    }
-    console.log('Attempting upsert for:', user.sub, user.email, user.name, role);
-    const { data, error } = await supabase.from('users').upsert({
-      auth0_id: user.sub,
-      email: user.email,
-      full_name: user.name,
-      role,
-    }, { onConflict: 'auth0_id' });
-    console.log('Upsert result:', data, error);
-    if (error) console.error('Supabase upsert error:', error);
-  };
-
-  const handleBorrowerClick = async () => {
-    setActiveRole("borrower");
-    await upsertUser("borrower");
-    setLocation("/onboarding");
-  };
-
-  const handleLenderClick = async () => {
-    setActiveRole("lender");
-    await upsertUser("lender");
-    setLocation("/lender-onboarding");
-  };
-
   if (isLoading || checkingAdmin) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
         Loading...
+      </div>
+    );
+  }
+
+  if (readError) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "Inter, sans-serif", color: "#DC2626", fontSize: 14 }}>
+        Unable to load your account. Please refresh the page or contact support.
       </div>
     );
   }
