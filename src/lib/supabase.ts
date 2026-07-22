@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 
+let currentToken: string | null = null;
+export function setSupabaseAuthToken(token: string | null) { currentToken = token; }
+
 export const supabase = createClient(
   'https://sypqecydiqdpruarkrvy.supabase.co',
-  'sb_publishable_DB4ZyrLd-8wYkE0HgBokLg_GN6cU_NB'
+  'sb_publishable_DB4ZyrLd-8wYkE0HgBokLg_GN6cU_NB',
+  { accessToken: async () => currentToken ?? '' }
 )

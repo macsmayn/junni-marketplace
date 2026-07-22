@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { useEffect } from "react";
+import { useAuth0 } from "@auth0/auth0-react";
 import { Route, Switch, useLocation } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -25,7 +26,7 @@ import NewAnalysis from "./pages/NewAnalysis";
 import MyAnalyses from "./pages/MyAnalyses";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
-import { supabase } from './lib/supabase'
+import { supabase, setSupabaseAuthToken } from './lib/supabase'
 
 
 function Redirect({ to }: { to: string }) {
@@ -104,6 +105,17 @@ function Router() {
 
 function App() {
   console.log('Supabase client initialized:', !!supabase)
+  const { isAuthenticated, getIdTokenClaims } = useAuth0();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      getIdTokenClaims().then(claims => {
+        setSupabaseAuthToken(claims?.__raw ?? null);
+      });
+    } else {
+      setSupabaseAuthToken(null);
+    }
+  }, [isAuthenticated, getIdTokenClaims]);
   return (
     <ErrorBoundary>
       <ThemeProvider
