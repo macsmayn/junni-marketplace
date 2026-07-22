@@ -7,11 +7,10 @@ const LOGO_NAVY = "/junni-logo-navy.png";
 const SCORE_DEAL_URL = "https://sypqecydiqdpruarkrvy.supabase.co/functions/v1/score-deal";
 
 const ADMIN_NAV_ITEMS = [
-  { icon: "◉", text: "Overview", badge: null },
-  { icon: "📋", text: "Deals", badge: null },
-  { icon: "👥", text: "Users", badge: null },
-  { icon: "🔍", text: "KYC Review", badge: "3" },
-  { icon: "💼", text: "Bids", badge: null },
+  { icon: "◉", text: "Overview", tab: null },
+  { icon: "📋", text: "Deals", tab: 1 },
+  { icon: "👥", text: "Users", tab: 2 },
+  { icon: "❓", text: "Questions", tab: 0 },
 ];
 const ADMIN_ACCOUNT_ITEMS = [
   { icon: "📊", text: "Analytics", badge: null },
@@ -59,12 +58,10 @@ export default function AdminPanel() {
   const [viewingUser, setViewingUser] = useState<any | null>(null);
   const [editUserForm, setEditUserForm] = useState<Record<string, any>>({});
   const [userModalDeals, setUserModalDeals] = useState<any[]>([]);
-  const [userModalBids, setUserModalBids] = useState<any[]>([]);
   const [userModalLoading, setUserModalLoading] = useState(false);
 
-  // Bids state
+  // Bids state (handlers kept; fetch removed)
   const [bidsList, setBidsList] = useState<any[]>([]);
-  const [bidsLoading, setBidsLoading] = useState(true);
   const [selectedBidsByDeal, setSelectedBidsByDeal] = useState<Record<string, Set<string>>>({});
 
   useEffect(() => {
@@ -92,13 +89,11 @@ export default function AdminPanel() {
       setQuestionsLoading(true);
       setDealsLoading(true);
       setUsersLoading(true);
-      setBidsLoading(true);
-      const [{ data: qData }, { data: dlData }, { data: ulData }, { data: alData }, { data: blData }] = await Promise.all([
+      const [{ data: qData }, { data: dlData }, { data: ulData }, { data: alData }] = await Promise.all([
         supabase.from("credit_questions").select("*").eq("status", "pending_review").order("deal_id"),
-        supabase.from("deals").select("*, users!deals_borrower_id_fkey(full_name, email)").order("created_at", { ascending: false }),
+        supabase.from("deals").select("*, users!deals_borrower_id_fkey(full_name, email)").eq("deal_source", "lender_analysis").order("created_at", { ascending: false }),
         supabase.from("users").select("*").order("created_at", { ascending: false }),
         supabase.from("admin_allowlist").select("email"),
-        supabase.from("bids").select("*, deals(id, title, amount_requested, status)").order("deal_id"),
       ]);
 
       // Questions
@@ -132,9 +127,6 @@ export default function AdminPanel() {
       const allowSet = new Set<string>((alData ?? []).map((r: any) => (r.email ?? "").toLowerCase().trim()));
       setAllowlistedEmails(allowSet);
 
-      // Bids
-      setBidsList(blData ?? []);
-      setBidsLoading(false);
     })();
   }, []);
 
@@ -346,20 +338,15 @@ export default function AdminPanel() {
     setEditUserForm({
       full_name: u.full_name ?? "",
       email: u.email ?? "",
-      role: u.role ?? "borrower",
+      role: u.role ?? "lender",
       kyc_status: u.kyc_status ?? "pending",
       company_name: u.company_name ?? "",
       phone: u.phone ?? "",
     });
     setUserModalDeals([]);
-    setUserModalBids([]);
     setUserModalLoading(true);
-    const [{ data: uDeals }, { data: uBids }] = await Promise.all([
-      supabase.from("deals").select("id, title, status, amount_requested").eq("borrower_id", u.id),
-      supabase.from("bids").select("id, amount, rate, status, deal_id, deals(title)").eq("lender_id", u.id),
-    ]);
+    const { data: uDeals } = await supabase.from("deals").select("id, title, status, amount_requested").eq("borrower_id", u.id);
     setUserModalDeals(uDeals ?? []);
-    setUserModalBids(uBids ?? []);
     setUserModalLoading(false);
   };
 
@@ -428,20 +415,7 @@ export default function AdminPanel() {
     await refetchBids();
   };
 
-  const bidsData = [
-    { deal: "Maple Ridge Mfg.", lender: "Lender #4821", rate: "6.9%", amount: "$200K", term: "36 mo", submitted: "Apr 15", status: "Accepted", statusBadge: "b-active" },
-    { deal: "Maple Ridge Mfg.", lender: "Lender #2194", rate: "7.1%", amount: "$300K", term: "36 mo", submitted: "Apr 15", status: "Pending", statusBadge: "b-review" },
-    { deal: "Northern Harvest", lender: "Lender #5502", rate: "7.0%", amount: "$500K", term: "48 mo", submitted: "Apr 12", status: "Accepted", statusBadge: "b-active" },
-    { deal: "Atlantic Energy", lender: "Lender #1203", rate: "6.5%", amount: "$2.0M", term: "60 mo", submitted: "Apr 8", status: "Accepted", statusBadge: "b-active" },
-    { deal: "Prairie Health", lender: "Lender #7845", rate: "7.3%", amount: "$500K", term: "36 mo", submitted: "Apr 14", status: "Pending", statusBadge: "b-review" },
-  ];
 
-  // ── Computed stats ──────────────────────────────────────────────────
-  const capitalDeployed = dealsList
-    .filter(d => d.status === "funded" || d.status === "closed")
-    .reduce((sum, d) => sum + (d.amount_funded ?? 0), 0);
-  const feeRevenue = capitalDeployed * 0.025;
-  const kycPendingCount = usersList.filter(u => u.kyc_status === "pending").length;
 
   // ── Edit Deal modal ─────────────────────────────────────────────────
   const dealEditModal = editingDeal ? (
@@ -538,7 +512,6 @@ export default function AdminPanel() {
           <div>
             <div style={labelStyle}>Role</div>
             <select value={editUserForm.role} onChange={e => setEditUserForm(p => ({ ...p, role: e.target.value }))} style={{ ...fieldStyle, background: "#fff" }}>
-              <option value="borrower">Borrower</option>
               <option value="lender">Lender</option>
               <option value="admin">Admin</option>
             </select>
@@ -560,7 +533,7 @@ export default function AdminPanel() {
           <button className="a-btn a-btn-ghost" onClick={() => setViewingUser(null)}>Close</button>
         </div>
 
-        {/* Deals & Bids */}
+        {/* Deals */}
         {userModalLoading ? (
           <div style={{ padding: "24px 0", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>Loading activity…</div>
         ) : (
@@ -580,7 +553,6 @@ export default function AdminPanel() {
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "100px", background: d.status === "active" ? "rgba(5,150,105,0.08)" : "rgba(27,43,75,0.07)", color: d.status === "active" ? "#059669" : "#1B2B4B" }}>{d.status ?? "—"}</span>
-                        <button className="a-btn a-btn-ghost" style={{ padding: "5px 10px", fontSize: "11px" }} onClick={() => { setViewingUser(null); setLocation(`/deals/${d.id}`); }}>View</button>
                       </div>
                     </div>
                   ))}
@@ -588,27 +560,6 @@ export default function AdminPanel() {
               )}
             </div>
 
-            {/* Bids */}
-            <div>
-              <div style={sectionHeadStyle}>Bids ({userModalBids.length})</div>
-              {userModalBids.length === 0 ? (
-                <div style={{ fontSize: "13px", color: "#7A7060" }}>No bids.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {userModalBids.map(b => (
-                    <div key={b.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "rgba(27,43,75,0.02)", border: "1px solid #E8E2D9", borderRadius: "8px" }}>
-                      <div>
-                        <div style={{ fontSize: "13px", fontWeight: 600, color: "#1B2B4B" }}>{b.deals?.title ?? `Deal ${String(b.deal_id).slice(0, 8)}…`}</div>
-                        <div style={{ fontSize: "11px", color: "#7A7060", marginTop: "2px" }}>
-                          {fmtAmount(b.amount)}{b.rate ? ` · ${b.rate}%` : ""}
-                        </div>
-                      </div>
-                      <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "100px", background: b.status === "accepted" ? "rgba(5,150,105,0.08)" : "rgba(27,43,75,0.07)", color: b.status === "accepted" ? "#059669" : "#1B2B4B" }}>{b.status ?? "—"}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </>
         )}
       </div>
@@ -736,7 +687,6 @@ export default function AdminPanel() {
                       <td style={{ padding: tdPad, color: "#7A7060", whiteSpace: "nowrap" }}>{fmtDate(deal.created_at)}</td>
                       <td style={{ padding: tdPad }}>
                         <div style={{ display: "flex", gap: "6px" }}>
-                          <button className="a-btn a-btn-ghost" onClick={() => setLocation(`/deals/${deal.id}`)}>View</button>
                           <button className="a-btn a-btn-ghost" onClick={() => handleDealEditStart(deal)}>Edit</button>
                           <button className="a-btn a-btn-ghost" onClick={() => setLocation(`/analysis/${deal.id}`)}>Analysis</button>
                         </div>
@@ -809,8 +759,7 @@ export default function AdminPanel() {
                       </td>
                       <td style={{ padding: tdPad, color: "#7A7060", maxWidth: mobile ? "100px" : "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email ?? "—"}</td>
                       <td style={{ padding: tdPad }}>
-                        <select value={u.role ?? "borrower"} onChange={e => handleUserRoleChange(u.id, e.target.value)} style={selectStyle}>
-                          <option value="borrower">Borrower</option>
+                        <select value={u.role ?? "lender"} onChange={e => handleUserRoleChange(u.id, e.target.value)} style={selectStyle}>
                           <option value="lender">Lender</option>
                           <option value="admin">Admin</option>
                         </select>
@@ -837,155 +786,6 @@ export default function AdminPanel() {
       );
     }
 
-    // ── KYC Review (tab 3) ──
-    if (activeTab === 3) {
-      const pendingUsers = usersList.filter(u => u.kyc_status === "pending");
-      if (pendingUsers.length === 0) return (
-        <div style={{ padding: "40px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>No users pending KYC review.</div>
-      );
-      return (
-        <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "repeat(3,1fr)", gap: "14px" }}>
-          {pendingUsers.map(u => (
-            <div key={u.id} style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", padding: "20px" }}>
-              <div style={{ fontSize: "14px", fontWeight: 600, color: "#1B2B4B", marginBottom: "3px" }}>{u.full_name || u.email}</div>
-              <div style={{ fontSize: "12px", color: "#7A7060", marginBottom: "8px" }}>{u.email}</div>
-              <div style={{ display: "flex", gap: "6px", alignItems: "center", marginBottom: "14px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", borderRadius: "4px", textTransform: "uppercase", letterSpacing: "0.04em", background: "rgba(27,43,75,0.08)", color: "#1B2B4B" }}>{u.role || "—"}</span>
-                <span style={{ fontSize: "11px", color: "#7A7060" }}>Joined {fmtDate(u.created_at)}</span>
-              </div>
-              <div style={{ padding: "10px 12px", background: "rgba(27,43,75,0.03)", borderRadius: "8px", marginBottom: "14px", fontSize: "12px", color: "#7A7060", fontStyle: "italic" }}>
-                No documents on file — status review only.
-              </div>
-              <div style={{ display: "flex", gap: "6px", paddingTop: "12px", borderTop: "1px solid #E8E2D9" }}>
-                <button className="a-btn a-btn-green" onClick={() => handleKycApprove(u.id)}>Approve</button>
-                <button className="a-btn a-btn-red" onClick={() => handleKycReject(u.id)}>Reject</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    // ── Bids (tab 4) ──
-    if (activeTab === 4) {
-      if (bidsLoading) return (
-        <div style={{ padding: "40px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>Loading bids…</div>
-      );
-
-      const bidsByDeal: Record<string, any[]> = {};
-      for (const bid of bidsList) {
-        if (!bidsByDeal[bid.deal_id]) bidsByDeal[bid.deal_id] = [];
-        bidsByDeal[bid.deal_id].push(bid);
-      }
-      const dealGroups = Object.entries(bidsByDeal);
-
-      if (dealGroups.length === 0) return (
-        <div style={{ padding: "40px", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>No bids yet.</div>
-      );
-
-      const BID_STATUS_STYLE: Record<string, { background: string; color: string }> = {
-        pending:   { background: "rgba(217,119,6,0.1)",   color: "#D97706" },
-        accepted:  { background: "rgba(5,150,105,0.08)",  color: "#059669" },
-        rejected:  { background: "rgba(220,38,38,0.08)",  color: "#DC2626" },
-        countered: { background: "rgba(212,148,10,0.12)", color: "#D4940A" },
-      };
-
-      return (
-        <div style={{ display: "flex", flexDirection: "column", gap: mobile ? "12px" : "16px" }}>
-          {dealGroups.map(([dealId, dealBids]) => {
-            const deal = dealBids[0]?.deals ?? {};
-            const acceptedBids = dealBids.filter((b: any) => b.status === 'accepted');
-            const acceptedTotal = acceptedBids.reduce((sum: number, b: any) => sum + (b.amount ?? 0), 0);
-            const requested = deal.amount_requested ?? 0;
-            const oversubscribed = requested > 0 && acceptedTotal > requested;
-            const isClosed = deal.status === 'funded' || deal.status === 'closed';
-            const selectedForDeal = selectedBidsByDeal[dealId] || new Set<string>();
-            const hasPendingSelected = selectedForDeal.size > 0;
-            const hasAcceptedBid = acceptedBids.length > 0;
-            return (
-              <div key={dealId} style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", overflow: "hidden" }}>
-                {/* Deal header */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: mobile ? "12px 14px" : "14px 20px", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)" }}>
-                  <div>
-                    <div style={{ fontSize: mobile ? "13px" : "14px", fontWeight: 700, color: "#1B2B4B", marginBottom: "3px" }}>{deal.title ?? dealId}</div>
-                    <div style={{ fontSize: "11px", color: "#7A7060" }}>
-                      Accepted: {fmtAmount(acceptedTotal)} of {fmtAmount(requested)}
-                      {oversubscribed && <span style={{ color: "#D97706", fontWeight: 600 }}> (oversubscribed)</span>}
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-                    {isClosed && <span className="badge b-funded">CLOSED</span>}
-                    {!isClosed && hasAcceptedBid && (
-                      <button className="a-btn a-btn-ghost" style={{ fontSize: "11px", padding: "5px 10px" }}
-                        onClick={() => handleAdminCloseDeal(dealId)}>Close Deal</button>
-                    )}
-                  </div>
-                </div>
-                {/* Bids table */}
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: mobile ? "11px" : "13px" }}>
-                  <thead>
-                    <tr>
-                      <th style={{ padding: thPad, width: "32px", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.01)" }}></th>
-                      {["Lender ID", "Rate", "Amount", "Term", "Status", ""].map(h => (
-                        <th key={h} style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", padding: thPad, textAlign: "left", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.01)" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dealBids.map((bid: any, idx: number) => {
-                      const isSelected = selectedForDeal.has(bid.id);
-                      const ss = BID_STATUS_STYLE[bid.status] ?? { background: "rgba(27,43,75,0.07)", color: "#1B2B4B" };
-                      return (
-                        <tr key={bid.id} style={{ borderBottom: idx < dealBids.length - 1 ? "1px solid #E8E2D9" : "none" }}>
-                          <td style={{ padding: tdPad, width: "32px" }}>
-                            {!isClosed && bid.status === 'pending' && (
-                              <input type="checkbox" checked={isSelected}
-                                onChange={() => {
-                                  setSelectedBidsByDeal(prev => {
-                                    const cur = new Set(prev[dealId] || []);
-                                    if (cur.has(bid.id)) cur.delete(bid.id); else cur.add(bid.id);
-                                    return { ...prev, [dealId]: cur };
-                                  });
-                                }}
-                                style={{ accentColor: "#D4940A", cursor: "pointer" }}
-                              />
-                            )}
-                          </td>
-                          <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B", fontFamily: "monospace", fontSize: mobile ? "10px" : "12px", maxWidth: mobile ? "90px" : "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bid.lender_id}</td>
-                          <td style={{ padding: tdPad, fontWeight: 700, color: "#1B2B4B" }}>{bid.interest_rate != null ? `${bid.interest_rate}%` : "—"}</td>
-                          <td style={{ padding: tdPad, color: "#1B2B4B" }}>{fmtAmount(bid.amount)}</td>
-                          <td style={{ padding: tdPad, color: "#1B2B4B" }}>{bid.term_months ? `${bid.term_months} mo` : "—"}</td>
-                          <td style={{ padding: tdPad }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: "100px", fontSize: "10px", fontWeight: 700, ...ss }}>
-                              {bid.status ? bid.status.charAt(0).toUpperCase() + bid.status.slice(1) : "—"}
-                            </span>
-                          </td>
-                          <td style={{ padding: tdPad }}>
-                            {!isClosed && bid.status === 'accepted' && (
-                              <button className="a-btn a-btn-ghost" style={{ fontSize: "11px", padding: "4px 8px", color: "#DC2626", borderColor: "#DC2626" }}
-                                onClick={() => handleAdminUnacceptBid(dealId, bid.id)}>Un-accept</button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {/* Batch accept footer */}
-                {!isClosed && hasPendingSelected && (
-                  <div style={{ display: "flex", gap: "8px", padding: mobile ? "10px 14px" : "12px 20px", borderTop: "1px solid #E8E2D9", background: "rgba(27,43,75,0.01)" }}>
-                    <button className="a-btn a-btn-navy" style={{ fontSize: "11px", padding: "6px 12px" }}
-                      onClick={() => handleAdminAcceptBids(dealId, Array.from(selectedForDeal))}>
-                      Accept Selected ({selectedForDeal.size})
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      );
-    }
 
     return null;
   };
@@ -1182,9 +982,8 @@ export default function AdminPanel() {
           </div>
           <div className="sb-section">ADMIN</div>
           {ADMIN_NAV_ITEMS.map((item, idx) => (
-            <button key={idx} className="sb-item" onClick={() => setSidebarOpen(false)}>
+            <button key={idx} className="sb-item" onClick={() => { if (item.tab !== null && item.tab !== undefined) setActiveTab(item.tab); setSidebarOpen(false); }}>
               <span>{item.icon}</span><span>{item.text}</span>
-              {item.badge && <span className="sb-badge">{item.badge}</span>}
             </button>
           ))}
           <div className="sb-section">Platform</div>
@@ -1208,21 +1007,9 @@ export default function AdminPanel() {
         </div>
 
         <div className="content">
-          {kycPendingCount > 0 && (
-            <div className="alert-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
-              <div>
-                <p>⚠ {kycPendingCount} user(s) pending KYC review</p>
-                <span>Action required</span>
-              </div>
-              <button className="a-btn a-btn-ghost" style={{ flexShrink: 0 }} onClick={() => setActiveTab(3)}>Review Now</button>
-            </div>
-          )}
           <div className="stats-grid">
             <div className="stat-card"><div className="stat-label">Total Users</div><div className="stat-num">{usersLoading ? "—" : usersList.length}</div><div className="stat-sub">registered</div></div>
-            <div className="stat-card"><div className="stat-label">Active Deals</div><div className="stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="stat-sub">on platform</div></div>
-            <div className="stat-card"><div className="stat-label">Capital Deployed</div><div className="stat-num gold">{dealsLoading ? "—" : fmtAmount(capitalDeployed)}</div><div className="stat-sub">funded + closed deals</div></div>
-            <div className="stat-card"><div className="stat-label">KYC Pending</div><div className={`stat-num${kycPendingCount > 0 ? " red" : ""}`}>{usersLoading ? "—" : kycPendingCount}</div><div className="stat-sub">needs review</div></div>
-            <div className="stat-card"><div className="stat-label">Fee Revenue</div><div className="stat-num gold">{dealsLoading ? "—" : fmtAmount(feeRevenue)}</div><div className="stat-sub">2.5% of deployed</div></div>
+            <div className="stat-card"><div className="stat-label">Total Analyses</div><div className="stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="stat-sub">on platform</div></div>
           </div>
           <div>
             <div className="tabs">
@@ -1231,8 +1018,6 @@ export default function AdminPanel() {
               </button>
               <button className={`tab ${activeTab === 1 ? "active" : ""}`} onClick={() => setActiveTab(1)}>Deals</button>
               <button className={`tab ${activeTab === 2 ? "active" : ""}`} onClick={() => setActiveTab(2)}>Users</button>
-              <button className={`tab ${activeTab === 3 ? "active" : ""}`} onClick={() => setActiveTab(3)}>KYC {kycPendingCount > 0 && <span className="tab-badge">{kycPendingCount}</span>}</button>
-              <button className={`tab ${activeTab === 4 ? "active" : ""}`} onClick={() => setActiveTab(4)}>Bids</button>
             </div>
             {renderTabContent(true)}
           </div>
@@ -1255,9 +1040,8 @@ export default function AdminPanel() {
         </div>
         <div className="d-sb-section">Management</div>
         {ADMIN_NAV_ITEMS.map((item, idx) => (
-          <button key={idx} className="d-sb-item">
+          <button key={idx} className="d-sb-item" onClick={() => { if (item.tab !== null && item.tab !== undefined) setActiveTab(item.tab); }}>
             <span>{item.icon}</span>{item.text}
-            {item.badge && <span className="d-sb-badge">{item.badge}</span>}
           </button>
         ))}
         <div className="d-sb-section">Platform</div>
@@ -1283,27 +1067,15 @@ export default function AdminPanel() {
       <div className={`d-topbar ${!topbarVisible ? "hidden" : ""}`}>
         <div className="d-topbar-title">Admin Panel</div>
         <div className="d-topbar-right">
-          <button className="a-btn a-btn-ghost" onClick={() => alert("Export Data")}>Export Data</button>
           <button className="a-btn a-btn-ghost" onClick={() => setLocation('/my-analyses')}>My Analyses</button>
           <button className="a-btn a-btn-gold" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
-          <button className="a-btn a-btn-navy" onClick={() => alert("Platform Settings")}>Platform Settings</button>
         </div>
       </div>
 
       <div className="d-main">
-        {kycPendingCount > 0 && (
-          <div className="d-alert">
-            <div><div className="d-alert-text">⚠ {kycPendingCount} user(s) pending KYC review</div><div className="d-alert-sub">Action required</div></div>
-            <button className="a-btn a-btn-ghost" onClick={() => setActiveTab(3)}>Review Now</button>
-          </div>
-        )}
-
-        <div className="d-stats">
+        <div className="d-stats" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>
           <div className="d-stat-card"><div className="d-stat-label">Total Users</div><div className="d-stat-num">{usersLoading ? "—" : usersList.length}</div><div className="d-stat-sub">registered</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Total Deals</div><div className="d-stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="d-stat-sub">on platform</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Capital Deployed</div><div className="d-stat-num gold">{dealsLoading ? "—" : fmtAmount(capitalDeployed)}</div><div className="d-stat-sub">funded + closed deals</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">KYC Pending</div><div className={`d-stat-num${kycPendingCount > 0 ? " red" : ""}`}>{usersLoading ? "—" : kycPendingCount}</div><div className="d-stat-sub">needs review</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Fee Revenue</div><div className="d-stat-num gold">{dealsLoading ? "—" : fmtAmount(feeRevenue)}</div><div className="d-stat-sub">2.5% of deployed</div></div>
+          <div className="d-stat-card"><div className="d-stat-label">Total Analyses</div><div className="d-stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="d-stat-sub">on platform</div></div>
         </div>
 
         <div className="d-tabs">
@@ -1316,8 +1088,6 @@ export default function AdminPanel() {
           <button className={`d-tab ${activeTab === 2 ? "active" : ""}`} onClick={() => setActiveTab(2)}>
             Users{!usersLoading && usersList.length > 0 && <span className="d-tab-badge" style={{ background: "#1B2B4B" }}>{usersList.length}</span>}
           </button>
-          <button className={`d-tab ${activeTab === 3 ? "active" : ""}`} onClick={() => setActiveTab(3)}>KYC Review {kycPendingCount > 0 && <span className="d-tab-badge">{kycPendingCount}</span>}</button>
-          <button className={`d-tab ${activeTab === 4 ? "active" : ""}`} onClick={() => setActiveTab(4)}>Bids</button>
         </div>
 
         {renderTabContent(false)}
