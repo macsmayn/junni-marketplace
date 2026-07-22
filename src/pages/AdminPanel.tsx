@@ -271,7 +271,11 @@ export default function AdminPanel() {
 
   // ── Users handlers ──────────────────────────────────────────────────
   const handleUserRoleChange = async (userId: string, newRole: string) => {
-    await supabase.from("users").update({ role: newRole }).eq("id", userId);
+    const { error } = await supabase.from("users").update({ role: newRole }).eq("id", userId);
+    if (error) {
+      alert("Role changes are disabled from the app for security. Roles can only be changed directly in the database. This is intentional — it prevents anyone from granting themselves admin access.");
+      return;
+    }
     setUsersList(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
   };
 
@@ -352,10 +356,10 @@ export default function AdminPanel() {
 
   const handleUserEditSave = async () => {
     if (!viewingUser) return;
+    const roleChanged = editUserForm.role !== viewingUser.role;
     const updates = {
       full_name: editUserForm.full_name,
       email: editUserForm.email,
-      role: editUserForm.role,
       kyc_status: editUserForm.kyc_status,
       company_name: editUserForm.company_name,
       phone: editUserForm.phone,
@@ -364,6 +368,10 @@ export default function AdminPanel() {
     if (error) return;
     setUsersList(prev => prev.map(u => u.id === viewingUser.id ? { ...u, ...updates } : u));
     setViewingUser((prev: any) => prev ? { ...prev, ...updates } : null);
+    if (roleChanged) {
+      setEditUserForm(prev => ({ ...prev, role: viewingUser.role }));
+      alert("Role changes are disabled from the app for security. Roles can only be changed directly in the database. This is intentional — it prevents anyone from granting themselves admin access.");
+    }
   };
 
   // ── Bids handlers ──────────────────────────────────────────────────
