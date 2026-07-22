@@ -111,6 +111,9 @@ function App() {
     if (isAuthenticated) {
       getIdTokenClaims().then(claims => {
         setSupabaseAuthToken(claims?.__raw ?? null);
+        supabase.rpc('whoami').then(({ data, error }) => {
+          console.log('[AUTH CHECK] whoami:', data, error);
+        });
       });
     } else {
       setSupabaseAuthToken(null);
