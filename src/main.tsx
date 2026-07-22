@@ -16,7 +16,7 @@ function Auth0ProviderWithHistory({ children }: { children: React.ReactNode }) {
       domain="junnifinance.ca.auth0.com"
       clientId="kg5ge4gsb4cPkZIrxeF0wxRNYXO8IzYX"
       authorizationParams={{
-        redirect_uri: window.location.origin,
+        redirect_uri: window.location.origin + "/role-select",
         audience: "https://junni-market-2.manus.space"
       }}
       onRedirectCallback={onRedirectCallback}
