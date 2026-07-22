@@ -18,37 +18,20 @@ export default function RoleSelect() {
       return;
     }
     (async () => {
-      const normalizedEmail = user.email.toLowerCase().trim();
-      const { data: adminRow } = await supabase
-        .from('admin_allowlist')
-        .select('email')
-        .eq('email', normalizedEmail)
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('role')
+        .eq('auth0_id', user.sub)
         .maybeSingle();
-      if (adminRow) {
-        await supabase.from('users').upsert({
-          auth0_id: user.sub,
-          email: user.email,
-          full_name: user.name,
-          role: 'admin',
-        }, { onConflict: 'auth0_id' });
-        setLocation('/admin');
-      } else {
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('role')
-          .eq('auth0_id', user.sub)
-          .maybeSingle();
-        if (existingUser?.role === 'borrower') { setLocation('/borrower-dashboard'); return; }
-        if (existingUser?.role === 'lender')   { setLocation('/lender-dashboard'); return; }
-        if (existingUser?.role === 'admin')    { setLocation('/admin'); return; }
-        await supabase.from('users').upsert({
-          auth0_id: user.sub,
-          email: user.email,
-          full_name: user.name,
-          role: 'lender',
-        }, { onConflict: 'auth0_id' });
-        setLocation('/lender-dashboard');
-      }
+      if (existingUser?.role === 'borrower') { setLocation('/borrower-dashboard'); return; }
+      if (existingUser?.role === 'lender')   { setLocation('/lender-dashboard'); return; }
+      if (existingUser?.role === 'admin')    { setLocation('/admin'); return; }
+      await supabase.from('users').upsert({
+        auth0_id: user.sub,
+        email: user.email,
+        full_name: user.name,
+      }, { onConflict: 'auth0_id' });
+      setLocation('/lender-dashboard');
     })();
   }, [isLoading, user?.email]);
 
