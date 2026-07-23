@@ -26,7 +26,7 @@ import NewAnalysis from "./pages/NewAnalysis";
 import MyAnalyses from "./pages/MyAnalyses";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
-import { supabase, setSupabaseAuthToken } from './lib/supabase'
+import { setSupabaseAuthToken } from './lib/supabase'
 
 
 function Redirect({ to }: { to: string }) {
@@ -104,16 +104,12 @@ function Router() {
 // - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
 
 function App() {
-  console.log('Supabase client initialized:', !!supabase)
   const { isAuthenticated, getIdTokenClaims } = useAuth0();
 
   useEffect(() => {
     if (isAuthenticated) {
       getIdTokenClaims().then(claims => {
         setSupabaseAuthToken(claims?.__raw ?? null);
-        supabase.rpc('whoami').then(({ data, error }) => {
-          console.log('[AUTH CHECK] whoami:', data, error);
-        });
       });
     } else {
       setSupabaseAuthToken(null);
