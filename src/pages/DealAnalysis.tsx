@@ -153,6 +153,15 @@ export default function DealAnalysis() {
   const [newQuestionText, setNewQuestionText] = useState("");
   const [newQuestionPriority, setNewQuestionPriority] = useState("medium");
   const [addingSaving, setAddingSaving] = useState(false);
+  const [benchmarks, setBenchmarks] = useState<{
+    naicsMap: string[] | null;
+    base:   { sector: any; segment: any } | null;
+    stress: { sector: any; segment: any } | null;
+    totalN: number;
+    noMapping: boolean;
+  } | null>(null);
+  const [benchmarkLoading, setBenchmarkLoading] = useState(false);
+  const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900);
@@ -217,6 +226,92 @@ export default function DealAnalysis() {
       setLoading(false);
     })();
   }, [dealId, user?.sub]);
+
+  // ── Benchmark helpers (mirror the Node sizeBand/termBand from aggregate.mjs) ──
+  function sbaBand(amount: number): string {
+    if (amount <   100_000) return '<100K';
+    if (amount <   250_000) return '100K-250K';
+    if (amount <   500_000) return '250K-500K';
+    if (amount < 1_000_000) return '500K-1M';
+    if (amount < 2_000_000) return '1M-2M';
+    if (amount < 5_000_000) return '2M-5M';
+    return '5M+';
+  }
+  function sbaTermBand(months: number): string {
+    if (months <=  60) return '<=60';
+    if (months <= 120) return '61-120';
+    if (months <= 240) return '121-240';
+    return '>240';
+  }
+  // Weighted aggregate across multiple naics2 rows: sum(chargeoffs)/sum(loans), avg(lgd)
+  function aggregateBenchmarkRows(rows: any[]) {
+    if (!rows || rows.length === 0) return null;
+    const nLoans = rows.reduce((s: number, r: any) => s + (r.n_loans || 0), 0);
+    const nCO    = rows.reduce((s: number, r: any) => s + (r.n_chargeoff || 0), 0);
+    const lgdAvg = rows.reduce((s: number, r: any) => s + (r.lgd || 0), 0) / rows.length;
+    const avgSize = rows.reduce((s: number, r: any) => s + (r.avg_loan_size || 0), 0) / rows.length;
+    return { n_loans: nLoans, n_chargeoff: nCO, default_rate: nLoans > 0 ? nCO / nLoans : 0, lgd: lgdAvg, avg_loan_size: avgSize };
+  }
+
+  useEffect(() => {
+    if (!deal?.industry) return;
+    setBenchmarkLoading(true);
+    setBenchmarkError(null);
+    (async () => {
+      try {
+        const { data: mapRow, error: mapErr } = await supabase
+          .from('industry_naics_map')
+          .select('naics2_codes')
+          .eq('industry_key', deal.industry)
+          .maybeSingle();
+        if (mapErr) throw mapErr;
+        if (!mapRow || !mapRow.naics2_codes?.length) {
+          setBenchmarks({ naicsMap: null, base: null, stress: null, totalN: 0, noMapping: true });
+          setBenchmarkLoading(false);
+          return;
+        }
+        const codes = mapRow.naics2_codes as string[];
+        const dealSB = sbaBand(deal.amount_requested ?? 0);
+        const dealTB = sbaTermBand(deal.term_months ?? 0);
+
+        const { data: rows, error: rowErr } = await supabase
+          .from('sba_benchmarks')
+          .select('scenario,naics2,size_band,term_band,n_loans,n_chargeoff,default_rate,avg_loan_size,lgd')
+          .in('naics2', codes)
+          .eq('reliable', true);
+        if (rowErr) throw rowErr;
+
+        const all = (rows ?? []) as any[];
+        const pick = (scenario: string, sb: string | null, tb: string | null) =>
+          sb === null
+            ? all.filter((r: any) => r.scenario === scenario && r.size_band === null && r.term_band === null)
+            : all.filter((r: any) => r.scenario === scenario && r.size_band === sb && r.term_band === tb);
+
+        const baseSectorRows  = pick('base',   null,   null);
+        const baseSegRows     = pick('base',   dealSB, dealTB);
+        const stressSectorRows = pick('stress', null,   null);
+        const stressSegRows   = pick('stress', dealSB, dealTB);
+
+        const totalN = [...new Set(all.filter((r: any) => r.size_band === null).map((r: any) => r.n_loans))]
+          .reduce((s: number, n: any) => s + n, 0);
+        // Simpler: sum sector-level base n_loans across naics2 codes (base has more vintages → higher N)
+        const totalBase = aggregateBenchmarkRows(baseSectorRows)?.n_loans ?? 0;
+        const totalStress = aggregateBenchmarkRows(stressSectorRows)?.n_loans ?? 0;
+
+        setBenchmarks({
+          naicsMap: codes,
+          base:   { sector: aggregateBenchmarkRows(baseSectorRows),  segment: aggregateBenchmarkRows(baseSegRows)  },
+          stress: { sector: aggregateBenchmarkRows(stressSectorRows), segment: aggregateBenchmarkRows(stressSegRows) },
+          totalN: totalBase + totalStress,
+          noMapping: false,
+        });
+      } catch (e: any) {
+        setBenchmarkError('Failed to load benchmark data.');
+      } finally {
+        setBenchmarkLoading(false);
+      }
+    })();
+  }, [deal?.industry, deal?.amount_requested, deal?.term_months]);
 
   if (auth0Loading) return <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "Inter, sans-serif" }}>Loading…</div>;
   if (!isAuthenticated) { setLocation("/login"); return null; }
@@ -757,6 +852,153 @@ export default function DealAnalysis() {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── 7. Historical Benchmark ── */}
+        {(() => {
+          const cardStyle: React.CSSProperties = {
+            background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16,
+            padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24,
+          };
+          const hd: React.CSSProperties = {
+            fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18,
+            color: NAVY, margin: "0 0 4px",
+          };
+          const sub: React.CSSProperties = {
+            fontSize: 12, color: MUTED, marginBottom: 20,
+          };
+          const thStyle: React.CSSProperties = {
+            fontSize: 11, fontWeight: 700, letterSpacing: "0.06em",
+            textTransform: "uppercase" as const, color: MUTED,
+            padding: "0 0 8px", textAlign: "center" as const,
+            borderBottom: "1px solid #E8E2D9",
+          };
+          const tdLabel: React.CSSProperties = {
+            fontSize: 13, color: NAVY, fontWeight: 500,
+            paddingRight: 16, paddingTop: 12, paddingBottom: 12,
+            borderBottom: "1px solid #F3EFE8", verticalAlign: "middle" as const,
+          };
+          const tdCell: React.CSSProperties = {
+            textAlign: "center" as const, paddingTop: 12, paddingBottom: 12,
+            borderBottom: "1px solid #F3EFE8", verticalAlign: "middle" as const,
+          };
+          const fmtPct  = (v: number) => `${(v * 100).toFixed(1)}%`;
+          const fmtN    = (n: number) => `n=${n.toLocaleString()}`;
+
+          if (benchmarkLoading) {
+            return (
+              <div style={cardStyle}>
+                <h2 style={hd}>Historical Benchmark</h2>
+                <div style={{ color: MUTED, fontSize: 13, paddingTop: 8 }}>Loading benchmark data…</div>
+              </div>
+            );
+          }
+          if (benchmarkError) {
+            return (
+              <div style={cardStyle}>
+                <h2 style={hd}>Historical Benchmark</h2>
+                <div style={{ color: RED, fontSize: 13, paddingTop: 8 }}>{benchmarkError}</div>
+              </div>
+            );
+          }
+          if (!benchmarks) return null;
+          if (benchmarks.noMapping) {
+            return (
+              <div style={cardStyle}>
+                <h2 style={hd}>Historical Benchmark</h2>
+                <div style={{ color: MUTED, fontSize: 13, paddingTop: 8 }}>
+                  No comparable SBA benchmark for this industry.
+                </div>
+              </div>
+            );
+          }
+
+          const { base, stress, totalN } = benchmarks;
+          const hasSector  = base?.sector  && stress?.sector;
+          const hasSegment = base?.segment && stress?.segment;
+          const dealSB     = sbaBand(deal.amount_requested ?? 0);
+          const dealTB     = sbaTermBand(deal.term_months ?? 0);
+          const industryLabel = (deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+          if (!hasSector) return null;
+
+          const baseLGD   = (base!.sector!.lgd  * 100).toFixed(0);
+          const stressLGD = (stress!.sector!.lgd * 100).toFixed(0);
+
+          return (
+            <div style={cardStyle}>
+              <h2 style={hd}>Historical Benchmark</h2>
+              <p style={sub}>How comparable US SBA 7(a) loans performed historically</p>
+
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...thStyle, textAlign: "left" as const }}>Segment</th>
+                      <th style={{ ...thStyle, minWidth: 130 }}>
+                        <span style={{ color: NAVY }}>Normal cycle</span>
+                        <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>FY2010–2016</div>
+                      </th>
+                      <th style={{ ...thStyle, minWidth: 130 }}>
+                        <span style={{ color: RED }}>2008 stress</span>
+                        <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>FY2004–2008</div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Row 1: sector */}
+                    <tr>
+                      <td style={tdLabel}>
+                        <span style={{ fontWeight: 600 }}>{industryLabel} sector</span>
+                      </td>
+                      <td style={tdCell}>
+                        <div style={{ fontWeight: 700, fontSize: 15, color: NAVY }}>{fmtPct(base!.sector!.default_rate)}</div>
+                        <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(base!.sector!.n_loans)}</div>
+                      </td>
+                      <td style={tdCell}>
+                        <div style={{ fontWeight: 700, fontSize: 15, color: RED }}>{fmtPct(stress!.sector!.default_rate)}</div>
+                        <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(stress!.sector!.n_loans)}</div>
+                      </td>
+                    </tr>
+                    {/* Row 2: segment (conditional) */}
+                    {hasSegment ? (
+                      <tr>
+                        <td style={{ ...tdLabel, borderBottom: "none" }}>
+                          <span style={{ fontWeight: 500 }}>{dealSB} · {dealTB} months</span>
+                          <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>This loan's size &amp; term band</div>
+                        </td>
+                        <td style={{ ...tdCell, borderBottom: "none" }}>
+                          <div style={{ fontWeight: 700, fontSize: 15, color: NAVY }}>{fmtPct(base!.segment!.default_rate)}</div>
+                          <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(base!.segment!.n_loans)}</div>
+                        </td>
+                        <td style={{ ...tdCell, borderBottom: "none" }}>
+                          <div style={{ fontWeight: 700, fontSize: 15, color: RED }}>{fmtPct(stress!.segment!.default_rate)}</div>
+                          <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(stress!.segment!.n_loans)}</div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr>
+                        <td colSpan={3} style={{ ...tdLabel, borderBottom: "none", color: MUTED, fontWeight: 400, fontSize: 12, fontStyle: "italic" }}>
+                          Too few comparable loans at this size and term for a precise segment benchmark.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* LGD line */}
+              <div style={{ marginTop: 16, fontSize: 12, color: NAVY }}>
+                Loss given default: <strong>~{baseLGD}% normal</strong>, <strong style={{ color: RED }}>~{stressLGD}% stressed</strong>
+                <span style={{ color: MUTED, marginLeft: 4 }}>(sector average — fraction of loan balance lost on defaulted loans)</span>
+              </div>
+
+              {/* Caveat */}
+              <div style={{ marginTop: 12, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+                Based on {totalN.toLocaleString()} resolved US SBA 7(a) loans (normal cycle: FY2010–2016; stress: FY2004–2008). US small-business lending data — indicative context, not a prediction for this borrower.
               </div>
             </div>
           );
