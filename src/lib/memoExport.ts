@@ -709,18 +709,6 @@ function buildPdfDef(data: MemoData, questions: MemoQuestion[]): any {
     },
     content,
     defaultStyle: { font: 'Roboto', fontSize: 9, color: '#222222' },
-    fonts: {
-      Roboto: {
-        normal:      'Roboto-Regular.ttf',
-        bold:        'Roboto-Medium.ttf',
-        italics:     'Roboto-Italic.ttf',
-        bolditalics: 'Roboto-MediumItalic.ttf',
-      },
-      Fraunces: {
-        normal: 'Fraunces-Bold.woff',
-        bold:   'Fraunces-Bold.woff',
-      },
-    },
   };
 }
 
@@ -733,9 +721,18 @@ export async function downloadPDF(data: MemoData, questions: MemoQuestion[]): Pr
 
   const pdfMake = (pdfMakeModule as any).default ?? pdfMakeModule;
   const vfs     = (pdfFontsModule as any).default ?? pdfFontsModule;
-  pdfMake.addVirtualFileSystem(vfs);
-  // Embed Fraunces Bold
-  pdfMake.addVirtualFileSystem({ 'Fraunces-Bold.woff': arrayBufferToBase64(fontBuffer) });
+
+  // Register Roboto VFS (Netlify build may provide raw object; handle both shapes)
+  pdfMake.addVirtualFileSystem(typeof vfs === 'object' && 'default' in vfs ? (vfs as any).default : vfs);
+
+  // Embed Fraunces Bold into the virtual filesystem
+  const frauncesB64 = arrayBufferToBase64(fontBuffer);
+  pdfMake.addVirtualFileSystem({ 'Fraunces-Bold.woff': frauncesB64 });
+
+  // In pdfmake 0.3 fonts MUST be registered on the instance, not in docDefinition
+  pdfMake.addFonts({
+    Fraunces: { normal: 'Fraunces-Bold.woff', bold: 'Fraunces-Bold.woff' },
+  });
 
   const docDef = buildPdfDef(data, questions);
   await pdfMake.createPdf(docDef).download(memoFilename(data.deal.title, 'pdf'));

@@ -155,6 +155,7 @@ export default function DealAnalysis() {
   const [addingSaving, setAddingSaving] = useState(false);
   const [memoOpen, setMemoOpen] = useState(false);
   const [memoGenerating, setMemoGenerating] = useState<'pdf' | 'docx' | null>(null);
+  const [memoError, setMemoError] = useState<string | null>(null);
   const [memoIncludeQ, setMemoIncludeQ] = useState(false);
   const [memoQFilter, setMemoQFilter] = useState<'answered' | 'all'>('answered');
   const memoRef = useRef<HTMLDivElement>(null);
@@ -392,6 +393,7 @@ export default function DealAnalysis() {
   const handleMemoDownload = async (format: 'pdf' | 'docx') => {
     if (!deal) return;
     setMemoGenerating(format);
+    setMemoError(null);
     try {
       const { downloadPDF, downloadDocx } = await import('../lib/memoExport');
       const filteredQ = memoIncludeQ
@@ -400,11 +402,12 @@ export default function DealAnalysis() {
       const memoData = { deal, score, metrics, confirmedCash, suEntries: sourcesUses, capItems, collateral, benchmarks };
       if (format === 'pdf') await downloadPDF(memoData, filteredQ);
       else await downloadDocx(memoData, filteredQ);
+      setMemoOpen(false);
     } catch (err) {
       console.error('[memo export]', err);
+      setMemoError(err instanceof Error ? err.message : 'Export failed — check the console for details.');
     } finally {
       setMemoGenerating(null);
-      setMemoOpen(false);
     }
   };
 
@@ -470,6 +473,11 @@ export default function DealAnalysis() {
                           {opt === "answered" ? "Answered only" : "All questions"}
                         </label>
                       ))}
+                    </div>
+                  )}
+                  {memoError && (
+                    <div style={{ fontSize: 11, color: "#B71C1C", background: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 6, padding: "6px 8px", marginBottom: 8, wordBreak: "break-word" }}>
+                      {memoError}
                     </div>
                   )}
                   <div style={{ display: "flex", gap: 6 }}>
