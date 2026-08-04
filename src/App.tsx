@@ -26,7 +26,7 @@ import NewAnalysis from "./pages/NewAnalysis";
 import MyAnalyses from "./pages/MyAnalyses";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
-import { setSupabaseAuthToken } from './lib/supabase'
+import { setSupabaseAuthToken, setTokenProvider } from './lib/supabase'
 
 
 function Redirect({ to }: { to: string }) {
@@ -105,6 +105,11 @@ function Router() {
 
 function App() {
   const { isAuthenticated, getIdTokenClaims } = useAuth0();
+
+  // Register the provider immediately (synchronous, before any effects run)
+  // so the accessToken callback can resolve the JWT on demand even before
+  // the effect below has had a chance to populate currentToken.
+  setTokenProvider(async () => (await getIdTokenClaims())?.__raw ?? null);
 
   useEffect(() => {
     if (isAuthenticated) {
