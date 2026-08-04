@@ -185,7 +185,7 @@ export default function DealAnalysis() {
     (async () => {
       setLoading(true);
       const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }, { data: qsData }] = await Promise.all([
-        supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value").eq("id", dealId).single(),
+        supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
         supabase.from("users").select("id,role").eq("auth0_id", user?.sub ?? "").maybeSingle(),
@@ -490,6 +490,21 @@ export default function DealAnalysis() {
         ) : (
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: "24px", marginBottom: 28, color: MUTED, fontSize: 13 }}>
             No score available yet for this deal.
+          </div>
+        )}
+
+        {/* ── 2b. Executive Summary ── */}
+        {deal.executive_summary?.trim() && (
+          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginBottom: 24 }}>
+            <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 16px" }}>
+              Executive Summary
+            </h2>
+            {(deal.executive_summary.includes("\n\n")
+              ? deal.executive_summary.split("\n\n")
+              : deal.executive_summary.split("\n")
+            ).filter((p: string) => p.trim()).map((p: string, i: number) => (
+              <p key={i} style={{ fontSize: 14, lineHeight: 1.7, color: "#222222", margin: 0, marginBottom: 12 }}>{p.trim()}</p>
+            ))}
           </div>
         )}
 
