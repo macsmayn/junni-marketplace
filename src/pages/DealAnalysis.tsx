@@ -990,6 +990,25 @@ export default function DealAnalysis() {
                 </table>
               </div>
 
+              {/* Segment interpretive line */}
+              {(() => {
+                if (!hasSegment) return null;
+                const sectorDR = base!.sector!.default_rate;
+                if (!sectorDR) return null;
+                const ratio = base!.segment!.default_rate / sectorDR;
+                if (ratio >= 1.3) return (
+                  <div style={{ marginTop: 14, fontSize: 12, color: NAVY, lineHeight: 1.6, borderLeft: `3px solid ${GOLD}`, paddingLeft: 12 }}>
+                    Loans of this size and term <strong>defaulted notably more often</strong> than the sector as a whole. In SBA lending, shorter terms are typically associated with working-capital facilities and younger or thinner-margin businesses, so this pattern likely reflects the type of borrower that seeks these terms rather than the loan structure itself.
+                  </div>
+                );
+                if (ratio <= 0.75) return (
+                  <div style={{ marginTop: 14, fontSize: 12, color: NAVY, lineHeight: 1.6, borderLeft: `3px solid ${GOLD}`, paddingLeft: 12 }}>
+                    Loans of this size and term <strong>defaulted less often</strong> than the sector as a whole. Longer amortisation and larger facilities generally indicate established borrowers with harder collateral, which historically supported better repayment performance.
+                  </div>
+                );
+                return null;
+              })()}
+
               {/* LGD line */}
               <div style={{ marginTop: 16, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" as const, color: MUTED, marginBottom: 4 }}>Loss Given Default</div>
               <div style={{ fontSize: 12, color: NAVY, lineHeight: 1.6 }}>
