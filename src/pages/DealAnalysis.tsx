@@ -397,7 +397,7 @@ export default function DealAnalysis() {
       const filteredQ = memoIncludeQ
         ? (memoQFilter === 'answered' ? questions.filter((q: any) => q.answer?.trim()) : questions)
         : [];
-      const memoData = { deal, score, metrics, suEntries: sourcesUses, capItems, collateral, benchmarks };
+      const memoData = { deal, score, metrics, confirmedCash, suEntries: sourcesUses, capItems, collateral, benchmarks };
       if (format === 'pdf') await downloadPDF(memoData, filteredQ);
       else await downloadDocx(memoData, filteredQ);
     } catch (err) {
