@@ -998,7 +998,7 @@ export default function DealAnalysis() {
 
               {/* Caveat */}
               <div style={{ marginTop: 12, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
-                Based on {totalN.toLocaleString()} resolved US SBA 7(a) loans (normal cycle: FY2010–2016; stress: FY2004–2008). US small-business lending data — indicative context, not a prediction for this borrower.
+                Sector benchmark based on {totalN.toLocaleString()} resolved loans from a dataset of 698,000 US SBA 7(a) loans (normal cycle: FY2010–2016; stress: FY2004–2008). US small-business lending data — indicative context, not a prediction for this borrower.
               </div>
             </div>
           );
