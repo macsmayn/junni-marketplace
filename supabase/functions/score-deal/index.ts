@@ -32,7 +32,7 @@ Deno.serve(async (req: Request) => {
     const { data: deal, error: dealError } = await supabase
       .from("deals")
       .select(
-        "title, industry, amount_requested, term_months, interest_rate, annual_revenue, ebitda, years_in_business, province, ai_summary, financials_status, existing_debt, existing_debt_service, use_of_funds, revolver_limit, revolver_drawn, enterprise_value"
+        "title, industry, city, amount_requested, term_months, interest_rate, annual_revenue, ebitda, years_in_business, province, ai_summary, financials_status, existing_debt, existing_debt_service, use_of_funds, revolver_limit, revolver_drawn, enterprise_value"
       )
       .eq("id", deal_id)
       .single();
@@ -1112,7 +1112,7 @@ If Use of Funds is 'Not specified by the applicant', you MUST include the unspec
 ${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}${mdaBlock}\n\nReturn ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
 
 {
-  "summary": "<4-6 sentence credit assessment covering the borrower's financial health, debt capacity, and overall creditworthiness>",
+  "summary": "<Quantitative analyst narrative — 4-8 sentences. Walk through the key computed ratios and state what each indicates (e.g. 'DSCR of 1.42x sits in the Adequate band, providing moderate but not comfortable debt-service headroom'). Explain year-over-year movements and their drivers (e.g. whether EBITDA growth came from revenue expansion or margin improvement). Identify diagnostically significant divergences between ratios (e.g. strong gross margin alongside thin net margin points to cost pressure below the gross line). Comment on trend direction across the fiscal years available. Note where a ratio sits relative to its threshold band and what that means practically for credit risk. Do NOT restate who the company is, describe the transaction purpose, or give an overall approval verdict — a separate executive summary covers those. Do NOT cite any ratio or figure not present in the data provided to you; describe qualitatively if the figure is unavailable.>",
   "strengths": ["<strength 1>", "<strength 2>", "<strength 3>", "<strength 4>", "<strength 5>"],
   "risks": ["<risk 1>", "<risk 2>", "<risk 3>", "<risk 4>", "<risk 5>"],
   "metrics": {
@@ -1247,6 +1247,117 @@ Each metric score is 0-100 where 100 is best.`;
 
     if (statusError) {
       console.error("[score-deal] deals update (status) error:", statusError);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // PHASE 3: Executive summary — additive, never blocks scoring
+    // ─────────────────────────────────────────────────────────────
+    try {
+      const execParts: string[] = [];
+
+      const companyLines: string[] = [];
+      if (deal.title)                  companyLines.push(`Company: ${deal.title}`);
+      if (deal.industry)               companyLines.push(`Industry: ${deal.industry}`);
+      const location = [deal.city, deal.province].filter(Boolean).join(", ");
+      if (location)                    companyLines.push(`Location: ${location}`);
+      if (deal.years_in_business != null) companyLines.push(`Years in business: ${deal.years_in_business}`);
+      if (deal.annual_revenue    != null) companyLines.push(`Annual revenue: $${Number(deal.annual_revenue).toLocaleString()}`);
+      if (deal.ebitda            != null) companyLines.push(`EBITDA: $${Number(deal.ebitda).toLocaleString()}`);
+      if (companyLines.length) execParts.push("COMPANY:\n" + companyLines.join("\n"));
+
+      const requestLines: string[] = [];
+      if (deal.amount_requested != null) requestLines.push(`Amount requested: $${Number(deal.amount_requested).toLocaleString()}`);
+      if (deal.term_months      != null) requestLines.push(`Term: ${deal.term_months} months`);
+      if (deal.interest_rate    != null) requestLines.push(`Interest rate: ${deal.interest_rate}%`);
+      if (deal.use_of_funds?.trim())     requestLines.push(`Use of funds: ${deal.use_of_funds.trim()}`);
+      if (requestLines.length) execParts.push("REQUEST:\n" + requestLines.join("\n"));
+
+      const positionLines: string[] = [];
+      if (deal.existing_debt         != null) positionLines.push(`Existing debt: $${Number(deal.existing_debt).toLocaleString()}`);
+      if (deal.existing_debt_service != null) positionLines.push(`Existing annual debt service: $${Number(deal.existing_debt_service).toLocaleString()}`);
+      if (deal.revolver_limit        != null) positionLines.push(`Revolver limit: $${Number(deal.revolver_limit).toLocaleString()}`);
+      if (deal.revolver_drawn        != null) positionLines.push(`Revolver drawn: $${Number(deal.revolver_drawn).toLocaleString()}`);
+      if (positionLines.length) execParts.push("EXISTING POSITION:\n" + positionLines.join("\n"));
+
+      if (suEntries && suEntries.length > 0) {
+        const suLines = (suEntries as any[]).map((e: any) =>
+          `  ${e.side === "source" ? "Source" : "Use"}: ${e.label} — $${Number(e.amount).toLocaleString()}`
+        );
+        execParts.push("SOURCES & USES:\n" + suLines.join("\n"));
+      }
+
+      const outcomeLines: string[] = [];
+      if (finalScore != null) outcomeLines.push(`Overall score: ${finalScore}/100`);
+      if (finalRisk)          outcomeLines.push(`Risk label: ${finalRisk}`);
+      const coveragePct = engineResult?.score.coverage_pct;
+      if (coveragePct != null) outcomeLines.push(`Metric coverage (share of the framework's metrics computable from the statements provided): ${coveragePct}%`);
+      if (outcomeLines.length) execParts.push("OUTCOME:\n" + outcomeLines.join("\n"));
+
+      if (Array.isArray(scoring.strengths) && scoring.strengths.length) {
+        execParts.push("STRENGTHS:\n" + scoring.strengths.map((s: string) => `- ${s}`).join("\n"));
+      }
+      if (Array.isArray(scoring.risks) && scoring.risks.length) {
+        execParts.push("RISKS:\n" + scoring.risks.map((r: string) => `- ${r}`).join("\n"));
+      }
+
+      if (ratioSummary.length > 0) {
+        const metricLines = ratioSummary.map(m => {
+          const statusTag = m.status ? ` (${m.status})` : "";
+          return `  ${m.label}: ${m.value}${m.unit}${statusTag}`;
+        });
+        execParts.push("COMPUTED METRICS (from confirmed financial statements):\n" + metricLines.join("\n"));
+      }
+
+      const execPrompt =
+`You are writing the executive summary section of a credit memo for a Canadian SME lending transaction.
+
+Write a professional executive summary in plain English, 2–3 paragraphs. Follow these rules exactly:
+
+Paragraph 1: Describe who the company is and what it does. Draw on its industry, location, size (revenue/EBITDA), and years in operation. Write in complete sentences.
+
+Paragraph 2: Explain what the company is asking for and why. Read and interpret the use-of-funds description and, where sources & uses data is provided, weave that context into natural sentences that explain the transaction. Do not quote the raw use-of-funds field verbatim — rephrase it into a proper credit-memo sentence. If no use-of-funds text is available, describe the request by amount and term only.
+
+Paragraph 3: Summarize the credit position at a high level — leverage, debt-service coverage, and the overall assessment. Close by summarising the credit position and noting the score and risk label as an assessment output — nothing more.
+
+Rules: Write for a credit officer. No bullet points. No headings. No marketing language. No invented facts. If a data point is missing, write around it naturally — do not note its absence. Output only the paragraphs, nothing else. Do NOT recommend approval, decline, or any credit decision. Do not use phrases like "recommended for approval", "we recommend", or "this credit is approved". The lender makes the decision, not this analysis. Only cite specific ratios or figures that appear explicitly in the DEAL DATA provided. Do not calculate, derive, or estimate any ratio yourself — if a ratio is not in the data given to you, describe the position qualitatively instead. When referring to metric coverage, describe it as the proportion of the analytical framework that could be computed from the financial statements provided. Never call it "policy coverage" or imply it measures compliance with any credit policy.
+
+DEAL DATA:
+${execParts.join("\n\n")}`;
+
+      const execRes = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1000,
+          messages: [{ role: "user", content: execPrompt }],
+        }),
+      });
+
+      if (!execRes.ok) {
+        const errText = await execRes.text();
+        console.error("[score-deal] Executive summary API error:", errText);
+      } else {
+        const execData = await execRes.json();
+        const execText: string = (execData.content[0]?.text ?? "").trim();
+        if (execText) {
+          const { error: execUpdateErr } = await supabase
+            .from("deals")
+            .update({ executive_summary: execText })
+            .eq("id", deal_id);
+          if (execUpdateErr) {
+            console.error("[score-deal] Executive summary persist error:", execUpdateErr);
+          } else {
+            console.log("[score-deal] Executive summary saved.");
+          }
+        }
+      }
+    } catch (execErr) {
+      console.error("[score-deal] Executive summary unhandled error:", execErr);
     }
 
     return new Response(

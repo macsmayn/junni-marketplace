@@ -153,6 +153,11 @@ export default function DealAnalysis() {
   const [newQuestionText, setNewQuestionText] = useState("");
   const [newQuestionPriority, setNewQuestionPriority] = useState("medium");
   const [addingSaving, setAddingSaving] = useState(false);
+  const [memoOpen, setMemoOpen] = useState(false);
+  const [memoGenerating, setMemoGenerating] = useState<'pdf' | 'docx' | null>(null);
+  const [memoIncludeQ, setMemoIncludeQ] = useState(false);
+  const [memoQFilter, setMemoQFilter] = useState<'answered' | 'all'>('answered');
+  const memoRef = useRef<HTMLDivElement>(null);
   const [benchmarks, setBenchmarks] = useState<{
     naicsMap: string[] | null;
     base:   { sector: any; segment: any } | null;
@@ -181,11 +186,22 @@ export default function DealAnalysis() {
   }, [definitionBubble, isMobile]);
 
   useEffect(() => {
+    if (!memoOpen) return;
+    const close = (e: MouseEvent) => {
+      if (memoRef.current && !memoRef.current.contains(e.target as Node)) {
+        setMemoOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [memoOpen]);
+
+  useEffect(() => {
     if (!dealId) return;
     (async () => {
       setLoading(true);
       const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }, { data: qsData }] = await Promise.all([
-        supabase.from("deals").select("title,industry,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary").eq("id", dealId).single(),
+        supabase.from("deals").select("title,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
         supabase.from("users").select("id,role").eq("auth0_id", user?.sub ?? "").maybeSingle(),
@@ -373,6 +389,25 @@ export default function DealAnalysis() {
     setSavingAnswer(null);
   };
 
+  const handleMemoDownload = async (format: 'pdf' | 'docx') => {
+    if (!deal) return;
+    setMemoGenerating(format);
+    try {
+      const { downloadPDF, downloadDocx } = await import('../lib/memoExport');
+      const filteredQ = memoIncludeQ
+        ? (memoQFilter === 'answered' ? questions.filter((q: any) => q.answer?.trim()) : questions)
+        : [];
+      const memoData = { deal, score, metrics, suEntries: sourcesUses, capItems, collateral, benchmarks };
+      if (format === 'pdf') await downloadPDF(memoData, filteredQ);
+      else await downloadDocx(memoData, filteredQ);
+    } catch (err) {
+      console.error('[memo export]', err);
+    } finally {
+      setMemoGenerating(null);
+      setMemoOpen(false);
+    }
+  };
+
   const handleAddQuestion = async () => {
     if (!newQuestionText.trim() || !dealId) return;
     setAddingSaving(true);
@@ -401,21 +436,79 @@ export default function DealAnalysis() {
         </button>
         <span style={{ color: "#E8E2D9" }}>|</span>
         <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>Deal Analysis</span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
-          {(["en", "fr"] as const).map(l => (
-            <button
-              key={l}
-              onClick={() => setLang(l)}
-              style={{
-                padding: "3px 10px", borderRadius: 99, border: "1px solid",
-                fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
-                letterSpacing: "0.05em", textTransform: "uppercase",
-                background: lang === l ? NAVY : "transparent",
-                color: lang === l ? "#fff" : MUTED,
-                borderColor: lang === l ? NAVY : "#D8D2C8",
-              }}
-            >{l}</button>
-          ))}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Download memo */}
+          {deal && (
+            <div ref={memoRef} style={{ position: "relative" }}>
+              <button
+                onClick={() => setMemoOpen(o => !o)}
+                style={{
+                  padding: "4px 12px", borderRadius: 8, border: `1px solid ${NAVY}`,
+                  fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
+                  background: memoOpen ? NAVY : "transparent",
+                  color: memoOpen ? "#fff" : NAVY,
+                  letterSpacing: "0.03em",
+                }}
+              >
+                Download memo ↓
+              </button>
+              {memoOpen && (
+                <div style={{
+                  position: "absolute", right: 0, top: "calc(100% + 6px)", background: "#fff",
+                  border: "1px solid #E8E2D9", borderRadius: 10, padding: "14px 16px",
+                  minWidth: 220, boxShadow: "0 4px 18px rgba(0,0,0,0.10)", zIndex: 200,
+                }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: "pointer", marginBottom: 8 }}>
+                    <input type="checkbox" checked={memoIncludeQ} onChange={e => setMemoIncludeQ(e.target.checked)} />
+                    Include diligence questions
+                  </label>
+                  {memoIncludeQ && (
+                    <div style={{ paddingLeft: 20, marginBottom: 10 }}>
+                      {(["answered", "all"] as const).map(opt => (
+                        <label key={opt} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 4 }}>
+                          <input type="radio" name="memoQFilter" value={opt} checked={memoQFilter === opt} onChange={() => setMemoQFilter(opt)} />
+                          {opt === "answered" ? "Answered only" : "All questions"}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      onClick={() => handleMemoDownload("pdf")}
+                      disabled={!!memoGenerating}
+                      style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "none", background: NAVY, color: "#fff", fontSize: 11, fontWeight: 700, cursor: memoGenerating ? "wait" : "pointer", fontFamily: "Inter, sans-serif" }}
+                    >
+                      {memoGenerating === "pdf" ? "Generating…" : "Export PDF"}
+                    </button>
+                    <button
+                      onClick={() => handleMemoDownload("docx")}
+                      disabled={!!memoGenerating}
+                      style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: `1px solid ${NAVY}`, background: "transparent", color: NAVY, fontSize: 11, fontWeight: 700, cursor: memoGenerating ? "wait" : "pointer", fontFamily: "Inter, sans-serif" }}
+                    >
+                      {memoGenerating === "docx" ? "Generating…" : "Export Word"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {/* Language toggle */}
+          <div style={{ display: "flex", gap: 2 }}>
+            {(["en", "fr"] as const).map(l => (
+              <button
+                key={l}
+                onClick={() => setLang(l)}
+                style={{
+                  padding: "3px 10px", borderRadius: 99, border: "1px solid",
+                  fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
+                  letterSpacing: "0.05em", textTransform: "uppercase",
+                  background: lang === l ? NAVY : "transparent",
+                  color: lang === l ? "#fff" : MUTED,
+                  borderColor: lang === l ? NAVY : "#D8D2C8",
+                }}
+              >{l}</button>
+            ))}
+          </div>
         </div>
       </div>
 
