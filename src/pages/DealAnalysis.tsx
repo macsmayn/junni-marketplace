@@ -886,7 +886,7 @@ export default function DealAnalysis() {
             borderBottom: "1px solid #F3EFE8", verticalAlign: "middle" as const,
           };
           const fmtPct  = (v: number) => `${(v * 100).toFixed(1)}%`;
-          const fmtN    = (n: number) => `n=${n.toLocaleString()}`;
+          const fmtN    = (n: number) => `of ${n.toLocaleString()} loans`;
 
           if (benchmarkLoading) {
             return (
@@ -931,7 +931,7 @@ export default function DealAnalysis() {
           return (
             <div style={cardStyle}>
               <h2 style={hd}>Historical Benchmark</h2>
-              <p style={sub}>How comparable US SBA 7(a) loans performed historically</p>
+              <p style={sub}>Of every 100 similar loans made historically, this is how many were never repaid.</p>
 
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -939,12 +939,12 @@ export default function DealAnalysis() {
                     <tr>
                       <th style={{ ...thStyle, textAlign: "left" as const }}>Segment</th>
                       <th style={{ ...thStyle, minWidth: 130 }}>
-                        <span style={{ color: NAVY }}>Normal cycle</span>
-                        <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>FY2010–2016</div>
+                        <span style={{ color: NAVY, fontWeight: 700 }}>Loans that defaulted</span>
+                        <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>Normal cycle · FY2010–2016</div>
                       </th>
                       <th style={{ ...thStyle, minWidth: 130 }}>
-                        <span style={{ color: RED }}>2008 stress</span>
-                        <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>FY2004–2008</div>
+                        <span style={{ color: RED, fontWeight: 700 }}>Loans that defaulted</span>
+                        <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>2008 downturn · FY2004–2008</div>
                       </th>
                     </tr>
                   </thead>
@@ -968,7 +968,7 @@ export default function DealAnalysis() {
                       <tr>
                         <td style={{ ...tdLabel, borderBottom: "none" }}>
                           <span style={{ fontWeight: 500 }}>{dealSB} · {dealTB} months</span>
-                          <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>This loan's size &amp; term band</div>
+                          <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>Loans of similar size and term</div>
                         </td>
                         <td style={{ ...tdCell, borderBottom: "none" }}>
                           <div style={{ fontWeight: 700, fontSize: 15, color: NAVY }}>{fmtPct(base!.segment!.default_rate)}</div>
@@ -982,7 +982,7 @@ export default function DealAnalysis() {
                     ) : (
                       <tr>
                         <td colSpan={3} style={{ ...tdLabel, borderBottom: "none", color: MUTED, fontWeight: 400, fontSize: 12, fontStyle: "italic" }}>
-                          Too few comparable loans at this size and term for a precise segment benchmark.
+                          There were too few loans of this size and term to show a reliable figure, so only the sector-wide result is shown above.
                         </td>
                       </tr>
                     )}
@@ -991,14 +991,13 @@ export default function DealAnalysis() {
               </div>
 
               {/* LGD line */}
-              <div style={{ marginTop: 16, fontSize: 12, color: NAVY }}>
-                Loss given default: <strong>~{baseLGD}% normal</strong>, <strong style={{ color: RED }}>~{stressLGD}% stressed</strong>
-                <span style={{ color: MUTED, marginLeft: 4 }}>(sector average — fraction of loan balance lost on defaulted loans)</span>
+              <div style={{ marginTop: 16, fontSize: 12, color: NAVY, lineHeight: 1.6 }}>
+                When these loans did fail, lenders lost about <strong>~{baseLGD} cents on every dollar owed</strong> in a normal cycle — and about <strong style={{ color: RED }}>~{stressLGD} cents</strong> in the 2008 downturn, because collateral was worth less at the same time defaults rose.
               </div>
 
               {/* Caveat */}
-              <div style={{ marginTop: 12, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
-                Sector benchmark based on {totalN.toLocaleString()} resolved loans from a dataset of 698,000 US SBA 7(a) loans (normal cycle: FY2010–2016; stress: FY2004–2008). US small-business lending data — indicative context, not a prediction for this borrower.
+              <div style={{ marginTop: 12, fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
+                This benchmark comes from {totalN.toLocaleString()} comparable loans within a dataset of 698,000 U.S. Small Business Administration 7(a) loans that have fully run their course. The normal-cycle figures cover loans approved between 2010 and 2016; the downturn figures cover loans approved between 2004 and 2008, which absorbed the financial crisis. This is U.S. small-business lending data shown for context. It describes how similar loans performed in the past — it is not a prediction about this borrower.
               </div>
             </div>
           );
