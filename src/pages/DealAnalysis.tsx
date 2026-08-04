@@ -991,7 +991,8 @@ export default function DealAnalysis() {
               </div>
 
               {/* LGD line */}
-              <div style={{ marginTop: 16, fontSize: 12, color: NAVY, lineHeight: 1.6 }}>
+              <div style={{ marginTop: 16, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" as const, color: MUTED, marginBottom: 4 }}>Loss Given Default</div>
+              <div style={{ fontSize: 12, color: NAVY, lineHeight: 1.6 }}>
                 When these loans did fail, lenders lost about <strong>~{baseLGD} cents on every dollar owed</strong> in a normal cycle — and about <strong style={{ color: RED }}>~{stressLGD} cents</strong> in the 2008 downturn, because collateral was worth less at the same time defaults rose.
               </div>
 
