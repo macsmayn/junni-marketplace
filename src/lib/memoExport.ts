@@ -81,6 +81,11 @@ const AMBER  = '#E65100';
 const RED    = '#B71C1C';
 const MUTED  = '#888888';
 
+// Mirror of scorer.ts DEFAULT_CONFIG — update both files together if these change
+const GRADE_PTS: Record<string, number> = { Strong: 100, Adequate: 60, Weak: 20 };
+const TIER_W:    Record<string, number>  = { Critical: 3.0, Important: 2.0, Supplementary: 1.0, Optional: 0.5 };
+const TIER_ORDER = ['Critical', 'Important', 'Supplementary', 'Optional'];
+
 const DEBT_CATS = ['Senior Debt', 'Subordinated Debt', 'Shareholder Loans'];
 const CAT_ORDER: Record<string, number> = {
   'Senior Debt': 0, 'Subordinated Debt': 1, 'Shareholder Loans': 2,
@@ -691,9 +696,143 @@ function pdfDiligence(questions: MemoQuestion[]): any[] {
   return out;
 }
 
-function pdfMethodology(): any[] {
+interface TierBreakdown {
+  tier: string; weight: number;
+  strong: number; adequate: number; weak: number;
+  tierTotalWeight: number; weightedPoints: number;
+}
+
+function calcScoreBreakdown(metrics: MemoMetric[]): {
+  tiers: TierBreakdown[]; totalWeightedPoints: number; totalWeight: number; computedScore: number | null;
+} {
+  const tierMap = new Map<string, TierBreakdown>();
+  for (const m of metrics.filter(m => m.counted)) {
+    const pts = GRADE_PTS[m.grade];
+    const w   = TIER_W[m.tier] ?? 2.0;
+    if (pts == null) continue;
+    if (!tierMap.has(m.tier)) tierMap.set(m.tier, { tier: m.tier, weight: w, strong: 0, adequate: 0, weak: 0, tierTotalWeight: 0, weightedPoints: 0 });
+    const e = tierMap.get(m.tier)!;
+    if (m.grade === 'Strong') e.strong++; else if (m.grade === 'Adequate') e.adequate++; else if (m.grade === 'Weak') e.weak++;
+    e.tierTotalWeight += w;
+    e.weightedPoints  += pts * w;
+  }
+  const tiers = [...tierMap.values()].sort((a, b) => (TIER_ORDER.indexOf(a.tier) ?? 99) - (TIER_ORDER.indexOf(b.tier) ?? 99));
+  const totalWeightedPoints = tiers.reduce((s, t) => s + t.weightedPoints, 0);
+  const totalWeight         = tiers.reduce((s, t) => s + t.tierTotalWeight, 0);
+  const computedScore = totalWeight > 0 ? Math.round((totalWeightedPoints / totalWeight) * 10) / 10 : null;
+  return { tiers, totalWeightedPoints, totalWeight, computedScore };
+}
+
+function pdfScoreCalcSection(data: MemoData): any {
+  const { tiers, totalWeightedPoints, totalWeight, computedScore } = calcScoreBreakdown(data.metrics);
+  const storedScore = data.score?.overall_score ?? null;
+  const reconciled  = computedScore != null && storedScore != null && computedScore === storedScore;
+
+  const items: any[] = [pdfSubHead('How This Score Was Calculated')];
+
+  // Lead-in
+  items.push({ text: 'The credit score is a weighted average of all graded metrics. Each grade converts to a point value, each tier carries a fixed weight, and the score equals Σ(points × weight) ÷ Σ(weights), rounded to one decimal place.', fontSize: 9, lineHeight: 1.5, margin: [0, 0, 0, 10] });
+
+  // Reference tables — grade points and tier weights side by side
+  const gradeHdr  = [hdrCell('Grade'), hdrCell('Points')];
+  const gradeRows = [
+    [cell('Strong',   { color: STRONG }), cell('100', { alignment: 'right' })],
+    [cell('Adequate', { color: AMBER  }), cell('60',  { alignment: 'right' })],
+    [cell('Weak',     { color: RED    }), cell('20',  { alignment: 'right' })],
+  ];
+  const tierHdr  = [hdrCell('Tier'), hdrCell('Weight')];
+  const tierRows = [
+    [cell('Critical'),      cell('3.0', { alignment: 'right' })],
+    [cell('Important'),     cell('2.0', { alignment: 'right' })],
+    [cell('Supplementary'), cell('1.0', { alignment: 'right' })],
+    [cell('Optional'),      cell('0.5', { alignment: 'right' })],
+  ];
+  items.push({
+    columns: [
+      { width: '*', stack: [
+        { text: 'Grade → Points', bold: true, fontSize: 8.5, color: NAVY, margin: [0, 0, 0, 4] },
+        { table: { widths: ['*', 50], headerRows: 1, body: [gradeHdr, ...gradeRows] }, layout: thinLayout },
+      ], margin: [0, 0, 10, 0] },
+      { width: '*', stack: [
+        { text: 'Tier → Weight', bold: true, fontSize: 8.5, color: NAVY, margin: [0, 0, 0, 4] },
+        { table: { widths: ['*', 50], headerRows: 1, body: [tierHdr, ...tierRows] }, layout: thinLayout },
+      ] },
+    ],
+    margin: [0, 0, 0, 12],
+  });
+
+  // Deal-specific calculation table
+  if (tiers.length === 0) {
+    items.push({ text: 'Insufficient scored metrics to display a breakdown.', fontSize: 8.5, color: MUTED, italics: true, margin: [0, 0, 0, 10] });
+  } else if (!reconciled) {
+    items.push({ text: 'Note: The detailed breakdown could not be reconciled with the stored score. The headline score shown throughout this memorandum is authoritative.', fontSize: 8.5, color: AMBER, italics: true, margin: [0, 0, 0, 10] });
+  } else {
+    const totalCount = tiers.reduce((s, t) => s + t.strong + t.adequate + t.weak, 0);
+    items.push({ text: `Score calculation for this deal (${totalCount} scored metrics):`, bold: true, fontSize: 8.5, color: NAVY, margin: [0, 0, 0, 6] });
+
+    const calcHdr = ['Tier', 'Weight', 'Count', 'Strong', 'Adequate', 'Weak', 'Wtd. Points'].map(t => hdrCell(t));
+    const calcRows = tiers.map((t, i) => {
+      const bg    = i % 2 === 1 ? '#F8F6F3' : undefined;
+      const count = t.strong + t.adequate + t.weak;
+      return [
+        cell(t.tier,  { bold: true, color: NAVY }, bg),
+        cell(t.weight.toFixed(1), { alignment: 'right' }, bg),
+        cell(String(count),     { alignment: 'right' }, bg),
+        cell(String(t.strong),   { alignment: 'right', color: t.strong   > 0 ? STRONG : MUTED }, bg),
+        cell(String(t.adequate), { alignment: 'right', color: t.adequate > 0 ? AMBER  : MUTED }, bg),
+        cell(String(t.weak),     { alignment: 'right', color: t.weak     > 0 ? RED    : MUTED }, bg),
+        cell(t.weightedPoints.toLocaleString('en-US'), { alignment: 'right', bold: true }, bg),
+      ];
+    });
+    // Totals row
+    calcRows.push([
+      cell('Totals', { bold: true, color: NAVY, colSpan: 2 }, '#E8E2D9'), {},
+      cell(String(totalCount), { alignment: 'right', bold: true }, '#E8E2D9'),
+      { text: '', fillColor: '#E8E2D9' }, { text: '', fillColor: '#E8E2D9' }, { text: '', fillColor: '#E8E2D9' },
+      cell(totalWeightedPoints.toLocaleString('en-US'), { alignment: 'right', bold: true }, '#E8E2D9'),
+    ]);
+    items.push({ table: { widths: ['*', 42, 38, 40, 52, 32, 68], headerRows: 1, body: [calcHdr, ...calcRows] }, layout: thinLayout, margin: [0, 0, 0, 6] });
+
+    // Formula line
+    const rawExact   = totalWeightedPoints / totalWeight;
+    const isExact    = Math.round(rawExact * 10) / 10 === rawExact && rawExact === Math.floor(rawExact * 10) / 10;
+    const rawDisplay = isExact ? String(computedScore) : rawExact.toFixed(3) + '…';
+    items.push({
+      columns: [
+        { text: `Σ weights: ${totalWeight % 1 === 0 ? totalWeight.toFixed(0) : totalWeight.toFixed(1)}`, fontSize: 8.5, color: MUTED, width: 110 },
+        { text: [
+          { text: `${totalWeightedPoints.toLocaleString('en-US')} ÷ ${totalWeight % 1 === 0 ? totalWeight.toFixed(0) : totalWeight.toFixed(1)} = ${rawDisplay}` },
+          { text: ` → `, color: MUTED },
+          { text: String(computedScore), bold: true, fontSize: 10, color: NAVY },
+        ], fontSize: 8.5 },
+      ],
+      margin: [0, 2, 0, 10],
+    });
+  }
+
+  // Critical floor
+  items.push({ text: 'Critical-metric floor:', bold: true, fontSize: 8.5, margin: [0, 0, 0, 4] });
+  items.push({ text: 'If two or more Critical metrics grade Weak, or a single Critical metric breaches a distress threshold (e.g. DSCR below 0.75x, Net Debt/EBITDA above 6.0x, Interest Coverage below 1.0x), the score is capped at 49 regardless of other metrics.', fontSize: 8.5, lineHeight: 1.5, margin: [0, 0, 0, 4] });
+
+  const floorApplied = data.score?.critical_floor_applied;
+  const floorReason  = data.score?.capped_reason;
+  if (floorApplied) {
+    const why = floorReason === 'severe_critical' ? 'a Critical metric breached a distress threshold' : 'two or more Critical metrics graded Weak';
+    items.push({ text: [{ text: 'For this deal: ', bold: true }, { text: `The floor was applied (${why}). The score was capped at 49.`, color: RED }], fontSize: 8.5, margin: [0, 0, 0, 10] });
+  } else {
+    items.push({ text: [{ text: 'For this deal: ', bold: true }, { text: 'The floor was not applied. The score reflects the full weighted average.', color: STRONG }], fontSize: 8.5, margin: [0, 0, 0, 10] });
+  }
+
+  // Lender configurability note
+  items.push({ text: "These thresholds and tier weightings reflect Junni's default framework. Lenders may configure their own thresholds and metric tiers to match internal credit policy; where a lender has done so, the score shown reflects their configuration rather than the default framework, and the applicable settings are recorded with the analysis.", fontSize: 8, color: MUTED, lineHeight: 1.5, italics: true });
+
+  return { stack: items, unbreakable: true };
+}
+
+function pdfMethodology(data: MemoData): any[] {
   return [
     pdfSection('METHODOLOGY NOTE', true),
+    pdfScoreCalcSection(data),
     pdfSubHead('Scoring Framework'),
     { text: 'The credit score is computed by a deterministic, rule-based engine applied to confirmed financial statement data. Each metric is evaluated against a three-band threshold (Strong / Adequate / Weak) and weighted by tier. No large language model participates in computing the numeric score.', fontSize: 9, lineHeight: 1.5, margin: [0, 0, 0, 8] },
     pdfSubHead('Metric Tiers'),
@@ -720,7 +859,7 @@ function buildPdfDef(data: MemoData, questions: MemoQuestion[]): any {
     ...pdfCapitalization(data),
     ...pdfCollateral(data),
     ...pdfDiligence(questions),
-    ...pdfMethodology(),
+    ...pdfMethodology(data),
   ];
 
   return {
@@ -1134,6 +1273,79 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
 
   // ── Methodology ──
   children.push(wPageBreak(), wHead1('Methodology Note'));
+
+  // ── How This Score Was Calculated ──
+  {
+    const { tiers: wTiers, totalWeightedPoints: wTWP, totalWeight: wTW, computedScore: wCS } = calcScoreBreakdown(data.metrics);
+    const wStored     = data.score?.overall_score ?? null;
+    const wReconciled = wCS != null && wStored != null && wCS === wStored;
+
+    children.push(wHead2('How This Score Was Calculated'));
+    children.push(wPara('The credit score is a weighted average of all graded metrics. Each grade converts to a point value, each tier carries a fixed weight, and the score equals Σ(points × weight) ÷ Σ(weights), rounded to one decimal place.', { spaceAfter: 120, keepNext: true }));
+
+    // Grade points reference table
+    const gCols = [3500, 1500];
+    children.push(
+      wPara('Grade → Points', { bold: true, spaceAfter: 60, keepNext: true }),
+      new Table({ width: { size: 5000, type: WidthType.DXA }, rows: [
+        wHdrRow(['Grade', 'Points'], gCols),
+        wDataRow(['Strong',   '100'], gCols),
+        wDataRow(['Adequate',  '60'], gCols, true),
+        wDataRow(['Weak',      '20'], gCols),
+      ]}),
+      wSpacer(100),
+      wPara('Tier → Weight', { bold: true, spaceAfter: 60, keepNext: true }),
+      new Table({ width: { size: 5000, type: WidthType.DXA }, rows: [
+        wHdrRow(['Tier', 'Weight'], gCols),
+        wDataRow(['Critical',      '3.0'], gCols),
+        wDataRow(['Important',     '2.0'], gCols, true),
+        wDataRow(['Supplementary', '1.0'], gCols),
+        wDataRow(['Optional',      '0.5'], gCols, true),
+      ]}),
+      wSpacer(160),
+    );
+
+    // Deal-specific calculation table
+    if (wTiers.length === 0) {
+      children.push(wPara('Insufficient scored metrics to display a breakdown.', { italics: true, color: '888888', spaceAfter: 120 }));
+    } else if (!wReconciled) {
+      children.push(wPara('Note: The detailed breakdown could not be reconciled with the stored score. The headline score shown throughout this memorandum is authoritative.', { italics: true, color: AMBER.replace('#', ''), spaceAfter: 120 }));
+    } else {
+      const wTotalCount = wTiers.reduce((s, t) => s + t.strong + t.adequate + t.weak, 0);
+      children.push(wPara(`Score calculation for this deal (${wTotalCount} scored metrics):`, { bold: true, spaceAfter: 80, keepNext: true }));
+      const cCols = [2200, 860, 760, 900, 1060, 760, 3540]; // sum = 10080
+      const calcTableRows: any[] = [wHdrRow(['Tier', 'Weight', 'Count', 'Strong', 'Adequate', 'Weak', 'Wtd. Points'], cCols)];
+      wTiers.forEach((t, i) => {
+        calcTableRows.push(wDataRow([
+          t.tier, t.weight.toFixed(1), String(t.strong + t.adequate + t.weak),
+          String(t.strong), String(t.adequate), String(t.weak),
+          t.weightedPoints.toLocaleString('en-US'),
+        ], cCols, i % 2 === 1));
+      });
+      calcTableRows.push(wTotalRow(['Totals', '', String(wTotalCount), '', '', '', wTWP.toLocaleString('en-US')], cCols));
+      children.push(new Table({ width: { size: TW_CONT, type: WidthType.DXA }, rows: calcTableRows }), wSpacer(100));
+
+      const wRawExact   = wTWP / wTW;
+      const wIsExact    = Math.round(wRawExact * 10) / 10 === wRawExact && wRawExact === Math.floor(wRawExact * 10) / 10;
+      const wRawDisplay = wIsExact ? String(wCS) : wRawExact.toFixed(3) + '…';
+      const wTWStr      = wTW % 1 === 0 ? wTW.toFixed(0) : wTW.toFixed(1);
+      children.push(wPara(`${wTWP.toLocaleString('en-US')} ÷ ${wTWStr} = ${wRawDisplay} → ${wCS}`, { bold: true, spaceAfter: 160 }));
+    }
+
+    // Critical floor
+    children.push(wPara('Critical-metric floor:', { bold: true, spaceAfter: 60, keepNext: true }));
+    children.push(wPara('If two or more Critical metrics grade Weak, or a single Critical metric breaches a distress threshold (e.g. DSCR below 0.75x, Net Debt/EBITDA above 6.0x, Interest Coverage below 1.0x), the score is capped at 49 regardless of other metrics.', { spaceAfter: 80, keepNext: true }));
+    if (data.score?.critical_floor_applied) {
+      const why = data.score.capped_reason === 'severe_critical' ? 'a Critical metric breached a distress threshold' : 'two or more Critical metrics graded Weak';
+      children.push(wPara(`For this deal: The floor was applied (${why}). The score was capped at 49.`, { color: RED.replace('#', ''), spaceAfter: 120 }));
+    } else {
+      children.push(wPara('For this deal: The floor was not applied. The score reflects the full weighted average.', { color: STRONG.replace('#', ''), spaceAfter: 120 }));
+    }
+
+    // Lender note
+    children.push(wPara("These thresholds and tier weightings reflect Junni's default framework. Lenders may configure their own thresholds and metric tiers to match internal credit policy; where a lender has done so, the score shown reflects their configuration rather than the default framework, and the applicable settings are recorded with the analysis.", { italics: true, color: '888888', spaceAfter: 200 }));
+  }
+
   children.push(
     wHead2('Scoring Framework'),
     wPara('The credit score is computed by a deterministic, rule-based engine applied to confirmed financial statement data. Each metric is evaluated against a three-band threshold (Strong / Adequate / Weak) and weighted by tier. No large language model participates in computing the numeric score.', { spaceAfter: 160 }),
