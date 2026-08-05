@@ -288,7 +288,11 @@ function pdfExecSummary(data: MemoData): any[] {
   const paras = splitIntoParagraphs(text);
   return [
     pdfSection('EXECUTIVE SUMMARY'),
-    ...paras.map((p, i) => ({ text: p, fontSize: 9, lineHeight: 1.55, margin: [0, 0, 0, i < paras.length - 1 ? 8 : 0] })),
+    ...paras.map((p, i) => ({
+      text: p, fontSize: 9, lineHeight: 1.55,
+      margin: [0, 0, 0, i < paras.length - 1 ? 8 : 0],
+      ...(i === paras.length - 1 ? { pageBreak: 'after' } : {}),
+    })),
   ];
 }
 
@@ -893,6 +897,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
   if (execText) {
     children.push(wHead1('Executive Summary'));
     splitIntoParagraphs(execText).forEach(p => children.push(wPara(p, { spaceAfter: 160 })));
+    children.push(wPageBreak());
   }
 
   // ── Financial Metrics ──
