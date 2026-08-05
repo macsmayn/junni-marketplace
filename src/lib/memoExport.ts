@@ -194,7 +194,7 @@ const thinLayout = {
   paddingTop:    () => 0, paddingBottom: () => 0,
 };
 
-// Section heading (NAVY bar) — no forced page break; callers add one explicitly when needed
+// Section heading — breakBefore forces a page break (used for Annex A only)
 function pdfSection(text: string, breakBefore = false): any {
   return {
     table: {
@@ -225,7 +225,8 @@ function pdfBullets(items: string[], color = '#222'): any[] {
   }));
 }
 
-function pdfMetricsTable(rows: MemoMetric[]): any {
+// Scored metrics table: breakable (may span multiple pages), headerRows repeats header
+function pdfScoredMetricsTable(rows: MemoMetric[]): any {
   const hdr = ['Metric', 'Tier', 'Value', 'Grade', 'Strong', 'Adequate', 'Weak'].map(t => hdrCell(t));
   const body = rows.map((r, i) => {
     const bg = i % 2 === 1 ? '#F8F6F3' : undefined;
@@ -240,7 +241,9 @@ function pdfMetricsTable(rows: MemoMetric[]): any {
     ];
   });
   return {
-    table: { widths: ['*', 55, 52, 50, 68, 68, 68], headerRows: 1, body: [hdr, ...body] },
+    // headerRows: 1 repeats the header on each continuation page.
+    // keepWithHeaderRows: 1 keeps at least one data row with the header if it moves pages.
+    table: { widths: ['*', 55, 52, 50, 68, 68, 68], headerRows: 1, keepWithHeaderRows: 1, body: [hdr, ...body] },
     layout: thinLayout,
     margin: [0, 0, 0, 6],
   };
@@ -275,7 +278,6 @@ function pdfCover(data: MemoData): any[] {
     ...(loanParts.length ? [{ text: loanParts.join('  ·  '), fontSize: 12, color: NAVY, margin: [0, 0, 0, 0] }] : []),
     ...scoreBlock,
     { text: isoDate(), fontSize: 18, color: MUTED, margin: [0, 32, 0, 0] },
-    // Cover page ends here — next page starts immediately (footer shows CONFIDENTIAL on page 1)
     { text: '', pageBreak: 'after', margin: [0, 0, 0, 0] },
   ];
 }
@@ -293,27 +295,36 @@ function pdfExecSummary(data: MemoData): any[] {
 function pdfMetrics(data: MemoData): any[] {
   const scored    = data.metrics.filter(m => m.counted);
   const notScored = data.metrics.filter(m => !m.counted);
-  const out: any[] = [pdfSection('FINANCIAL METRICS')];
 
+  const out: any[] = [];
+
+  // Section heading + notes in an unbreakable block — prevents the heading from
+  // sitting alone at the bottom of a page without any content beneath it.
+  const headGroup: any[] = [pdfSection('FINANCIAL METRICS')];
   if (data.score?.coverage_pct != null) {
-    out.push({ text: `Metric coverage: ${data.score.coverage_pct}% of the scoring framework was computable from the financial statements provided.`, fontSize: 8.5, color: MUTED, italics: true, margin: [0, 0, 0, 10] });
+    headGroup.push({ text: `Metric coverage: ${data.score.coverage_pct}% of the scoring framework was computable from the financial statements provided.`, fontSize: 8.5, color: MUTED, italics: true, margin: [0, 0, 0, 10] });
   }
   if (data.score?.critical_floor_applied) {
-    out.push({ text: `Note: Critical-metric floor applied — overall score capped at 49. ${data.score.capped_reason ?? ''}`.trim(), fontSize: 8.5, color: RED, italics: true, margin: [0, 0, 0, 10] });
+    headGroup.push({ text: `Note: Critical-metric floor applied — overall score capped at 49. ${data.score.capped_reason ?? ''}`.trim(), fontSize: 8.5, color: RED, italics: true, margin: [0, 0, 0, 10] });
   }
-  if (scored.length > 0) {
-    out.push(pdfSubHead('Scored Metrics'));
-    out.push(pdfMetricsTable(scored));
-  }
+  if (scored.length > 0) headGroup.push(pdfSubHead('Scored Metrics'));
+  out.push({ stack: headGroup, unbreakable: true });
+
+  // Scored table is intentionally breakable (can exceed one page with 17+ rows).
+  // headerRows: 1 repeats the column header on each continuation page.
+  if (scored.length > 0) out.push(pdfScoredMetricsTable(scored));
+
+  // Not-scored table: small, keep heading + table together.
   if (notScored.length > 0) {
-    out.push(pdfSubHead('Not Scored'));
-    const nsHdr = ['Metric', 'Tier', 'Reason'].map(t => hdrCell(t));
+    const nsHdr  = ['Metric', 'Tier', 'Reason'].map(t => hdrCell(t));
     const nsRows = notScored.map((r, i) => {
       const bg = i % 2 === 1 ? '#F8F6F3' : undefined;
       return [cell(r.metric_name, {}, bg), cell(r.tier, { fontSize: 7.5, color: MUTED }, bg), cell(statusLabel(r.status), { fontSize: 8, color: MUTED }, bg)];
     });
-    out.push({ table: { widths: ['*', 70, '*'], headerRows: 1, body: [nsHdr, ...nsRows] }, layout: thinLayout, margin: [0, 0, 0, 6] });
+    const nsTable = { table: { widths: ['*', 70, '*'], headerRows: 1, body: [nsHdr, ...nsRows] }, layout: thinLayout, margin: [0, 0, 0, 6] };
+    out.push({ stack: [pdfSubHead('Not Scored'), nsTable], unbreakable: true });
   }
+
   return out;
 }
 
@@ -331,9 +342,23 @@ function pdfStrengthsRisks(data: MemoData): any[] {
   const s = data.score?.strengths ?? [];
   const r = data.score?.risks ?? [];
   if (!s.length && !r.length) return [];
-  const out: any[] = [pdfSection('STRENGTHS & RISKS')];
-  if (s.length) { out.push(pdfSubHead('Key Strengths')); out.push(...pdfBullets(s, STRONG)); }
-  if (r.length) { out.push(pdfSubHead('Key Risks'));     out.push(...pdfBullets(r, RED));    }
+
+  const sectionHead = pdfSection('STRENGTHS & RISKS');
+  const out: any[] = [];
+
+  // Each list is a separate unbreakable block so Risks can move pages independently.
+  // The section heading attaches to whichever list comes first.
+  if (s.length) {
+    out.push({ stack: [sectionHead, pdfSubHead('Key Strengths'), ...pdfBullets(s, STRONG)], unbreakable: true });
+  }
+  if (r.length) {
+    // If there were no strengths, the section heading needs to travel with risks.
+    const risksStack = s.length
+      ? [pdfSubHead('Key Risks'), ...pdfBullets(r, RED)]
+      : [sectionHead, pdfSubHead('Key Risks'), ...pdfBullets(r, RED)];
+    out.push({ stack: risksStack, unbreakable: true });
+  }
+
   return out;
 }
 
@@ -341,7 +366,7 @@ function pdfBenchmark(data: MemoData): any[] {
   const bm = data.benchmarks;
   if (!bm || bm.noMapping || !bm.base?.sector) return [];
   const { base, stress, totalN } = bm;
-  const hasSector  = base?.sector  && stress?.sector;
+  const hasSector  = base?.sector && stress?.sector;
   const hasSegment = base?.segment && stress?.segment;
   if (!hasSector) return [];
 
@@ -353,7 +378,6 @@ function pdfBenchmark(data: MemoData): any[] {
   const baseLGD   = Math.round(base!.sector!.lgd  * 100);
   const stressLGD = Math.round(stress!.sector!.lgd * 100);
 
-  // Header row
   const tableHdr = [
     { text: 'Segment', bold: true, fontSize: 8.5, color: NAVY, fillColor: '#F0EDE8', margin: [4, 5, 4, 5] },
     {
@@ -396,23 +420,21 @@ function pdfBenchmark(data: MemoData): any[] {
     ]);
   }
 
-  const out: any[] = [
-    pdfSection('HISTORICAL BENCHMARK — SBA 7(a) LOAN DATA'),
-    {
-      table: { widths: ['*', 140, 140], headerRows: 1, body: tableRows },
-      layout: { ...thinLayout, hLineWidth: (i: number, node: any) => (i === 0 || i === node.table.body.length) ? 0 : 0.5 },
-      margin: [0, 0, 0, 12],
-    },
-  ];
+  const bmTableNode = {
+    table: { widths: ['*', 140, 140], headerRows: 1, body: tableRows },
+    layout: { ...thinLayout, hLineWidth: (i: number, node: any) => (i === 0 || i === node.table.body.length) ? 0 : 0.5 },
+    margin: [0, 0, 0, 12],
+  };
 
-  // Interpretive sentence
+  // Interpretive sentence (gold-bar callout)
+  let interpretiveNode: any = null;
   if (hasSegment && base?.sector?.default_rate) {
     const ratio = base!.segment!.default_rate / base!.sector!.default_rate;
     if (ratio >= 1.3 || ratio <= 0.75) {
       const msg = ratio >= 1.3
         ? 'Loans of this size and term defaulted notably more often than the sector as a whole. In SBA lending, shorter terms are typically associated with working-capital facilities and younger or thinner-margin businesses, so this pattern likely reflects the type of borrower that seeks these terms rather than the loan structure itself.'
         : 'Loans of this size and term defaulted less often than the sector as a whole. Longer amortisation and larger facilities generally indicate established borrowers with harder collateral, which historically supported better repayment performance.';
-      out.push({
+      interpretiveNode = {
         table: {
           widths: [3, '*'],
           body: [[
@@ -422,13 +444,12 @@ function pdfBenchmark(data: MemoData): any[] {
         },
         layout: 'noBorders',
         margin: [0, 0, 0, 12],
-      });
+      };
     }
   }
 
-  // LGD
-  out.push({ text: 'LOSS GIVEN DEFAULT', bold: true, fontSize: 8, letterSpacing: 1, color: MUTED, margin: [0, 4, 0, 4], characterSpacing: 1 });
-  out.push({
+  const lgdLabel = { text: 'LOSS GIVEN DEFAULT', bold: true, fontSize: 8, color: MUTED, margin: [0, 4, 0, 4], characterSpacing: 1 };
+  const lgdPara  = {
     text: [
       'When these loans did fail, lenders lost about ',
       { text: `~${baseLGD} cents on every dollar owed`, bold: true },
@@ -437,15 +458,23 @@ function pdfBenchmark(data: MemoData): any[] {
       ' in the 2008 downturn, because collateral was worth less at the same time defaults rose.',
     ],
     fontSize: 9, lineHeight: 1.5, margin: [0, 0, 0, 10],
-  });
-
-  // Caveat
-  out.push({
+  };
+  const caveat = {
     text: `This benchmark comes from ${(totalN ?? 0).toLocaleString('en-US')} comparable loans within a dataset of 698,000 U.S. Small Business Administration 7(a) loans that have fully run their course. The normal-cycle figures cover loans approved between 2010 and 2016; the downturn figures cover loans approved between 2004 and 2008, which absorbed the financial crisis. This is U.S. small-business lending data shown for context. It describes how similar loans performed in the past — it is not a prediction about this borrower.`,
     fontSize: 8, color: MUTED, lineHeight: 1.5,
-  });
+  };
 
-  return out;
+  // The whole benchmark section — heading + table + interpretive + LGD + caveat —
+  // stays together as one unbreakable block.
+  const blockItems = [
+    pdfSection('HISTORICAL BENCHMARK — SBA 7(a) LOAN DATA'),
+    bmTableNode,
+    ...(interpretiveNode ? [interpretiveNode] : []),
+    lgdLabel,
+    lgdPara,
+    caveat,
+  ];
+  return [{ stack: blockItems, unbreakable: true }];
 }
 
 function pdfSourcesUses(data: MemoData): any[] {
@@ -458,9 +487,8 @@ function pdfSourcesUses(data: MemoData): any[] {
   const totalS = srcs.reduce((s, e) => s + Number(e.amount), 0);
   const maxLen = Math.max(uses.length, srcs.length);
 
-  // Sub-header row
   const subHdr = [
-    { text: 'USES', bold: true, fontSize: 8, color: MUTED, fillColor: '#F0EDE8', margin: [4, 4, 4, 4], colSpan: 2 }, {},
+    { text: 'USES',    bold: true, fontSize: 8, color: MUTED, fillColor: '#F0EDE8', margin: [4, 4, 4, 4], colSpan: 2 }, {},
     { text: 'SOURCES', bold: true, fontSize: 8, color: MUTED, fillColor: '#F0EDE8', margin: [4, 4, 4, 4], colSpan: 2 }, {},
   ];
   const rows = Array.from({ length: maxLen }, (_, i) => {
@@ -474,7 +502,7 @@ function pdfSourcesUses(data: MemoData): any[] {
     ];
   });
   rows.push([
-    cell('Total Uses',   { bold: true, fontSize: 9 }, '#E8E2D9'),
+    cell('Total Uses',    { bold: true, fontSize: 9 }, '#E8E2D9'),
     cell(fmtMoney(totalU), { bold: true, alignment: 'right', fontSize: 9 }, '#E8E2D9'),
     cell('Total Sources', { bold: true, fontSize: 9 }, '#E8E2D9'),
     cell(fmtMoney(totalS), { bold: true, alignment: 'right', fontSize: 9 }, '#E8E2D9'),
@@ -488,22 +516,22 @@ function pdfSourcesUses(data: MemoData): any[] {
     paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0,
   };
 
-  return [
-    pdfSection('SOURCES & USES'),
-    { table: { widths: ['*', 90, '*', 90], body: [subHdr, ...rows] }, layout: suLayout, margin: [0, 0, 0, 6] },
-  ];
+  const suTable = { table: { widths: ['*', 90, '*', 90], body: [subHdr, ...rows] }, layout: suLayout, margin: [0, 0, 0, 6] };
+
+  // Heading + table together — neither starts on a page without the other.
+  return [{ stack: [pdfSection('SOURCES & USES'), suTable], unbreakable: true }];
 }
 
 function pdfCapitalization(data: MemoData): any[] {
   const items = data.capItems ?? [];
   if (!items.length) return [];
 
-  const ebitdaVal = Number(data.deal?.ebitda);
-  const hasEbitda = ebitdaVal > 0;
-  const cashVal   = Number(data.confirmedCash) || 0;
-  const rl        = data.deal?.revolver_limit  != null ? Number(data.deal.revolver_limit)  : null;
-  const rd        = data.deal?.revolver_drawn  != null ? Number(data.deal.revolver_drawn)   : null;
-  const evProv    = data.deal?.enterprise_value != null ? Number(data.deal.enterprise_value) : null;
+  const ebitdaVal  = Number(data.deal?.ebitda);
+  const hasEbitda  = ebitdaVal > 0;
+  const cashVal    = Number(data.confirmedCash) || 0;
+  const rl         = data.deal?.revolver_limit  != null ? Number(data.deal.revolver_limit)  : null;
+  const rd         = data.deal?.revolver_drawn  != null ? Number(data.deal.revolver_drawn)   : null;
+  const evProv     = data.deal?.enterprise_value != null ? Number(data.deal.enterprise_value) : null;
 
   const sorted    = [...items].sort((a, b) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99));
   const totalCap  = items.reduce((s, r) => s + Number(r.amount), 0);
@@ -514,9 +542,8 @@ function pdfCapitalization(data: MemoData): any[] {
   const availLiq  = cashVal + (rl != null ? (rl - (rd ?? 0)) : 0);
   const evProxy   = totalCap - cashVal;
 
-  const colW: number[] = hasEbitda ? ['*' as any, 80, 90, 75, 75] : ['*' as any, 80, 90, 75];
-  const hdrLabels = ['Instrument', 'Category', 'Amount', '% of Cap', ...(hasEbitda ? ['× EBITDA'] : [])];
-  const hdr = hdrLabels.map(t => hdrCell(t));
+  const colW: any[] = hasEbitda ? ['*', 80, 90, 75, 75] : ['*', 80, 90, 75];
+  const hdr = ['Instrument', 'Category', 'Amount', '% of Cap', ...(hasEbitda ? ['× EBITDA'] : [])].map(t => hdrCell(t));
 
   let cumDebt = 0;
   const dataRows = sorted.map((r, i) => {
@@ -535,9 +562,8 @@ function pdfCapitalization(data: MemoData): any[] {
     return row;
   });
 
-  function summaryRow(label: string, isBold: boolean, amount: number, pctStr: string, xEStr: string, topBorder = false): any[] {
+  function summaryRow(label: string, isBold: boolean, amount: number, pctStr: string, xEStr: string): any[] {
     const bg = '#FAFAF9';
-    const borderObj = topBorder ? { hLineWidth: (i: number) => i === 0 ? 1.5 : 0.3 } : {};
     const row = [
       cell(label, { bold: isBold, color: isBold ? NAVY : MUTED, colSpan: 2 }, bg), {},
       cell(fmtMoney(amount), { bold: isBold, alignment: 'right', color: isBold ? NAVY : undefined }, bg),
@@ -547,51 +573,51 @@ function pdfCapitalization(data: MemoData): any[] {
     return row;
   }
 
-  const debtPct  = totalCap > 0 ? `${(totalDebt   / totalCap * 100).toFixed(1)}%` : '—';
-  const eqPct    = totalCap > 0 ? `${(totalEquity  / totalCap * 100).toFixed(1)}%` : '—';
-  const debtXE   = hasEbitda && totalDebt  > 0 ? `${(totalDebt   / ebitdaVal).toFixed(2)}x` : '—';
-  const capXE    = '100%';
+  const debtPct = totalCap > 0 ? `${(totalDebt  / totalCap * 100).toFixed(1)}%` : '—';
+  const eqPct   = totalCap > 0 ? `${(totalEquity / totalCap * 100).toFixed(1)}%` : '—';
+  const debtXE  = hasEbitda && totalDebt > 0 ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : '—';
 
   const allRows = [
     ...dataRows,
-    summaryRow('Total Debt',          false, totalDebt,   debtPct, debtXE,  true),
-    summaryRow('Total Equity',        false, totalEquity, eqPct,   '—'),
-    summaryRow('Total Capitalization', true, totalCap,    '100%',  debtXE),
+    summaryRow('Total Debt',           false, totalDebt,   debtPct, debtXE),
+    summaryRow('Total Equity',         false, totalEquity, eqPct,   '—'),
+    summaryRow('Total Capitalization', true,  totalCap,    '100%',  debtXE),
   ];
 
-  const out: any[] = [
-    pdfSection('CAPITALIZATION'),
-    { text: 'Pro-forma transaction structure — reflects the proposed deal, not the borrower\'s historical balance sheet.', fontSize: 8.5, color: MUTED, italics: true, margin: [0, 0, 0, 10] },
-    { table: { widths: colW, headerRows: 1, body: [hdr, ...allRows] }, layout: thinLayout, margin: [0, 0, 0, 12] },
-  ];
+  const capTable = { table: { widths: colW, headerRows: 1, body: [hdr, ...allRows] }, layout: thinLayout, margin: [0, 0, 0, 12] };
 
-  // Credit metrics
-  const metrics: Array<{ label: string; value: string }> = [
+  const creditMetrics: Array<{ label: string; value: string }> = [
     { label: 'Senior Debt / EBITDA (pro-forma)',    value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal).toFixed(2)}x` : 'n/m' },
     { label: 'Total Debt / EBITDA (pro-forma)',     value: hasEbitda ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : 'n/m' },
     { label: 'Net Debt / EBITDA (pro-forma)',       value: hasEbitda ? `${(netDebt   / ebitdaVal).toFixed(2)}x` : 'n/m' },
     ...(rl != null ? [{ label: 'Authorized Revolver Limit', value: fmtMoney(rl) }] : []),
     { label: `Available Liquidity${rl == null ? ' (cash only — no revolver data)' : ''}`, value: fmtMoney(availLiq) },
     evProv != null
-      ? { label: 'EV (provided)',                  value: fmtMoney(evProv) }
+      ? { label: 'EV (provided)',                       value: fmtMoney(evProv) }
       : totalEquity > 0
         ? { label: 'EV (proxy: total cap net of cash)', value: fmtMoney(evProxy) }
-        : { label: 'EV (proxy)', value: 'n/m (add equity)' },
+        : { label: 'EV (proxy)',                        value: 'n/m (add equity)' },
     { label: 'Debt / Total Capitalization (pro-forma)', value: totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : '—' },
   ];
 
-  const metricsBody = metrics.map((m, i) => [
+  const metricsBody = creditMetrics.map((m, i) => [
     cell(m.label, { color: MUTED }, i % 2 === 1 ? '#F8F6F3' : undefined),
     cell(m.value, { alignment: 'right', bold: true, color: NAVY }, i % 2 === 1 ? '#F8F6F3' : undefined),
   ]);
-  out.push({ table: { widths: ['*', 100], body: metricsBody }, layout: thinLayout, margin: [0, 0, 0, 6] });
+  const metricsTable = { table: { widths: ['*', 100], body: metricsBody }, layout: thinLayout, margin: [0, 0, 0, 6] };
 
-  // EBITDA / Cash footnote
+  const blockItems: any[] = [
+    pdfSection('CAPITALIZATION'),
+    { text: "Pro-forma transaction structure — reflects the proposed deal, not the borrower's historical balance sheet.", fontSize: 8.5, color: MUTED, italics: true, margin: [0, 0, 0, 10] },
+    capTable,
+    metricsTable,
+  ];
   if (hasEbitda) {
-    out.push({ text: `EBITDA ${fmtMoney(ebitdaVal)}${cashVal > 0 ? `  ·  Cash ${fmtMoney(cashVal)}` : ''}`, fontSize: 8, color: MUTED, italics: true, margin: [0, 4, 0, 0] });
+    blockItems.push({ text: `EBITDA ${fmtMoney(ebitdaVal)}${cashVal > 0 ? `  ·  Cash ${fmtMoney(cashVal)}` : ''}`, fontSize: 8, color: MUTED, italics: true, margin: [0, 4, 0, 0] });
   }
 
-  return out;
+  // The whole cap section — heading, pro-forma note, cap table, credit metrics — stays together.
+  return [{ stack: blockItems, unbreakable: true }];
 }
 
 function pdfCollateral(data: MemoData): any[] {
@@ -615,39 +641,49 @@ function pdfCollateral(data: MemoData): any[] {
     cell(fmtMoney(totalL), { bold: true, alignment: 'right' }, '#E8E2D9'),
   ]);
 
-  return [
-    pdfSection('COLLATERAL'),
-    { table: { widths: [80, '*', 82, 72, 82], headerRows: 1, body: [hdr, ...rows] }, layout: thinLayout, margin: [0, 0, 0, 6] },
-  ];
+  const collTable = { table: { widths: [80, '*', 82, 72, 82], headerRows: 1, body: [hdr, ...rows] }, layout: thinLayout, margin: [0, 0, 0, 6] };
+  return [{ stack: [pdfSection('COLLATERAL'), collTable], unbreakable: true }];
 }
 
 function pdfDiligence(questions: MemoQuestion[]): any[] {
   if (!questions.length) return [];
+
+  // The section heading gets its own page break; it's not wrapped in unbreakable
+  // with questions because the first question may be long.
   const out: any[] = [pdfSection('ANNEX A — DILIGENCE QUESTIONS', true)];
+
   questions.forEach((q, i) => {
     const tag = [q.priority?.toUpperCase(), q.source].filter(Boolean).join(' · ');
-    out.push({
-      columns: [
-        { text: `Q${i + 1}.`, bold: true, fontSize: 9, color: NAVY, width: 28, margin: [0, 1, 0, 0] },
-        {
-          stack: [
-            { text: [{ text: q.question_text, bold: true, fontSize: 9 }, tag ? { text: `  [${tag}]`, fontSize: 7.5, color: MUTED } : ''] },
-            ...(q.related_metric ? [{ text: `Related: ${q.related_metric}`, fontSize: 7.5, color: MUTED, italics: true, margin: [0, 2, 0, 0] }] : []),
-            ...(q.answer?.trim() ? [
-              { text: 'Response:', fontSize: 8, bold: true, color: NAVY, margin: [0, 5, 0, 2] },
-              { text: q.answer.trim(), fontSize: 8.5, lineHeight: 1.4 },
-              ...(q.answer_assessment?.trim() ? [{ text: `Assessment: ${q.answer_assessment.trim()}`, fontSize: 8, color: MUTED, italics: true, margin: [0, 3, 0, 0] }] : []),
-            ] : [
-              { text: `Status: ${q.status ?? 'pending'}`, fontSize: 8, color: MUTED, italics: true, margin: [0, 2, 0, 0] },
-            ]),
-          ],
-          width: '*',
-        },
-      ],
-      margin: [0, 0, 0, 8],
-    });
+
+    // Each question + its answer stay together as one unbreakable block.
+    const qItems: any[] = [
+      {
+        columns: [
+          { text: `Q${i + 1}.`, bold: true, fontSize: 9, color: NAVY, width: 28, margin: [0, 1, 0, 0] },
+          {
+            stack: [
+              { text: [{ text: q.question_text, bold: true, fontSize: 9 }, tag ? { text: `  [${tag}]`, fontSize: 7.5, color: MUTED } : ''] },
+              ...(q.related_metric ? [{ text: `Related: ${q.related_metric}`, fontSize: 7.5, color: MUTED, italics: true, margin: [0, 2, 0, 0] }] : []),
+              ...(q.answer?.trim() ? [
+                { text: 'Response:', fontSize: 8, bold: true, color: NAVY, margin: [0, 5, 0, 2] },
+                { text: q.answer.trim(), fontSize: 8.5, lineHeight: 1.4 },
+                ...(q.answer_assessment?.trim() ? [{ text: `Assessment: ${q.answer_assessment.trim()}`, fontSize: 8, color: MUTED, italics: true, margin: [0, 3, 0, 0] }] : []),
+              ] : [
+                { text: `Status: ${q.status ?? 'pending'}`, fontSize: 8, color: MUTED, italics: true, margin: [0, 2, 0, 0] },
+              ]),
+            ],
+            width: '*',
+          },
+        ],
+        margin: [0, 0, 0, 8],
+      },
+    ];
+    out.push({ stack: qItems, unbreakable: true });
+
+    // Divider between questions is outside the unbreakable block — it can sit anywhere.
     if (i < questions.length - 1) out.push(pdfHR());
   });
+
   return out;
 }
 
@@ -671,7 +707,6 @@ function buildPdfDef(data: MemoData, questions: MemoQuestion[]): any {
   const borrower = data.deal.title ?? 'Credit Memorandum';
   const content: any[] = [
     ...pdfCover(data),
-    // All sections flow continuously from page 2; no forced breaks except Annex A
     ...pdfExecSummary(data),
     ...pdfMetrics(data),
     ...pdfAnalystCommentary(data),
@@ -680,7 +715,7 @@ function buildPdfDef(data: MemoData, questions: MemoQuestion[]): any {
     ...pdfSourcesUses(data),
     ...pdfCapitalization(data),
     ...pdfCollateral(data),
-    ...pdfDiligence(questions),   // breaks before (it's an annex)
+    ...pdfDiligence(questions),
     ...pdfMethodology(),
   ];
 
@@ -722,17 +757,10 @@ export async function downloadPDF(data: MemoData, questions: MemoQuestion[]): Pr
   const pdfMake = (pdfMakeModule as any).default ?? pdfMakeModule;
   const vfs     = (pdfFontsModule as any).default ?? pdfFontsModule;
 
-  // Register Roboto VFS (Netlify build may provide raw object; handle both shapes)
   pdfMake.addVirtualFileSystem(typeof vfs === 'object' && 'default' in vfs ? (vfs as any).default : vfs);
-
-  // Embed Fraunces Bold into the virtual filesystem
-  const frauncesB64 = arrayBufferToBase64(fontBuffer);
-  pdfMake.addVirtualFileSystem({ 'Fraunces-Bold.woff': frauncesB64 });
-
-  // In pdfmake 0.3 fonts MUST be registered on the instance, not in docDefinition
-  pdfMake.addFonts({
-    Fraunces: { normal: 'Fraunces-Bold.woff', bold: 'Fraunces-Bold.woff' },
-  });
+  pdfMake.addVirtualFileSystem({ 'Fraunces-Bold.woff': arrayBufferToBase64(fontBuffer) });
+  // In pdfmake 0.3, fonts must be registered on the instance, not in docDefinition.
+  pdfMake.addFonts({ Fraunces: { normal: 'Fraunces-Bold.woff', bold: 'Fraunces-Bold.woff' } });
 
   const docDef = buildPdfDef(data, questions);
   await pdfMake.createPdf(docDef).download(memoFilename(data.deal.title, 'pdf'));
@@ -745,7 +773,7 @@ export async function downloadPDF(data: MemoData, questions: MemoQuestion[]): Pr
 export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): Promise<void> {
   const {
     Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-    WidthType, AlignmentType, HeadingLevel, Header, Footer, PageBreak,
+    WidthType, AlignmentType, Header, Footer, PageBreak,
     ShadingType, BorderStyle, PageNumber,
   } = await import('docx');
 
@@ -753,9 +781,9 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
   const MARGIN  = 1080;
   const TW_CONT = TWIP_PG - MARGIN * 2;
 
-  const noBorder  = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
-  const rowBorder = { style: BorderStyle.SINGLE, size: 4, color: 'D8D2C8' };
-  const thickBorder = { style: BorderStyle.SINGLE, size: 8, color: 'D8D2C8' };
+  const noBorder    = { style: BorderStyle.NONE,   size: 0, color: 'FFFFFF' };
+  const rowBorder   = { style: BorderStyle.SINGLE,  size: 4, color: 'D8D2C8' };
+  const thickBorder = { style: BorderStyle.SINGLE,  size: 8, color: 'D8D2C8' };
 
   function shade(fill: string): any { return { fill: fill.replace('#', ''), type: ShadingType.CLEAR, color: fill.replace('#', '') }; }
 
@@ -764,15 +792,18 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
       children: [new TextRun({ text, size: opts.size ?? 20, bold: opts.bold, color: (opts.color ?? '222222').replace('#', ''), italics: opts.italics, font: opts.font })],
       alignment: opts.align ?? AlignmentType.LEFT,
       spacing: { after: opts.spaceAfter ?? 120, before: opts.spaceBefore ?? 0 },
-      ...( opts.paragraphOpts ?? {} ),
+      keepNext: opts.keepNext ?? false,
+      keepLines: opts.keepLines ?? false,
     });
   }
 
+  // keepNext: true ensures the heading paragraph is never the last element on a page.
   function wHead1(text: string, pb = false): any {
     return new Paragraph({
       children: [new TextRun({ text, bold: true, size: 26, color: 'FFFFFF', font: 'Fraunces' })],
       shading: shade(NAVY),
       spacing: { before: 200, after: 120 },
+      keepNext: true,
       ...(pb ? { pageBreakBefore: true } : {}),
     });
   }
@@ -781,23 +812,27 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
     return new Paragraph({
       children: [new TextRun({ text, bold: true, size: 22, color: NAVY.replace('#', ''), font: 'Calibri' })],
       spacing: { before: 160, after: 80 },
+      keepNext: true,
     });
   }
 
-  function wBullet(text: string, color = '222222'): any {
+  function wBullet(text: string, color = '222222', keepNext = false): any {
     return new Paragraph({
       children: [new TextRun({ text: `• ${text}`, size: 20, color: color.replace('#', '') })],
       spacing: { after: 60 },
       indent: { left: 360 },
+      keepNext,
     });
   }
 
   function wPageBreak(): any { return new Paragraph({ children: [new PageBreak()] }); }
   function wSpacer(after = 120): any { return new Paragraph({ spacing: { after } }); }
 
+  // cantSplit: true prevents a table row from being split across a page boundary.
   function wHdrRow(cells: string[], widths: number[]): any {
     return new TableRow({
       tableHeader: true,
+      cantSplit: true,
       children: cells.map((c, i) => new TableCell({
         width: { size: widths[i], type: WidthType.DXA },
         shading: shade(NAVY),
@@ -810,6 +845,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
   function wDataRow(cells: string[], widths: number[], shaded = false, bold = false): any {
     const fill = shaded ? 'F8F6F3' : 'FFFFFF';
     return new TableRow({
+      cantSplit: true,
       children: cells.map((c, i) => new TableCell({
         width: { size: widths[i], type: WidthType.DXA },
         shading: shade(fill),
@@ -821,6 +857,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
 
   function wTotalRow(cells: string[], widths: number[], fill = 'E8E2D9'): any {
     return new TableRow({
+      cantSplit: true,
       children: cells.map((c, i) => new TableCell({
         width: { size: widths[i], type: WidthType.DXA },
         shading: shade(fill),
@@ -864,6 +901,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
 
   const scored    = data.metrics.filter(m => m.counted);
   const notScored = data.metrics.filter(m => !m.counted);
+
   if (scored.length > 0) {
     children.push(wHead2('Scored Metrics'));
     const mCols = [2800, 620, 620, 620, 1000, 1000, 1000];
@@ -875,12 +913,16 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
       ],
     }), wSpacer(200));
   }
+
   if (notScored.length > 0) {
     children.push(wHead2('Not Scored'));
     const nsCols = [3800, 800, 3060];
     children.push(new Table({
       width: { size: TW_CONT, type: WidthType.DXA },
-      rows: [wHdrRow(['Metric', 'Tier', 'Reason'], nsCols), ...notScored.map((r, i) => wDataRow([r.metric_name, r.tier, statusLabel(r.status)], nsCols, i % 2 === 1))],
+      rows: [
+        wHdrRow(['Metric', 'Tier', 'Reason'], nsCols),
+        ...notScored.map((r, i) => wDataRow([r.metric_name, r.tier, statusLabel(r.status)], nsCols, i % 2 === 1)),
+      ],
     }), wSpacer(200));
   }
 
@@ -896,8 +938,16 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
   const risks     = data.score?.risks ?? [];
   if (strengths.length || risks.length) {
     children.push(wHead1('Strengths & Risks'));
-    if (strengths.length) { children.push(wHead2('Key Strengths')); strengths.forEach(s => children.push(wBullet(s, STRONG.replace('#', '')))); }
-    if (risks.length)     { children.push(wHead2('Key Risks'));     risks.forEach(r  => children.push(wBullet(r,  RED.replace('#', '')))); }
+    if (strengths.length) {
+      children.push(wHead2('Key Strengths'));
+      // keepNext on all bullets except the last keeps the list from splitting mid-way
+      strengths.forEach((s, i) => children.push(wBullet(s, STRONG.replace('#', ''), i < strengths.length - 1)));
+    }
+    if (risks.length) {
+      // wHead2 has keepNext: true, binding it to the first bullet
+      children.push(wHead2('Key Risks'));
+      risks.forEach((r, i) => children.push(wBullet(r, RED.replace('#', ''), i < risks.length - 1)));
+    }
     children.push(wSpacer(160));
   }
 
@@ -916,7 +966,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
 
     const bmCols = [2200, 1700, 1700];
     const bmHdrRow = new TableRow({
-      tableHeader: true,
+      tableHeader: true, cantSplit: true,
       children: [
         new TableCell({ width: { size: bmCols[0], type: WidthType.DXA }, shading: shade('#F0EDE8'), borders: { top: noBorder, bottom: thickBorder, left: noBorder, right: noBorder },
           children: [new Paragraph({ children: [new TextRun({ text: 'Segment', bold: true, size: 18, color: NAVY.replace('#', '') })], spacing: { after: 0 } })] }),
@@ -929,7 +979,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
 
     function bmDataRowW(segLabel: string, baseDR: number, baseN: number, stressDR: number, stressN: number, shaded = false): any {
       const fill = shaded ? 'F8F6F3' : 'FFFFFF';
-      return new TableRow({ children: [
+      return new TableRow({ cantSplit: true, children: [
         new TableCell({ width: { size: bmCols[0], type: WidthType.DXA }, shading: shade(fill), borders: { top: rowBorder, bottom: rowBorder, left: noBorder, right: noBorder },
           children: [new Paragraph({ children: [new TextRun({ text: segLabel, bold: !shaded, size: 18, font: 'Calibri' })], spacing: { after: 0 } })] }),
         new TableCell({ width: { size: bmCols[1], type: WidthType.DXA }, shading: shade(fill), borders: { top: rowBorder, bottom: rowBorder, left: noBorder, right: noBorder },
@@ -951,13 +1001,13 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
         const msg = ratio >= 1.3
           ? 'Loans of this size and term defaulted notably more often than the sector as a whole. In SBA lending, shorter terms are typically associated with working-capital facilities and younger or thinner-margin businesses.'
           : 'Loans of this size and term defaulted less often than the sector as a whole. Longer amortisation and larger facilities generally indicate established borrowers with harder collateral, which historically supported better repayment performance.';
-        children.push(wPara(msg, { italics: true, spaceAfter: 120 }));
+        children.push(wPara(msg, { italics: true, spaceAfter: 120, keepNext: true }));
       }
     }
 
     children.push(
-      wPara('Loss Given Default', { bold: true, spaceAfter: 60 }),
-      wPara(`When these loans did fail, lenders lost about ~${baseLGD} cents on every dollar owed in a normal cycle — and about ~${stressLGD} cents in the 2008 downturn, because collateral was worth less at the same time defaults rose.`, { spaceAfter: 120 }),
+      wPara('Loss Given Default', { bold: true, spaceAfter: 60, keepNext: true }),
+      wPara(`When these loans did fail, lenders lost about ~${baseLGD} cents on every dollar owed in a normal cycle — and about ~${stressLGD} cents in the 2008 downturn, because collateral was worth less at the same time defaults rose.`, { spaceAfter: 120, keepNext: true }),
       wPara(`This benchmark comes from ${(totalN ?? 0).toLocaleString('en-US')} comparable loans within a dataset of 698,000 U.S. SBA 7(a) loans that have fully run their course. The normal-cycle figures cover loans approved between 2010 and 2016; the downturn figures cover loans approved between 2004 and 2008. This is U.S. small-business lending data shown for context — it is not a prediction about this borrower.`, { italics: true, color: '888888', spaceAfter: 200 }),
     );
   }
@@ -1008,14 +1058,13 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
       const pctCap = totalCap > 0 ? `${(amt / totalCap * 100).toFixed(1)}%` : '—';
       let xE = '—';
       if (hasEbitda && DEBT_CATS.includes(r.category)) { cumDebt2 += amt; xE = `${(cumDebt2 / ebitdaVal).toFixed(2)}x`; }
-      const cells = [r.label, r.category, fmtMoney(amt), pctCap, ...(hasEbitda ? [xE] : [])];
-      capRows.push(wDataRow(cells, capColsW, i % 2 === 1));
+      capRows.push(wDataRow([r.label, r.category, fmtMoney(amt), pctCap, ...(hasEbitda ? [xE] : [])], capColsW, i % 2 === 1));
     });
-    const debtRow  = ['Total Debt', '', fmtMoney(totalDebt),  totalCap > 0 ? `${(totalDebt/totalCap*100).toFixed(1)}%` : '—', ...(hasEbitda ? [totalDebt > 0 ? `${(totalDebt/ebitdaVal).toFixed(2)}x` : '—'] : [])];
-    const eqRow    = ['Total Equity', '', fmtMoney(totalEquity), totalCap > 0 ? `${(totalEquity/totalCap*100).toFixed(1)}%` : '—', ...(hasEbitda ? ['—'] : [])];
-    const totalRow = ['Total Capitalization', '', fmtMoney(totalCap), '100%', ...(hasEbitda ? [totalDebt > 0 ? `${(totalDebt/ebitdaVal).toFixed(2)}x` : '—'] : [])];
+    const debtRow  = ['Total Debt',  '', fmtMoney(totalDebt),  totalCap > 0 ? `${(totalDebt /totalCap*100).toFixed(1)}%` : '—', ...(hasEbitda ? [totalDebt  > 0 ? `${(totalDebt /ebitdaVal).toFixed(2)}x` : '—'] : [])];
+    const eqRow    = ['Total Equity','', fmtMoney(totalEquity),totalCap > 0 ? `${(totalEquity/totalCap*100).toFixed(1)}%` : '—', ...(hasEbitda ? ['—'] : [])];
+    const totalRow = ['Total Capitalization','', fmtMoney(totalCap),'100%',           ...(hasEbitda ? [totalDebt  > 0 ? `${(totalDebt /ebitdaVal).toFixed(2)}x` : '—'] : [])];
     capRows.push(wTotalRow(debtRow,  capColsW, 'FAFAF9'));
-    capRows.push(wTotalRow(eqRow,   capColsW, 'FAFAF9'));
+    capRows.push(wTotalRow(eqRow,    capColsW, 'FAFAF9'));
     capRows.push(wTotalRow(totalRow, capColsW, 'E8E2D9'));
 
     const creditMetrics: Array<{ label: string; value: string }> = [
@@ -1030,11 +1079,11 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
       { label: 'Debt / Total Capitalization (pro-forma)', value: totalCap > 0 ? `${(totalDebt/totalCap*100).toFixed(1)}%` : '—' },
     ];
     const mCols2 = [6200, 2460];
-    const mRows = creditMetrics.map((m, i) => wDataRow([m.label, m.value], mCols2, i % 2 === 1));
+    const mRows  = creditMetrics.map((m, i) => wDataRow([m.label, m.value], mCols2, i % 2 === 1));
 
     children.push(
       wHead1('Capitalization'),
-      wPara('Pro-forma transaction structure — reflects the proposed deal, not the borrower\'s historical balance sheet.', { italics: true, color: '888888', spaceAfter: 120 }),
+      wPara("Pro-forma transaction structure — reflects the proposed deal, not the borrower's historical balance sheet.", { italics: true, color: '888888', spaceAfter: 120, keepNext: true }),
       new Table({ width: { size: TW_CONT, type: WidthType.DXA }, rows: capRows }),
       wSpacer(160),
       wHead2('Credit Metrics'),
@@ -1061,10 +1110,14 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
     children.push(wPageBreak(), wHead1('Annex A — Diligence Questions'));
     questions.forEach((q, i) => {
       const tag = [q.priority?.toUpperCase(), q.source].filter(Boolean).join(' · ');
-      children.push(wPara(`Q${i + 1}. ${q.question_text}${tag ? `  [${tag}]` : ''}`, { bold: true, spaceAfter: 60 }));
-      if (q.related_metric) children.push(wPara(`Related: ${q.related_metric}`, { italics: true, color: '888888', spaceAfter: 60 }));
+      // keepNext chains the question lines together so they don't split across pages.
+      children.push(wPara(`Q${i + 1}. ${q.question_text}${tag ? `  [${tag}]` : ''}`, { bold: true, spaceAfter: 60, keepNext: true }));
+      if (q.related_metric) children.push(wPara(`Related: ${q.related_metric}`, { italics: true, color: '888888', spaceAfter: 60, keepNext: true }));
       if (q.answer?.trim()) {
-        children.push(wPara('Response:', { bold: true, spaceAfter: 40 }), wPara(q.answer.trim(), { spaceAfter: 60 }));
+        children.push(
+          wPara('Response:', { bold: true, spaceAfter: 40, keepNext: true }),
+          wPara(q.answer.trim(), { spaceAfter: 60, keepNext: !!q.answer_assessment?.trim() }),
+        );
         if (q.answer_assessment?.trim()) children.push(wPara(`Assessment: ${q.answer_assessment.trim()}`, { italics: true, color: '888888', spaceAfter: 60 }));
       } else {
         children.push(wPara(`Status: ${q.status ?? 'pending'}`, { italics: true, color: '888888', spaceAfter: 60 }));
