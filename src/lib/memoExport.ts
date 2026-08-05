@@ -693,7 +693,7 @@ function pdfDiligence(questions: MemoQuestion[]): any[] {
 
 function pdfMethodology(): any[] {
   return [
-    pdfSection('METHODOLOGY NOTE'),
+    pdfSection('METHODOLOGY NOTE', true),
     pdfSubHead('Scoring Framework'),
     { text: 'The credit score is computed by a deterministic, rule-based engine applied to confirmed financial statement data. Each metric is evaluated against a three-band threshold (Strong / Adequate / Weak) and weighted by tier. No large language model participates in computing the numeric score.', fontSize: 9, lineHeight: 1.5, margin: [0, 0, 0, 8] },
     pdfSubHead('Metric Tiers'),
