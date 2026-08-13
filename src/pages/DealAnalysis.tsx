@@ -165,7 +165,7 @@ export default function DealAnalysis() {
     stress: { sector: any; segment: any } | null;
     totalN: number;
     noMapping: boolean;
-    csbfp?: { defaultRate: number; lossRate: number; totalLoans: number; reliable: boolean } | null;
+    csbfp?: { defaultRate: number; lossRate: number; totalLoans: number; totalLoanValue: number; totalClaimValue: number; reliable: boolean } | null;
   } | null>(null);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
@@ -318,17 +318,19 @@ export default function DealAnalysis() {
         const totalStress = aggregateBenchmarkRows(stressSectorRows)?.n_loans ?? 0;
 
         // ── CSBFP aggregation (weighted sums, not averages of rates) ──
-        let csbfp: { defaultRate: number; lossRate: number; totalLoans: number; reliable: boolean } | null = null;
+        let csbfp: { defaultRate: number; lossRate: number; totalLoans: number; totalLoanValue: number; totalClaimValue: number; reliable: boolean } | null = null;
         if (csbfpRows && csbfpRows.length > 0) {
           const totalLoans      = csbfpRows.reduce((s: number, r: any) => s + (r.n_loans ?? 0), 0);
           const totalClaims     = csbfpRows.reduce((s: number, r: any) => s + (r.n_claims ?? 0), 0);
           const totalLoanValue  = csbfpRows.reduce((s: number, r: any) => s + (r.loan_value ?? 0), 0);
           const totalClaimValue = csbfpRows.reduce((s: number, r: any) => s + (r.claim_value ?? 0), 0);
           csbfp = {
-            defaultRate: totalLoans > 0 ? totalClaims / totalLoans : 0,
-            lossRate:    totalLoanValue > 0 ? totalClaimValue / totalLoanValue : 0,
+            defaultRate:     totalLoans > 0     ? totalClaims     / totalLoans     : 0,
+            lossRate:        totalLoanValue > 0 ? totalClaimValue / totalLoanValue : 0,
             totalLoans,
-            reliable:    csbfpRows.every((r: any) => r.reliable),
+            totalLoanValue,
+            totalClaimValue,
+            reliable: csbfpRows.every((r: any) => r.reliable),
           };
         }
 
@@ -1066,39 +1068,61 @@ export default function DealAnalysis() {
               <h2 style={hd}>Historical Benchmark</h2>
 
               {/* ── Canada sub-section ── */}
-              {hasCsbfp && (
-                <>
-                  <div style={subHd}>Canada — Canada Small Business Financing Program</div>
-                  <div style={{ display: "flex", gap: isMobile ? 12 : 24, marginBottom: 10 }}>
-                    {[
-                      { label: "Loans that defaulted",     value: csbfp!.defaultRate },
-                      { label: "Share of loaned value lost", value: csbfp!.lossRate  },
-                    ].map(({ label, value }) => (
-                      <div key={label} style={{
-                        flex: 1, background: "#F8F6F3", borderRadius: 10,
-                        padding: isMobile ? "14px 12px" : "16px 20px",
-                        textAlign: "center" as const,
-                      }}>
-                        <div style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: isMobile ? 22 : 26, color: NAVY, lineHeight: 1 }}>
-                          {fmtPct(value)}
-                        </div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: NAVY, marginTop: 6 }}>{label}</div>
-                        <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>
-                          {fmtN(csbfp!.totalLoans)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {!csbfp!.reliable && (
-                    <div style={{ fontSize: 11, color: MUTED, fontStyle: "italic", marginBottom: 6 }}>
-                      Based on a small sample — treat as indicative only.
+              {hasCsbfp && (() => {
+                // loan_value is stored in $000s — convert to a readable dollar string
+                const fmtDollars = (v: number) => {
+                  const d = v * 1000;
+                  if (d >= 1e9) return `$${(d / 1e9).toFixed(2)}B`;
+                  if (d >= 1e6) return `$${(d / 1e6).toFixed(1)}M`;
+                  return `$${Math.round(d).toLocaleString()}`;
+                };
+                const rows: { label: string; rate: number; denom: string }[] = [
+                  { label: "Loans that defaulted",      rate: csbfp!.defaultRate, denom: fmtN(csbfp!.totalLoans) },
+                  { label: "Share of loaned value lost", rate: csbfp!.lossRate,   denom: `of ${fmtDollars(csbfp!.totalLoanValue)} lent` },
+                ];
+                return (
+                  <>
+                    <div style={subHd}>Canada — Canada Small Business Financing Program</div>
+                    {/* Industry label above the table */}
+                    <div style={{ fontSize: 13, fontWeight: 600, color: NAVY, marginBottom: 10 }}>
+                      {industryLabel} sector
                     </div>
-                  )}
-                  <div style={{ fontSize: 11, color: MUTED }}>
-                    Cumulative across the program's full history, 1999–2026.
-                  </div>
-                </>
-              )}
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ ...thStyle, textAlign: "left" as const }}>Metric</th>
+                            <th style={{ ...thStyle, minWidth: 160 }}>
+                              <span style={{ color: NAVY, fontWeight: 700 }}>Cumulative, 1999–2026</span>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map(({ label, rate, denom }, i) => (
+                            <tr key={label}>
+                              <td style={{ ...tdLabel, ...(i === rows.length - 1 ? { borderBottom: "none" } : {}) }}>
+                                {label}
+                              </td>
+                              <td style={{ ...tdCell, ...(i === rows.length - 1 ? { borderBottom: "none" } : {}) }}>
+                                <div style={{ fontWeight: 700, fontSize: 15, color: NAVY }}>{fmtPct(rate)}</div>
+                                <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{denom}</div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {!csbfp!.reliable && (
+                      <div style={{ fontSize: 11, color: MUTED, fontStyle: "italic", marginTop: 8 }}>
+                        Based on a small sample — treat as indicative only.
+                      </div>
+                    )}
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: !csbfp!.reliable ? 4 : 8 }}>
+                      Cumulative across the program's full history, 1999–2026.
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* ── Separator note ── */}
               {hasCsbfp && hasSba && (

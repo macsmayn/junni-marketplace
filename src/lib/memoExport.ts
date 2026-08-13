@@ -69,7 +69,7 @@ export interface MemoData {
     stress?: { sector: any; segment: any } | null;
     totalN?: number;
     noMapping?: boolean;
-    csbfp?: { defaultRate: number; lossRate: number; totalLoans: number; reliable: boolean } | null;
+    csbfp?: { defaultRate: number; lossRate: number; totalLoans: number; totalLoanValue: number; totalClaimValue: number; reliable: boolean } | null;
   } | null;
 }
 
@@ -383,34 +383,47 @@ function pdfBenchmark(data: MemoData): any[] {
 
   // ── Canada sub-section ──────────────────────────────────────────────────
   if (hasCsbfp) {
+    const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
     const drPct  = (csbfp!.defaultRate * 100).toFixed(1) + '%';
     const lrPct  = (csbfp!.lossRate   * 100).toFixed(1) + '%';
-    const nLabel = `of ${csbfp!.totalLoans.toLocaleString('en-US')} loans`;
+    const fmtDollarsK = (v: number) => {
+      const d = v * 1000;
+      if (d >= 1e9) return `$${(d / 1e9).toFixed(2)}B`;
+      if (d >= 1e6) return `$${(d / 1e6).toFixed(1)}M`;
+      return `$${Math.round(d).toLocaleString('en-US')}`;
+    };
+    const drDenom = `of ${csbfp!.totalLoans.toLocaleString('en-US')} loans`;
+    const lrDenom = `of ${fmtDollarsK(csbfp!.totalLoanValue)} lent`;
 
     blocks.push(pdfSubHead('Canada — Canada Small Business Financing Program'));
-    blocks.push({
-      table: {
-        widths: ['*', '*'],
-        body: [[
-          {
-            stack: [
-              { text: drPct, bold: true, fontSize: 22, color: NAVY, alignment: 'center' },
-              { text: 'Loans that defaulted', fontSize: 8.5, color: MUTED, alignment: 'center', margin: [0, 4, 0, 0] },
-              { text: nLabel, fontSize: 7.5, color: MUTED, alignment: 'center' },
-            ],
-            fillColor: '#F8F6F3', margin: [8, 10, 8, 10],
-          },
-          {
-            stack: [
-              { text: lrPct, bold: true, fontSize: 22, color: NAVY, alignment: 'center' },
-              { text: 'Share of loaned value lost', fontSize: 8.5, color: MUTED, alignment: 'center', margin: [0, 4, 0, 0] },
-              { text: nLabel, fontSize: 7.5, color: MUTED, alignment: 'center' },
-            ],
-            fillColor: '#F8F6F3', margin: [8, 10, 8, 10],
-          },
-        ]],
+    // Industry label above table
+    blocks.push({ text: `${industryLabel} sector`, bold: true, fontSize: 9, color: NAVY, margin: [0, 0, 0, 6] });
+
+    function csbfpDataCell(rate: string, denom: string, bg?: string): any {
+      return {
+        stack: [
+          { text: rate, bold: true, fontSize: 14, color: NAVY },
+          { text: denom, fontSize: 7.5, color: MUTED, margin: [0, 2, 0, 0] },
+        ],
+        alignment: 'center', fillColor: bg ?? null, margin: [4, 6, 4, 6],
+      };
+    }
+
+    const csbfpHdr = [
+      { text: 'Metric', bold: true, fontSize: 8.5, color: NAVY, fillColor: '#F0EDE8', margin: [4, 5, 4, 5] },
+      {
+        stack: [{ text: 'Cumulative, 1999–2026', bold: true, fontSize: 8.5, color: NAVY }],
+        fillColor: '#F0EDE8', margin: [4, 5, 4, 5], alignment: 'center',
       },
-      layout: 'noBorders',
+    ];
+    const csbfpRows = [
+      csbfpHdr,
+      [cell('Loans that defaulted',      { bold: true }),  csbfpDataCell(drPct, drDenom)],
+      [cell('Share of loaned value lost', {}),             csbfpDataCell(lrPct, lrDenom, '#F8F6F3')],
+    ];
+    blocks.push({
+      table: { widths: ['*', 150], headerRows: 1, body: csbfpRows },
+      layout: { ...thinLayout, hLineWidth: (i: number, node: any) => (i === 0 || i === node.table.body.length) ? 0 : 0.5 },
       margin: [0, 0, 0, 6],
     });
     if (!csbfp!.reliable) {
@@ -1144,27 +1157,51 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
 
       // ── Canada sub-section ──
       if (hasCsbfp) {
+        const cIndLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
         const drPct  = (csbfp!.defaultRate * 100).toFixed(1) + '%';
         const lrPct  = (csbfp!.lossRate   * 100).toFixed(1) + '%';
-        const nLabel = `of ${csbfp!.totalLoans.toLocaleString('en-US')} loans`;
-        const figCols = [TW_CONT / 2, TW_CONT / 2];
+        const fmtDollarsKW = (v: number) => {
+          const d = v * 1000;
+          if (d >= 1e9) return `$${(d / 1e9).toFixed(2)}B`;
+          if (d >= 1e6) return `$${(d / 1e6).toFixed(1)}M`;
+          return `$${Math.round(d).toLocaleString('en-US')}`;
+        };
+        const drDenom = `of ${csbfp!.totalLoans.toLocaleString('en-US')} loans`;
+        const lrDenom = `of ${fmtDollarsKW(csbfp!.totalLoanValue)} lent`;
+
+        const cCols = [2200, TW_CONT - 2200];
 
         children.push(wHead2('Canada — Canada Small Business Financing Program'));
+        // Industry label above table
+        children.push(wPara(`${cIndLabel} sector`, { bold: true, color: NAVY.replace('#', ''), spaceAfter: 80, keepNext: true }));
+
+        const cHdrRow = new TableRow({
+          tableHeader: true, cantSplit: true,
+          children: [
+            new TableCell({ width: { size: cCols[0], type: WidthType.DXA }, shading: shade('#F0EDE8'), borders: { top: noBorder, bottom: thickBorder, left: noBorder, right: noBorder },
+              children: [new Paragraph({ children: [new TextRun({ text: 'Metric', bold: true, size: 18, color: NAVY.replace('#', '') })], spacing: { after: 0 } })] }),
+            new TableCell({ width: { size: cCols[1], type: WidthType.DXA }, shading: shade('#F0EDE8'), borders: { top: noBorder, bottom: thickBorder, left: noBorder, right: noBorder },
+              children: [new Paragraph({ children: [new TextRun({ text: 'Cumulative, 1999–2026', bold: true, size: 18, color: NAVY.replace('#', '') })], alignment: AlignmentType.CENTER, spacing: { after: 0 } })] }),
+          ],
+        });
+
+        function cDataRow(metric: string, ratePct: string, denom: string, shaded = false): any {
+          const fill = shaded ? 'F8F6F3' : 'FFFFFF';
+          return new TableRow({ cantSplit: true, children: [
+            new TableCell({ width: { size: cCols[0], type: WidthType.DXA }, shading: shade(fill), borders: { top: rowBorder, bottom: rowBorder, left: noBorder, right: noBorder },
+              children: [new Paragraph({ children: [new TextRun({ text: metric, size: 18, font: 'Calibri' })], spacing: { after: 0 } })] }),
+            new TableCell({ width: { size: cCols[1], type: WidthType.DXA }, shading: shade(fill), borders: { top: rowBorder, bottom: rowBorder, left: noBorder, right: noBorder },
+              children: [
+                new Paragraph({ children: [new TextRun({ text: ratePct, bold: true, size: 24, color: NAVY.replace('#', ''), font: 'Calibri' })], alignment: AlignmentType.CENTER, spacing: { after: 20 } }),
+                new Paragraph({ children: [new TextRun({ text: denom, size: 16, color: '888888', font: 'Calibri' })], alignment: AlignmentType.CENTER, spacing: { after: 0 } }),
+              ] }),
+          ]});
+        }
+
         children.push(new Table({ width: { size: TW_CONT, type: WidthType.DXA }, rows: [
-          new TableRow({ cantSplit: true, children: [
-            new TableCell({ width: { size: figCols[0], type: WidthType.DXA }, shading: shade('F8F6F3'), borders: { top: noBorder, bottom: noBorder, left: noBorder, right: rowBorder },
-              children: [
-                new Paragraph({ children: [new TextRun({ text: drPct, bold: true, size: 48, color: NAVY.replace('#', ''), font: 'Fraunces' })], alignment: AlignmentType.CENTER, spacing: { after: 40 } }),
-                new Paragraph({ children: [new TextRun({ text: 'Loans that defaulted', size: 17, color: '444444' })], alignment: AlignmentType.CENTER, spacing: { after: 20 } }),
-                new Paragraph({ children: [new TextRun({ text: nLabel, size: 16, color: '888888' })], alignment: AlignmentType.CENTER, spacing: { after: 120 } }),
-              ] }),
-            new TableCell({ width: { size: figCols[1], type: WidthType.DXA }, shading: shade('F8F6F3'), borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder },
-              children: [
-                new Paragraph({ children: [new TextRun({ text: lrPct, bold: true, size: 48, color: NAVY.replace('#', ''), font: 'Fraunces' })], alignment: AlignmentType.CENTER, spacing: { after: 40 } }),
-                new Paragraph({ children: [new TextRun({ text: 'Share of loaned value lost', size: 17, color: '444444' })], alignment: AlignmentType.CENTER, spacing: { after: 20 } }),
-                new Paragraph({ children: [new TextRun({ text: nLabel, size: 16, color: '888888' })], alignment: AlignmentType.CENTER, spacing: { after: 120 } }),
-              ] }),
-          ]}),
+          cHdrRow,
+          cDataRow('Loans that defaulted',       drPct, drDenom),
+          cDataRow('Share of loaned value lost',  lrPct, lrDenom, true),
         ]}), wSpacer(80));
 
         if (!csbfp!.reliable) {
