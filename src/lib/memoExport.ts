@@ -69,6 +69,7 @@ export interface MemoData {
     stress?: { sector: any; segment: any } | null;
     totalN?: number;
     noMapping?: boolean;
+    csbfp?: { defaultRate: number; lossRate: number; totalLoans: number; reliable: boolean } | null;
   } | null;
 }
 
@@ -373,117 +374,153 @@ function pdfStrengthsRisks(data: MemoData): any[] {
 
 function pdfBenchmark(data: MemoData): any[] {
   const bm = data.benchmarks;
-  if (!bm || bm.noMapping || !bm.base?.sector) return [];
-  const { base, stress, totalN } = bm;
-  const hasSector  = base?.sector && stress?.sector;
-  const hasSegment = base?.segment && stress?.segment;
-  if (!hasSector) return [];
+  const csbfp    = bm?.csbfp;
+  const hasCsbfp = !!csbfp;
+  const hasSba   = !bm?.noMapping && !!(bm?.base?.sector && bm?.stress?.sector);
+  if (!hasCsbfp && !hasSba) return [];
 
-  const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
-  const dealSB = sbaBand(data.deal.amount_requested ?? 0);
-  const dealTB = sbaTermBand(data.deal.term_months ?? 0);
+  const blocks: any[] = [pdfSection('HISTORICAL BENCHMARK')];
 
-  const baseLGD   = Math.round(base!.sector!.lgd  * 100);
-  const stressLGD = Math.round(stress!.sector!.lgd * 100);
+  // ── Canada sub-section ──────────────────────────────────────────────────
+  if (hasCsbfp) {
+    const drPct  = (csbfp!.defaultRate * 100).toFixed(1) + '%';
+    const lrPct  = (csbfp!.lossRate   * 100).toFixed(1) + '%';
+    const nLabel = `of ${csbfp!.totalLoans.toLocaleString('en-US')} loans`;
 
-  const tableHdr = [
-    { text: 'Segment', bold: true, fontSize: 8.5, color: NAVY, fillColor: '#F0EDE8', margin: [4, 5, 4, 5] },
-    {
-      stack: [
-        { text: 'Loans that defaulted', bold: true, fontSize: 8.5, color: NAVY },
-        { text: 'Normal cycle · FY2010–2016', fontSize: 7.5, color: MUTED },
-      ],
-      fillColor: '#F0EDE8', margin: [4, 5, 4, 5], alignment: 'center',
-    },
-    {
-      stack: [
-        { text: 'Loans that defaulted', bold: true, fontSize: 8.5, color: RED },
-        { text: '2008 downturn · FY2004–2008', fontSize: 7.5, color: MUTED },
-      ],
-      fillColor: '#F0EDE8', margin: [4, 5, 4, 5], alignment: 'center',
-    },
-  ];
-
-  function bmDataCell(dr: number | null | undefined, n: number | null | undefined, color: string, bg?: string): any {
-    return {
-      stack: [
-        { text: pct(dr), bold: true, fontSize: 14, color },
-        { text: `of ${(n ?? 0).toLocaleString('en-US')} loans`, fontSize: 7.5, color: MUTED, margin: [0, 2, 0, 0] },
-      ],
-      alignment: 'center', fillColor: bg ?? null, margin: [4, 6, 4, 6],
-    };
+    blocks.push(pdfSubHead('Canada — Canada Small Business Financing Program'));
+    blocks.push({
+      table: {
+        widths: ['*', '*'],
+        body: [[
+          {
+            stack: [
+              { text: drPct, bold: true, fontSize: 22, color: NAVY, alignment: 'center' },
+              { text: 'Loans that defaulted', fontSize: 8.5, color: MUTED, alignment: 'center', margin: [0, 4, 0, 0] },
+              { text: nLabel, fontSize: 7.5, color: MUTED, alignment: 'center' },
+            ],
+            fillColor: '#F8F6F3', margin: [8, 10, 8, 10],
+          },
+          {
+            stack: [
+              { text: lrPct, bold: true, fontSize: 22, color: NAVY, alignment: 'center' },
+              { text: 'Share of loaned value lost', fontSize: 8.5, color: MUTED, alignment: 'center', margin: [0, 4, 0, 0] },
+              { text: nLabel, fontSize: 7.5, color: MUTED, alignment: 'center' },
+            ],
+            fillColor: '#F8F6F3', margin: [8, 10, 8, 10],
+          },
+        ]],
+      },
+      layout: 'noBorders',
+      margin: [0, 0, 0, 6],
+    });
+    if (!csbfp!.reliable) {
+      blocks.push({ text: 'Based on a small sample — treat as indicative only.', fontSize: 8, color: MUTED, italics: true, margin: [0, 0, 0, 4] });
+    }
+    blocks.push({ text: "Cumulative across the program's full history, 1999–2026.", fontSize: 8, color: MUTED, margin: [0, 0, 0, 10] });
   }
 
-  const tableRows: any[][] = [tableHdr];
-  tableRows.push([
-    cell(`${industryLabel} sector`, { bold: true }),
-    bmDataCell(base!.sector!.default_rate, base!.sector!.n_loans, NAVY),
-    bmDataCell(stress!.sector!.default_rate, stress!.sector!.n_loans, RED),
-  ]);
-  if (hasSegment) {
-    tableRows.push([
-      { stack: [{ text: `${dealSB} · ${dealTB}`, bold: true, fontSize: 8.5 }, { text: 'Loans of similar size and term', fontSize: 7.5, color: MUTED }], fillColor: '#F8F6F3', margin: [4, 4, 4, 4] },
-      bmDataCell(base!.segment!.default_rate, base!.segment!.n_loans, NAVY, '#F8F6F3'),
-      bmDataCell(stress!.segment!.default_rate, stress!.segment!.n_loans, RED, '#F8F6F3'),
-    ]);
+  // ── Separator note ──────────────────────────────────────────────────────
+  if (hasCsbfp && hasSba) {
+    blocks.push({
+      table: {
+        widths: ['*'],
+        body: [[{
+          text: 'These are different lending programs and the figures are not directly comparable. The Canadian program caps loans at $1.15 million and is heavily weighted toward accommodation and food services; the U.S. program lends up to $5 million across a broader mix. Canadian figures are cumulative long-run rates; U.S. figures are cohort default rates with a downturn scenario.',
+          fontSize: 7.5, color: MUTED, lineHeight: 1.5,
+          border: [false, true, false, true],
+          margin: [0, 6, 0, 6],
+        }]],
+      },
+      layout: { hLineColor: () => '#E8E2D9', vLineWidth: () => 0 },
+      margin: [0, 4, 0, 12],
+    });
   }
 
-  const bmTableNode = {
-    table: { widths: ['*', 140, 140], headerRows: 1, body: tableRows },
-    layout: { ...thinLayout, hLineWidth: (i: number, node: any) => (i === 0 || i === node.table.body.length) ? 0 : 0.5 },
-    margin: [0, 0, 0, 12],
-  };
+  // ── US sub-section ──────────────────────────────────────────────────────
+  if (hasSba) {
+    const { base, stress, totalN } = bm!;
+    const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
+    const dealSB    = sbaBand(data.deal.amount_requested ?? 0);
+    const dealTB    = sbaTermBand(data.deal.term_months ?? 0);
+    const baseLGD   = Math.round(base!.sector!.lgd  * 100);
+    const stressLGD = Math.round(stress!.sector!.lgd * 100);
+    const hasSegment = !!(base?.segment && stress?.segment);
 
-  // Interpretive sentence (gold-bar callout)
-  let interpretiveNode: any = null;
-  if (hasSegment && base?.sector?.default_rate) {
-    const ratio = base!.segment!.default_rate / base!.sector!.default_rate;
-    if (ratio >= 1.3 || ratio <= 0.75) {
-      const msg = ratio >= 1.3
-        ? 'Loans of this size and term defaulted notably more often than the sector as a whole. In SBA lending, shorter terms are typically associated with working-capital facilities and younger or thinner-margin businesses, so this pattern likely reflects the type of borrower that seeks these terms rather than the loan structure itself.'
-        : 'Loans of this size and term defaulted less often than the sector as a whole. Longer amortisation and larger facilities generally indicate established borrowers with harder collateral, which historically supported better repayment performance.';
-      interpretiveNode = {
-        table: {
-          widths: [3, '*'],
-          body: [[
-            { text: '', fillColor: GOLD, border: [false, false, false, false] },
-            { text: msg, fontSize: 8.5, lineHeight: 1.5, margin: [8, 4, 4, 4], border: [false, false, false, false] },
-          ]],
-        },
-        layout: 'noBorders',
-        margin: [0, 0, 0, 12],
+    blocks.push(pdfSubHead('United States — SBA 7(a)'));
+
+    function bmDataCell(dr: number | null | undefined, n: number | null | undefined, color: string, bg?: string): any {
+      return {
+        stack: [
+          { text: pct(dr), bold: true, fontSize: 14, color },
+          { text: `of ${(n ?? 0).toLocaleString('en-US')} loans`, fontSize: 7.5, color: MUTED, margin: [0, 2, 0, 0] },
+        ],
+        alignment: 'center', fillColor: bg ?? null, margin: [4, 6, 4, 6],
       };
     }
+
+    const tableHdr = [
+      { text: 'Segment', bold: true, fontSize: 8.5, color: NAVY, fillColor: '#F0EDE8', margin: [4, 5, 4, 5] },
+      {
+        stack: [{ text: 'Loans that defaulted', bold: true, fontSize: 8.5, color: NAVY }, { text: 'Normal cycle · FY2010–2016', fontSize: 7.5, color: MUTED }],
+        fillColor: '#F0EDE8', margin: [4, 5, 4, 5], alignment: 'center',
+      },
+      {
+        stack: [{ text: 'Loans that defaulted', bold: true, fontSize: 8.5, color: RED }, { text: '2008 downturn · FY2004–2008', fontSize: 7.5, color: MUTED }],
+        fillColor: '#F0EDE8', margin: [4, 5, 4, 5], alignment: 'center',
+      },
+    ];
+    const tableRows: any[][] = [tableHdr];
+    tableRows.push([
+      cell(`${industryLabel} sector`, { bold: true }),
+      bmDataCell(base!.sector!.default_rate, base!.sector!.n_loans, NAVY),
+      bmDataCell(stress!.sector!.default_rate, stress!.sector!.n_loans, RED),
+    ]);
+    if (hasSegment) {
+      tableRows.push([
+        { stack: [{ text: `${dealSB} · ${dealTB}`, bold: true, fontSize: 8.5 }, { text: 'Loans of similar size and term', fontSize: 7.5, color: MUTED }], fillColor: '#F8F6F3', margin: [4, 4, 4, 4] },
+        bmDataCell(base!.segment!.default_rate, base!.segment!.n_loans, NAVY, '#F8F6F3'),
+        bmDataCell(stress!.segment!.default_rate, stress!.segment!.n_loans, RED, '#F8F6F3'),
+      ]);
+    }
+    blocks.push({
+      table: { widths: ['*', 140, 140], headerRows: 1, body: tableRows },
+      layout: { ...thinLayout, hLineWidth: (i: number, node: any) => (i === 0 || i === node.table.body.length) ? 0 : 0.5 },
+      margin: [0, 0, 0, 12],
+    });
+
+    if (hasSegment && base?.sector?.default_rate) {
+      const ratio = base!.segment!.default_rate / base!.sector!.default_rate;
+      if (ratio >= 1.3 || ratio <= 0.75) {
+        const msg = ratio >= 1.3
+          ? 'Loans of this size and term defaulted notably more often than the sector as a whole. In SBA lending, shorter terms are typically associated with working-capital facilities and younger or thinner-margin businesses, so this pattern likely reflects the type of borrower that seeks these terms rather than the loan structure itself.'
+          : 'Loans of this size and term defaulted less often than the sector as a whole. Longer amortisation and larger facilities generally indicate established borrowers with harder collateral, which historically supported better repayment performance.';
+        blocks.push({
+          table: { widths: [3, '*'], body: [[{ text: '', fillColor: GOLD, border: [false, false, false, false] }, { text: msg, fontSize: 8.5, lineHeight: 1.5, margin: [8, 4, 4, 4], border: [false, false, false, false] }]] },
+          layout: 'noBorders', margin: [0, 0, 0, 12],
+        });
+      }
+    }
+
+    blocks.push(
+      { text: 'LOSS GIVEN DEFAULT', bold: true, fontSize: 8, color: MUTED, margin: [0, 4, 0, 4], characterSpacing: 1 },
+      {
+        text: [
+          'When these loans did fail, lenders lost about ',
+          { text: `~${baseLGD} cents on every dollar owed`, bold: true },
+          ' in a normal cycle — and about ',
+          { text: `~${stressLGD} cents`, bold: true, color: RED },
+          ' in the 2008 downturn, because collateral was worth less at the same time defaults rose.',
+        ],
+        fontSize: 9, lineHeight: 1.5, margin: [0, 0, 0, 10],
+      },
+      {
+        text: `This benchmark comes from ${(totalN ?? 0).toLocaleString('en-US')} comparable loans within a dataset of 698,000 U.S. Small Business Administration 7(a) loans that have fully run their course. The normal-cycle figures cover loans approved between 2010 and 2016; the downturn figures cover loans approved between 2004 and 2008, which absorbed the financial crisis. This is U.S. small-business lending data shown for context. It describes how similar loans performed in the past — it is not a prediction about this borrower.`,
+        fontSize: 8, color: MUTED, lineHeight: 1.5,
+      },
+    );
   }
 
-  const lgdLabel = { text: 'LOSS GIVEN DEFAULT', bold: true, fontSize: 8, color: MUTED, margin: [0, 4, 0, 4], characterSpacing: 1 };
-  const lgdPara  = {
-    text: [
-      'When these loans did fail, lenders lost about ',
-      { text: `~${baseLGD} cents on every dollar owed`, bold: true },
-      ' in a normal cycle — and about ',
-      { text: `~${stressLGD} cents`, bold: true, color: RED },
-      ' in the 2008 downturn, because collateral was worth less at the same time defaults rose.',
-    ],
-    fontSize: 9, lineHeight: 1.5, margin: [0, 0, 0, 10],
-  };
-  const caveat = {
-    text: `This benchmark comes from ${(totalN ?? 0).toLocaleString('en-US')} comparable loans within a dataset of 698,000 U.S. Small Business Administration 7(a) loans that have fully run their course. The normal-cycle figures cover loans approved between 2010 and 2016; the downturn figures cover loans approved between 2004 and 2008, which absorbed the financial crisis. This is U.S. small-business lending data shown for context. It describes how similar loans performed in the past — it is not a prediction about this borrower.`,
-    fontSize: 8, color: MUTED, lineHeight: 1.5,
-  };
-
-  // The whole benchmark section — heading + table + interpretive + LGD + caveat —
-  // stays together as one unbreakable block.
-  const blockItems = [
-    pdfSection('HISTORICAL BENCHMARK — SBA 7(a) LOAN DATA'),
-    bmTableNode,
-    ...(interpretiveNode ? [interpretiveNode] : []),
-    lgdLabel,
-    lgdPara,
-    caveat,
-  ];
-  return [{ stack: blockItems, unbreakable: true }];
+  return [{ stack: blocks, unbreakable: true }];
 }
 
 function pdfSourcesUses(data: MemoData): any[] {
@@ -840,7 +877,7 @@ function pdfMethodology(data: MemoData): any[] {
     pdfSubHead('Data Sources'),
     { text: 'Financial figures are sourced from lender-confirmed extracted statements. Metrics that cannot be computed (missing inputs, negative denominators) are excluded from scoring; the coverage percentage reflects the share that could be computed.', fontSize: 9, lineHeight: 1.5, margin: [0, 0, 0, 8] },
     pdfSubHead('Historical Benchmark'),
-    { text: 'Default rate and LGD data derive from SBA 7(a) loan-level records matched by NAICS sector and, where sample depth permits, by loan size and term band. Stress scenario reflects the 2008–2010 downturn cohort.', fontSize: 9, lineHeight: 1.5, margin: [0, 0, 0, 8] },
+    { text: 'Canadian figures derive from the Canada Small Business Financing Program (CSBFP) cumulative dataset (1999–2026), aggregated to the matched industry sector. U.S. figures derive from SBA 7(a) loan-level records matched by NAICS sector and, where sample depth permits, by loan size and term band; stress scenario reflects the 2008–2010 downturn cohort. The two programs operate under different caps and sector mixes and are not directly comparable.', fontSize: 9, lineHeight: 1.5, margin: [0, 0, 0, 8] },
     pdfSubHead('Disclaimer'),
     { text: 'This memorandum is a draft analytical output prepared for internal underwriting review. It does not constitute a credit approval, commitment to lend, or investment advice. All figures are subject to verification.', fontSize: 9, lineHeight: 1.5, color: MUTED, italics: true },
   ];
@@ -1096,64 +1133,114 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[]): P
   }
 
   // ── Historical Benchmark ──
-  const bm = data.benchmarks;
-  if (bm && !bm.noMapping && bm.base?.sector && bm.stress?.sector) {
-    const { base, stress, totalN } = bm;
-    const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
-    const baseLGD   = Math.round(base!.sector!.lgd  * 100);
-    const stressLGD = Math.round(stress!.sector!.lgd * 100);
-    const dealSB = sbaBand(data.deal.amount_requested ?? 0);
-    const dealTB = sbaTermBand(data.deal.term_months ?? 0);
-    const hasSegment = base?.segment && stress?.segment;
+  {
+    const bm       = data.benchmarks;
+    const csbfp    = bm?.csbfp;
+    const hasCsbfp = !!csbfp;
+    const hasSba   = !bm?.noMapping && !!(bm?.base?.sector && bm?.stress?.sector);
 
-    children.push(wHead1('Historical Benchmark — SBA 7(a) Loan Data'));
+    if (hasCsbfp || hasSba) {
+      children.push(wHead1('Historical Benchmark'));
 
-    const bmCols = [2200, 1700, 1700];
-    const bmHdrRow = new TableRow({
-      tableHeader: true, cantSplit: true,
-      children: [
-        new TableCell({ width: { size: bmCols[0], type: WidthType.DXA }, shading: shade('#F0EDE8'), borders: { top: noBorder, bottom: thickBorder, left: noBorder, right: noBorder },
-          children: [new Paragraph({ children: [new TextRun({ text: 'Segment', bold: true, size: 18, color: NAVY.replace('#', '') })], spacing: { after: 0 } })] }),
-        new TableCell({ width: { size: bmCols[1], type: WidthType.DXA }, shading: shade('#F0EDE8'), borders: { top: noBorder, bottom: thickBorder, left: noBorder, right: noBorder },
-          children: [new Paragraph({ children: [new TextRun({ text: 'Loans that defaulted — Normal cycle · FY2010–2016', size: 17, color: NAVY.replace('#', '') })], spacing: { after: 0 }, alignment: AlignmentType.CENTER })] }),
-        new TableCell({ width: { size: bmCols[2], type: WidthType.DXA }, shading: shade('#F0EDE8'), borders: { top: noBorder, bottom: thickBorder, left: noBorder, right: noBorder },
-          children: [new Paragraph({ children: [new TextRun({ text: 'Loans that defaulted — 2008 downturn · FY2004–2008', size: 17, color: RED.replace('#', '') })], spacing: { after: 0 }, alignment: AlignmentType.CENTER })] }),
-      ],
-    });
+      // ── Canada sub-section ──
+      if (hasCsbfp) {
+        const drPct  = (csbfp!.defaultRate * 100).toFixed(1) + '%';
+        const lrPct  = (csbfp!.lossRate   * 100).toFixed(1) + '%';
+        const nLabel = `of ${csbfp!.totalLoans.toLocaleString('en-US')} loans`;
+        const figCols = [TW_CONT / 2, TW_CONT / 2];
 
-    function bmDataRowW(segLabel: string, baseDR: number, baseN: number, stressDR: number, stressN: number, shaded = false): any {
-      const fill = shaded ? 'F8F6F3' : 'FFFFFF';
-      return new TableRow({ cantSplit: true, children: [
-        new TableCell({ width: { size: bmCols[0], type: WidthType.DXA }, shading: shade(fill), borders: { top: rowBorder, bottom: rowBorder, left: noBorder, right: noBorder },
-          children: [new Paragraph({ children: [new TextRun({ text: segLabel, bold: !shaded, size: 18, font: 'Calibri' })], spacing: { after: 0 } })] }),
-        new TableCell({ width: { size: bmCols[1], type: WidthType.DXA }, shading: shade(fill), borders: { top: rowBorder, bottom: rowBorder, left: noBorder, right: noBorder },
-          children: [new Paragraph({ children: [new TextRun({ text: `${pct(baseDR)} of ${baseN.toLocaleString('en-US')} loans`, size: 18, font: 'Calibri' })], alignment: AlignmentType.CENTER, spacing: { after: 0 } })] }),
-        new TableCell({ width: { size: bmCols[2], type: WidthType.DXA }, shading: shade(fill), borders: { top: rowBorder, bottom: rowBorder, left: noBorder, right: noBorder },
-          children: [new Paragraph({ children: [new TextRun({ text: `${pct(stressDR)} of ${stressN.toLocaleString('en-US')} loans`, size: 18, color: RED.replace('#', ''), font: 'Calibri' })], alignment: AlignmentType.CENTER, spacing: { after: 0 } })] }),
-      ]});
-    }
+        children.push(wHead2('Canada — Canada Small Business Financing Program'));
+        children.push(new Table({ width: { size: TW_CONT, type: WidthType.DXA }, rows: [
+          new TableRow({ cantSplit: true, children: [
+            new TableCell({ width: { size: figCols[0], type: WidthType.DXA }, shading: shade('F8F6F3'), borders: { top: noBorder, bottom: noBorder, left: noBorder, right: rowBorder },
+              children: [
+                new Paragraph({ children: [new TextRun({ text: drPct, bold: true, size: 48, color: NAVY.replace('#', ''), font: 'Fraunces' })], alignment: AlignmentType.CENTER, spacing: { after: 40 } }),
+                new Paragraph({ children: [new TextRun({ text: 'Loans that defaulted', size: 17, color: '444444' })], alignment: AlignmentType.CENTER, spacing: { after: 20 } }),
+                new Paragraph({ children: [new TextRun({ text: nLabel, size: 16, color: '888888' })], alignment: AlignmentType.CENTER, spacing: { after: 120 } }),
+              ] }),
+            new TableCell({ width: { size: figCols[1], type: WidthType.DXA }, shading: shade('F8F6F3'), borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder },
+              children: [
+                new Paragraph({ children: [new TextRun({ text: lrPct, bold: true, size: 48, color: NAVY.replace('#', ''), font: 'Fraunces' })], alignment: AlignmentType.CENTER, spacing: { after: 40 } }),
+                new Paragraph({ children: [new TextRun({ text: 'Share of loaned value lost', size: 17, color: '444444' })], alignment: AlignmentType.CENTER, spacing: { after: 20 } }),
+                new Paragraph({ children: [new TextRun({ text: nLabel, size: 16, color: '888888' })], alignment: AlignmentType.CENTER, spacing: { after: 120 } }),
+              ] }),
+          ]}),
+        ]}), wSpacer(80));
 
-    children.push(new Table({ width: { size: TW_CONT, type: WidthType.DXA }, rows: [
-      bmHdrRow,
-      bmDataRowW(`${industryLabel} sector`, base!.sector!.default_rate, base!.sector!.n_loans, stress!.sector!.default_rate, stress!.sector!.n_loans),
-      ...(hasSegment ? [bmDataRowW(`${dealSB} · ${dealTB}`, base!.segment!.default_rate, base!.segment!.n_loans, stress!.segment!.default_rate, stress!.segment!.n_loans, true)] : []),
-    ]}), wSpacer(160));
+        if (!csbfp!.reliable) {
+          children.push(wPara('Based on a small sample — treat as indicative only.', { italics: true, color: '888888', spaceAfter: 40 }));
+        }
+        children.push(wPara("Cumulative across the program's full history, 1999–2026.", { color: '888888', spaceAfter: 120 }));
+      }
 
-    if (hasSegment && base?.sector?.default_rate) {
-      const ratio = base!.segment!.default_rate / base!.sector!.default_rate;
-      if (ratio >= 1.3 || ratio <= 0.75) {
-        const msg = ratio >= 1.3
-          ? 'Loans of this size and term defaulted notably more often than the sector as a whole. In SBA lending, shorter terms are typically associated with working-capital facilities and younger or thinner-margin businesses.'
-          : 'Loans of this size and term defaulted less often than the sector as a whole. Longer amortisation and larger facilities generally indicate established borrowers with harder collateral, which historically supported better repayment performance.';
-        children.push(wPara(msg, { italics: true, spaceAfter: 120, keepNext: true }));
+      // ── Separator note ──
+      if (hasCsbfp && hasSba) {
+        children.push(wPara(
+          'These are different lending programs and the figures are not directly comparable. The Canadian program caps loans at $1.15 million and is heavily weighted toward accommodation and food services; the U.S. program lends up to $5 million across a broader mix. Canadian figures are cumulative long-run rates; U.S. figures are cohort default rates with a downturn scenario.',
+          { italics: true, color: '888888', spaceAfter: 120, keepNext: true }
+        ));
+      }
+
+      // ── US sub-section ──
+      if (hasSba) {
+        const { base, stress, totalN } = bm!;
+        const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
+        const baseLGD   = Math.round(base!.sector!.lgd  * 100);
+        const stressLGD = Math.round(stress!.sector!.lgd * 100);
+        const dealSB    = sbaBand(data.deal.amount_requested ?? 0);
+        const dealTB    = sbaTermBand(data.deal.term_months ?? 0);
+        const hasSegment = !!(base?.segment && stress?.segment);
+
+        children.push(wHead2('United States — SBA 7(a)'));
+
+        const bmCols = [2200, 1700, 1700];
+        const bmHdrRow = new TableRow({
+          tableHeader: true, cantSplit: true,
+          children: [
+            new TableCell({ width: { size: bmCols[0], type: WidthType.DXA }, shading: shade('#F0EDE8'), borders: { top: noBorder, bottom: thickBorder, left: noBorder, right: noBorder },
+              children: [new Paragraph({ children: [new TextRun({ text: 'Segment', bold: true, size: 18, color: NAVY.replace('#', '') })], spacing: { after: 0 } })] }),
+            new TableCell({ width: { size: bmCols[1], type: WidthType.DXA }, shading: shade('#F0EDE8'), borders: { top: noBorder, bottom: thickBorder, left: noBorder, right: noBorder },
+              children: [new Paragraph({ children: [new TextRun({ text: 'Loans that defaulted — Normal cycle · FY2010–2016', size: 17, color: NAVY.replace('#', '') })], spacing: { after: 0 }, alignment: AlignmentType.CENTER })] }),
+            new TableCell({ width: { size: bmCols[2], type: WidthType.DXA }, shading: shade('#F0EDE8'), borders: { top: noBorder, bottom: thickBorder, left: noBorder, right: noBorder },
+              children: [new Paragraph({ children: [new TextRun({ text: 'Loans that defaulted — 2008 downturn · FY2004–2008', size: 17, color: RED.replace('#', '') })], spacing: { after: 0 }, alignment: AlignmentType.CENTER })] }),
+          ],
+        });
+
+        function bmDataRowW(segLabel: string, baseDR: number, baseN: number, stressDR: number, stressN: number, shaded = false): any {
+          const fill = shaded ? 'F8F6F3' : 'FFFFFF';
+          return new TableRow({ cantSplit: true, children: [
+            new TableCell({ width: { size: bmCols[0], type: WidthType.DXA }, shading: shade(fill), borders: { top: rowBorder, bottom: rowBorder, left: noBorder, right: noBorder },
+              children: [new Paragraph({ children: [new TextRun({ text: segLabel, bold: !shaded, size: 18, font: 'Calibri' })], spacing: { after: 0 } })] }),
+            new TableCell({ width: { size: bmCols[1], type: WidthType.DXA }, shading: shade(fill), borders: { top: rowBorder, bottom: rowBorder, left: noBorder, right: noBorder },
+              children: [new Paragraph({ children: [new TextRun({ text: `${pct(baseDR)} of ${baseN.toLocaleString('en-US')} loans`, size: 18, font: 'Calibri' })], alignment: AlignmentType.CENTER, spacing: { after: 0 } })] }),
+            new TableCell({ width: { size: bmCols[2], type: WidthType.DXA }, shading: shade(fill), borders: { top: rowBorder, bottom: rowBorder, left: noBorder, right: noBorder },
+              children: [new Paragraph({ children: [new TextRun({ text: `${pct(stressDR)} of ${stressN.toLocaleString('en-US')} loans`, size: 18, color: RED.replace('#', ''), font: 'Calibri' })], alignment: AlignmentType.CENTER, spacing: { after: 0 } })] }),
+          ]});
+        }
+
+        children.push(new Table({ width: { size: TW_CONT, type: WidthType.DXA }, rows: [
+          bmHdrRow,
+          bmDataRowW(`${industryLabel} sector`, base!.sector!.default_rate, base!.sector!.n_loans, stress!.sector!.default_rate, stress!.sector!.n_loans),
+          ...(hasSegment ? [bmDataRowW(`${dealSB} · ${dealTB}`, base!.segment!.default_rate, base!.segment!.n_loans, stress!.segment!.default_rate, stress!.segment!.n_loans, true)] : []),
+        ]}), wSpacer(160));
+
+        if (hasSegment && base?.sector?.default_rate) {
+          const ratio = base!.segment!.default_rate / base!.sector!.default_rate;
+          if (ratio >= 1.3 || ratio <= 0.75) {
+            const msg = ratio >= 1.3
+              ? 'Loans of this size and term defaulted notably more often than the sector as a whole. In SBA lending, shorter terms are typically associated with working-capital facilities and younger or thinner-margin businesses.'
+              : 'Loans of this size and term defaulted less often than the sector as a whole. Longer amortisation and larger facilities generally indicate established borrowers with harder collateral, which historically supported better repayment performance.';
+            children.push(wPara(msg, { italics: true, spaceAfter: 120, keepNext: true }));
+          }
+        }
+
+        children.push(
+          wPara('Loss Given Default', { bold: true, spaceAfter: 60, keepNext: true }),
+          wPara(`When these loans did fail, lenders lost about ~${baseLGD} cents on every dollar owed in a normal cycle — and about ~${stressLGD} cents in the 2008 downturn, because collateral was worth less at the same time defaults rose.`, { spaceAfter: 120, keepNext: true }),
+          wPara(`This benchmark comes from ${(totalN ?? 0).toLocaleString('en-US')} comparable loans within a dataset of 698,000 U.S. SBA 7(a) loans that have fully run their course. The normal-cycle figures cover loans approved between 2010 and 2016; the downturn figures cover loans approved between 2004 and 2008. This is U.S. small-business lending data shown for context — it is not a prediction about this borrower.`, { italics: true, color: '888888', spaceAfter: 200 }),
+        );
       }
     }
-
-    children.push(
-      wPara('Loss Given Default', { bold: true, spaceAfter: 60, keepNext: true }),
-      wPara(`When these loans did fail, lenders lost about ~${baseLGD} cents on every dollar owed in a normal cycle — and about ~${stressLGD} cents in the 2008 downturn, because collateral was worth less at the same time defaults rose.`, { spaceAfter: 120, keepNext: true }),
-      wPara(`This benchmark comes from ${(totalN ?? 0).toLocaleString('en-US')} comparable loans within a dataset of 698,000 U.S. SBA 7(a) loans that have fully run their course. The normal-cycle figures cover loans approved between 2010 and 2016; the downturn figures cover loans approved between 2004 and 2008. This is U.S. small-business lending data shown for context — it is not a prediction about this borrower.`, { italics: true, color: '888888', spaceAfter: 200 }),
-    );
   }
 
   // ── Sources & Uses ──

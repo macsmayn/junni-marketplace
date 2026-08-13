@@ -165,6 +165,7 @@ export default function DealAnalysis() {
     stress: { sector: any; segment: any } | null;
     totalN: number;
     noMapping: boolean;
+    csbfp?: { defaultRate: number; lossRate: number; totalLoans: number; reliable: boolean } | null;
   } | null>(null);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
@@ -276,51 +277,68 @@ export default function DealAnalysis() {
     setBenchmarkError(null);
     (async () => {
       try {
-        const { data: mapRow, error: mapErr } = await supabase
-          .from('industry_naics_map')
-          .select('naics2_codes')
-          .eq('industry_key', deal.industry)
-          .maybeSingle();
-        if (mapErr) throw mapErr;
-        if (!mapRow || !mapRow.naics2_codes?.length) {
-          setBenchmarks({ naicsMap: null, base: null, stress: null, totalN: 0, noMapping: true });
-          setBenchmarkLoading(false);
-          return;
-        }
-        const codes = mapRow.naics2_codes as string[];
+        // Fetch both mapping tables in parallel
+        const [{ data: naicsMapRow, error: naicsErr }, { data: csbfpMapRow }] = await Promise.all([
+          supabase.from('industry_naics_map').select('naics2_codes').eq('industry_key', deal.industry).maybeSingle(),
+          supabase.from('industry_csbfp_map').select('csbfp_sectors').eq('industry_key', deal.industry).maybeSingle(),
+        ]);
+        if (naicsErr) throw naicsErr;
+
+        const codes        = (naicsMapRow?.naics2_codes ?? []) as string[];
+        const csbfpSectors = (csbfpMapRow?.csbfp_sectors ?? []) as string[];
         const dealSB = sbaBand(deal.amount_requested ?? 0);
         const dealTB = sbaTermBand(deal.term_months ?? 0);
 
-        const { data: rows, error: rowErr } = await supabase
-          .from('sba_benchmarks')
-          .select('scenario,naics2,size_band,term_band,n_loans,n_chargeoff,default_rate,avg_loan_size,lgd')
-          .in('naics2', codes)
-          .eq('reliable', true);
-        if (rowErr) throw rowErr;
+        // Fetch SBA rows and CSBFP rows in parallel (skip if no mapping)
+        const [{ data: sbaRows, error: sbaErr }, { data: csbfpRows }] = await Promise.all([
+          codes.length
+            ? supabase.from('sba_benchmarks')
+                .select('scenario,naics2,size_band,term_band,n_loans,n_chargeoff,default_rate,avg_loan_size,lgd')
+                .in('naics2', codes).eq('reliable', true)
+            : Promise.resolve({ data: null, error: null }),
+          csbfpSectors.length
+            ? supabase.from('csbfp_benchmarks')
+                .select('n_loans,loan_value,n_claims,claim_value,reliable')
+                .in('sector', csbfpSectors)
+            : Promise.resolve({ data: null, error: null }),
+        ]);
+        if (sbaErr) throw sbaErr;
 
-        const all = (rows ?? []) as any[];
+        // ── SBA aggregation ──
+        const all = (sbaRows ?? []) as any[];
         const pick = (scenario: string, sb: string | null, tb: string | null) =>
           sb === null
             ? all.filter((r: any) => r.scenario === scenario && r.size_band === null && r.term_band === null)
             : all.filter((r: any) => r.scenario === scenario && r.size_band === sb && r.term_band === tb);
-
-        const baseSectorRows  = pick('base',   null,   null);
-        const baseSegRows     = pick('base',   dealSB, dealTB);
+        const baseSectorRows   = pick('base',   null,   null);
+        const baseSegRows      = pick('base',   dealSB, dealTB);
         const stressSectorRows = pick('stress', null,   null);
-        const stressSegRows   = pick('stress', dealSB, dealTB);
-
-        const totalN = [...new Set(all.filter((r: any) => r.size_band === null).map((r: any) => r.n_loans))]
-          .reduce((s: number, n: any) => s + n, 0);
-        // Simpler: sum sector-level base n_loans across naics2 codes (base has more vintages → higher N)
-        const totalBase = aggregateBenchmarkRows(baseSectorRows)?.n_loans ?? 0;
+        const stressSegRows    = pick('stress', dealSB, dealTB);
+        const totalBase   = aggregateBenchmarkRows(baseSectorRows)?.n_loans ?? 0;
         const totalStress = aggregateBenchmarkRows(stressSectorRows)?.n_loans ?? 0;
 
+        // ── CSBFP aggregation (weighted sums, not averages of rates) ──
+        let csbfp: { defaultRate: number; lossRate: number; totalLoans: number; reliable: boolean } | null = null;
+        if (csbfpRows && csbfpRows.length > 0) {
+          const totalLoans      = csbfpRows.reduce((s: number, r: any) => s + (r.n_loans ?? 0), 0);
+          const totalClaims     = csbfpRows.reduce((s: number, r: any) => s + (r.n_claims ?? 0), 0);
+          const totalLoanValue  = csbfpRows.reduce((s: number, r: any) => s + (r.loan_value ?? 0), 0);
+          const totalClaimValue = csbfpRows.reduce((s: number, r: any) => s + (r.claim_value ?? 0), 0);
+          csbfp = {
+            defaultRate: totalLoans > 0 ? totalClaims / totalLoans : 0,
+            lossRate:    totalLoanValue > 0 ? totalClaimValue / totalLoanValue : 0,
+            totalLoans,
+            reliable:    csbfpRows.every((r: any) => r.reliable),
+          };
+        }
+
         setBenchmarks({
-          naicsMap: codes,
-          base:   { sector: aggregateBenchmarkRows(baseSectorRows),  segment: aggregateBenchmarkRows(baseSegRows)  },
-          stress: { sector: aggregateBenchmarkRows(stressSectorRows), segment: aggregateBenchmarkRows(stressSegRows) },
-          totalN: totalBase + totalStress,
-          noMapping: false,
+          naicsMap: codes.length ? codes : null,
+          base:     { sector: aggregateBenchmarkRows(baseSectorRows),   segment: aggregateBenchmarkRows(baseSegRows)   },
+          stress:   { sector: aggregateBenchmarkRows(stressSectorRows), segment: aggregateBenchmarkRows(stressSegRows) },
+          totalN:   totalBase + totalStress,
+          noMapping: codes.length === 0,
+          csbfp,
         });
       } catch (e: any) {
         setBenchmarkError('Failed to load benchmark data.');
@@ -981,10 +999,11 @@ export default function DealAnalysis() {
           };
           const hd: React.CSSProperties = {
             fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18,
-            color: NAVY, margin: "0 0 4px",
+            color: NAVY, margin: "0 0 20px",
           };
-          const sub: React.CSSProperties = {
-            fontSize: 12, color: MUTED, marginBottom: 20,
+          const subHd: React.CSSProperties = {
+            fontSize: 11, fontWeight: 700, letterSpacing: "0.06em",
+            textTransform: "uppercase" as const, color: NAVY, marginBottom: 14,
           };
           const thStyle: React.CSSProperties = {
             fontSize: 11, fontWeight: 700, letterSpacing: "0.06em",
@@ -1001,8 +1020,8 @@ export default function DealAnalysis() {
             textAlign: "center" as const, paddingTop: 12, paddingBottom: 12,
             borderBottom: "1px solid #F3EFE8", verticalAlign: "middle" as const,
           };
-          const fmtPct  = (v: number) => `${(v * 100).toFixed(1)}%`;
-          const fmtN    = (n: number) => `of ${n.toLocaleString()} loans`;
+          const fmtPct = (v: number) => `${(v * 100).toFixed(1)}%`;
+          const fmtN   = (n: number) => `of ${n.toLocaleString()} loans`;
 
           if (benchmarkLoading) {
             return (
@@ -1021,120 +1040,165 @@ export default function DealAnalysis() {
             );
           }
           if (!benchmarks) return null;
-          if (benchmarks.noMapping) {
+
+          const { base, stress, totalN, csbfp } = benchmarks;
+          const hasSba     = !benchmarks.noMapping && !!(base?.sector && stress?.sector);
+          const hasCsbfp   = !!csbfp;
+          const hasSegment = hasSba && !!(base?.segment && stress?.segment);
+
+          if (!hasCsbfp && !hasSba) {
             return (
               <div style={cardStyle}>
                 <h2 style={hd}>Historical Benchmark</h2>
-                <div style={{ color: MUTED, fontSize: 13, paddingTop: 8 }}>
-                  No comparable SBA benchmark for this industry.
-                </div>
+                <div style={{ color: MUTED, fontSize: 13 }}>No comparable benchmark for this industry.</div>
               </div>
             );
           }
 
-          const { base, stress, totalN } = benchmarks;
-          const hasSector  = base?.sector  && stress?.sector;
-          const hasSegment = base?.segment && stress?.segment;
-          const dealSB     = sbaBand(deal.amount_requested ?? 0);
-          const dealTB     = sbaTermBand(deal.term_months ?? 0);
+          const dealSB        = sbaBand(deal.amount_requested ?? 0);
+          const dealTB        = sbaTermBand(deal.term_months ?? 0);
           const industryLabel = (deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-
-          if (!hasSector) return null;
-
-          const baseLGD   = (base!.sector!.lgd  * 100).toFixed(0);
-          const stressLGD = (stress!.sector!.lgd * 100).toFixed(0);
+          const baseLGD       = hasSba ? (base!.sector!.lgd * 100).toFixed(0) : '0';
+          const stressLGD     = hasSba ? (stress!.sector!.lgd * 100).toFixed(0) : '0';
 
           return (
             <div style={cardStyle}>
               <h2 style={hd}>Historical Benchmark</h2>
-              <p style={sub}>Of every 100 similar loans made historically, this is how many were never repaid.</p>
 
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ ...thStyle, textAlign: "left" as const }}>Segment</th>
-                      <th style={{ ...thStyle, minWidth: 130 }}>
-                        <span style={{ color: NAVY, fontWeight: 700 }}>Loans that defaulted</span>
-                        <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>Normal cycle · FY2010–2016</div>
-                      </th>
-                      <th style={{ ...thStyle, minWidth: 130 }}>
-                        <span style={{ color: RED, fontWeight: 700 }}>Loans that defaulted</span>
-                        <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>2008 downturn · FY2004–2008</div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Row 1: sector */}
-                    <tr>
-                      <td style={tdLabel}>
-                        <span style={{ fontWeight: 600 }}>{industryLabel} sector</span>
-                      </td>
-                      <td style={tdCell}>
-                        <div style={{ fontWeight: 700, fontSize: 15, color: NAVY }}>{fmtPct(base!.sector!.default_rate)}</div>
-                        <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(base!.sector!.n_loans)}</div>
-                      </td>
-                      <td style={tdCell}>
-                        <div style={{ fontWeight: 700, fontSize: 15, color: RED }}>{fmtPct(stress!.sector!.default_rate)}</div>
-                        <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(stress!.sector!.n_loans)}</div>
-                      </td>
-                    </tr>
-                    {/* Row 2: segment (conditional) */}
-                    {hasSegment ? (
-                      <tr>
-                        <td style={{ ...tdLabel, borderBottom: "none" }}>
-                          <span style={{ fontWeight: 500 }}>{dealSB} · {dealTB} months</span>
-                          <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>Loans of similar size and term</div>
-                        </td>
-                        <td style={{ ...tdCell, borderBottom: "none" }}>
-                          <div style={{ fontWeight: 700, fontSize: 15, color: NAVY }}>{fmtPct(base!.segment!.default_rate)}</div>
-                          <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(base!.segment!.n_loans)}</div>
-                        </td>
-                        <td style={{ ...tdCell, borderBottom: "none" }}>
-                          <div style={{ fontWeight: 700, fontSize: 15, color: RED }}>{fmtPct(stress!.segment!.default_rate)}</div>
-                          <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(stress!.segment!.n_loans)}</div>
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr>
-                        <td colSpan={3} style={{ ...tdLabel, borderBottom: "none", color: MUTED, fontWeight: 400, fontSize: 12, fontStyle: "italic" }}>
-                          There were too few loans of this size and term to show a reliable figure, so only the sector-wide result is shown above.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Segment interpretive line */}
-              {(() => {
-                if (!hasSegment) return null;
-                const sectorDR = base!.sector!.default_rate;
-                if (!sectorDR) return null;
-                const ratio = base!.segment!.default_rate / sectorDR;
-                if (ratio >= 1.3) return (
-                  <div style={{ marginTop: 14, fontSize: 12, color: NAVY, lineHeight: 1.6, borderLeft: `3px solid ${GOLD}`, paddingLeft: 12 }}>
-                    Loans of this size and term <strong>defaulted notably more often</strong> than the sector as a whole. In SBA lending, shorter terms are typically associated with working-capital facilities and younger or thinner-margin businesses, so this pattern likely reflects the type of borrower that seeks these terms rather than the loan structure itself.
+              {/* ── Canada sub-section ── */}
+              {hasCsbfp && (
+                <>
+                  <div style={subHd}>Canada — Canada Small Business Financing Program</div>
+                  <div style={{ display: "flex", gap: isMobile ? 12 : 24, marginBottom: 10 }}>
+                    {[
+                      { label: "Loans that defaulted",     value: csbfp!.defaultRate },
+                      { label: "Share of loaned value lost", value: csbfp!.lossRate  },
+                    ].map(({ label, value }) => (
+                      <div key={label} style={{
+                        flex: 1, background: "#F8F6F3", borderRadius: 10,
+                        padding: isMobile ? "14px 12px" : "16px 20px",
+                        textAlign: "center" as const,
+                      }}>
+                        <div style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: isMobile ? 22 : 26, color: NAVY, lineHeight: 1 }}>
+                          {fmtPct(value)}
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: NAVY, marginTop: 6 }}>{label}</div>
+                        <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>
+                          {fmtN(csbfp!.totalLoans)}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                );
-                if (ratio <= 0.75) return (
-                  <div style={{ marginTop: 14, fontSize: 12, color: NAVY, lineHeight: 1.6, borderLeft: `3px solid ${GOLD}`, paddingLeft: 12 }}>
-                    Loans of this size and term <strong>defaulted less often</strong> than the sector as a whole. Longer amortisation and larger facilities generally indicate established borrowers with harder collateral, which historically supported better repayment performance.
+                  {!csbfp!.reliable && (
+                    <div style={{ fontSize: 11, color: MUTED, fontStyle: "italic", marginBottom: 6 }}>
+                      Based on a small sample — treat as indicative only.
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: MUTED }}>
+                    Cumulative across the program's full history, 1999–2026.
                   </div>
-                );
-                return null;
-              })()}
+                </>
+              )}
 
-              {/* LGD line */}
-              <div style={{ marginTop: 16, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" as const, color: MUTED, marginBottom: 4 }}>Loss Given Default</div>
-              <div style={{ fontSize: 12, color: NAVY, lineHeight: 1.6 }}>
-                When these loans did fail, lenders lost about <strong>~{baseLGD} cents on every dollar owed</strong> in a normal cycle — and about <strong style={{ color: RED }}>~{stressLGD} cents</strong> in the 2008 downturn, because collateral was worth less at the same time defaults rose.
-              </div>
+              {/* ── Separator note ── */}
+              {hasCsbfp && hasSba && (
+                <div style={{
+                  margin: "20px 0 16px", fontSize: 11, color: MUTED, lineHeight: 1.6,
+                  borderTop: "1px solid #E8E2D9", borderBottom: "1px solid #E8E2D9",
+                  padding: "12px 0",
+                }}>
+                  These are different lending programs and the figures are not directly comparable. The Canadian program caps loans at $1.15 million and is heavily weighted toward accommodation and food services; the U.S. program lends up to $5 million across a broader mix. Canadian figures are cumulative long-run rates; U.S. figures are cohort default rates with a downturn scenario.
+                </div>
+              )}
 
-              {/* Caveat */}
-              <div style={{ marginTop: 12, fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
-                This benchmark comes from {totalN.toLocaleString()} comparable loans within a dataset of 698,000 U.S. Small Business Administration 7(a) loans that have fully run their course. The normal-cycle figures cover loans approved between 2010 and 2016; the downturn figures cover loans approved between 2004 and 2008, which absorbed the financial crisis. This is U.S. small-business lending data shown for context. It describes how similar loans performed in the past — it is not a prediction about this borrower.
-              </div>
+              {/* ── US sub-section ── */}
+              {hasSba && (
+                <>
+                  <div style={subHd}>United States — SBA 7(a)</div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ ...thStyle, textAlign: "left" as const }}>Segment</th>
+                          <th style={{ ...thStyle, minWidth: 130 }}>
+                            <span style={{ color: NAVY, fontWeight: 700 }}>Loans that defaulted</span>
+                            <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>Normal cycle · FY2010–2016</div>
+                          </th>
+                          <th style={{ ...thStyle, minWidth: 130 }}>
+                            <span style={{ color: RED, fontWeight: 700 }}>Loans that defaulted</span>
+                            <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>2008 downturn · FY2004–2008</div>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td style={tdLabel}><span style={{ fontWeight: 600 }}>{industryLabel} sector</span></td>
+                          <td style={tdCell}>
+                            <div style={{ fontWeight: 700, fontSize: 15, color: NAVY }}>{fmtPct(base!.sector!.default_rate)}</div>
+                            <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(base!.sector!.n_loans)}</div>
+                          </td>
+                          <td style={tdCell}>
+                            <div style={{ fontWeight: 700, fontSize: 15, color: RED }}>{fmtPct(stress!.sector!.default_rate)}</div>
+                            <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(stress!.sector!.n_loans)}</div>
+                          </td>
+                        </tr>
+                        {hasSegment ? (
+                          <tr>
+                            <td style={{ ...tdLabel, borderBottom: "none" }}>
+                              <span style={{ fontWeight: 500 }}>{dealSB} · {dealTB} months</span>
+                              <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>Loans of similar size and term</div>
+                            </td>
+                            <td style={{ ...tdCell, borderBottom: "none" }}>
+                              <div style={{ fontWeight: 700, fontSize: 15, color: NAVY }}>{fmtPct(base!.segment!.default_rate)}</div>
+                              <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(base!.segment!.n_loans)}</div>
+                            </td>
+                            <td style={{ ...tdCell, borderBottom: "none" }}>
+                              <div style={{ fontWeight: 700, fontSize: 15, color: RED }}>{fmtPct(stress!.segment!.default_rate)}</div>
+                              <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(stress!.segment!.n_loans)}</div>
+                            </td>
+                          </tr>
+                        ) : (
+                          <tr>
+                            <td colSpan={3} style={{ ...tdLabel, borderBottom: "none", color: MUTED, fontWeight: 400, fontSize: 12, fontStyle: "italic" }}>
+                              There were too few loans of this size and term to show a reliable figure, so only the sector-wide result is shown above.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Interpretive line */}
+                  {(() => {
+                    if (!hasSegment) return null;
+                    const sectorDR = base!.sector!.default_rate;
+                    if (!sectorDR) return null;
+                    const ratio = base!.segment!.default_rate / sectorDR;
+                    if (ratio >= 1.3) return (
+                      <div style={{ marginTop: 14, fontSize: 12, color: NAVY, lineHeight: 1.6, borderLeft: `3px solid ${GOLD}`, paddingLeft: 12 }}>
+                        Loans of this size and term <strong>defaulted notably more often</strong> than the sector as a whole. In SBA lending, shorter terms are typically associated with working-capital facilities and younger or thinner-margin businesses, so this pattern likely reflects the type of borrower that seeks these terms rather than the loan structure itself.
+                      </div>
+                    );
+                    if (ratio <= 0.75) return (
+                      <div style={{ marginTop: 14, fontSize: 12, color: NAVY, lineHeight: 1.6, borderLeft: `3px solid ${GOLD}`, paddingLeft: 12 }}>
+                        Loans of this size and term <strong>defaulted less often</strong> than the sector as a whole. Longer amortisation and larger facilities generally indicate established borrowers with harder collateral, which historically supported better repayment performance.
+                      </div>
+                    );
+                    return null;
+                  })()}
+
+                  {/* LGD */}
+                  <div style={{ marginTop: 16, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" as const, color: MUTED, marginBottom: 4 }}>Loss Given Default</div>
+                  <div style={{ fontSize: 12, color: NAVY, lineHeight: 1.6 }}>
+                    When these loans did fail, lenders lost about <strong>~{baseLGD} cents on every dollar owed</strong> in a normal cycle — and about <strong style={{ color: RED }}>~{stressLGD} cents</strong> in the 2008 downturn, because collateral was worth less at the same time defaults rose.
+                  </div>
+
+                  {/* Caveat */}
+                  <div style={{ marginTop: 12, fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
+                    This benchmark comes from {totalN!.toLocaleString()} comparable loans within a dataset of 698,000 U.S. Small Business Administration 7(a) loans that have fully run their course. The normal-cycle figures cover loans approved between 2010 and 2016; the downturn figures cover loans approved between 2004 and 2008, which absorbed the financial crisis. This is U.S. small-business lending data shown for context. It describes how similar loans performed in the past — it is not a prediction about this borrower.
+                  </div>
+                </>
+              )}
             </div>
           );
         })()}
