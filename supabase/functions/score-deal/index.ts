@@ -773,6 +773,7 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
           .eq("fiscal_year_to", primary.fiscal_year);
 
         let questionsGenerated = 0;
+        const translationQueue: { id: string; text: string }[] = [];
 
         for (const flag of ruleFlags ?? []) {
           try {
@@ -819,7 +820,7 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
 
             if (!questionText) continue;
 
-            const { error: qErr } = await supabase.from("credit_questions").insert({
+            const { data: qRow, error: qErr } = await supabase.from("credit_questions").insert({
               deal_id,
               question_type: "metric_anomaly",
               source: "rule",
@@ -828,12 +829,13 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
               priority: flag.severity,
               status: "pending_review",
               ai_reviewed: false,
-            });
+            }).select("id").single();
 
             if (qErr) {
               console.error(`[score-deal] credit_questions insert error (${flag.flag_key}):`, qErr);
             } else {
               questionsGenerated++;
+              if (qRow?.id) translationQueue.push({ id: qRow.id, text: questionText });
             }
           } catch (qGenErr) {
             console.error(`[score-deal] Question generation error (${flag.flag_key}):`, qGenErr);
@@ -841,6 +843,58 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
         }
 
         console.log(`[score-deal] Phase 2d Part 2 generated ${questionsGenerated} question(s) for review.`);
+
+        // Batch-translate Phase 2d Part 2 questions into French (non-blocking)
+        if (translationQueue.length > 0) {
+          try {
+            const trPrompt =
+`Translate the following credit questions from English to French. Write proper standard French suitable for a credit professional in both Quebec and France. Do not use "courriel". Keep finance terms used in English-language finance (EBITDA, DSCR) as-is. Return ONLY valid JSON with exactly this shape — same count and order as the input:
+{ "translations": ["<fr question 1>", "<fr question 2>", ...] }
+
+QUESTIONS:
+${translationQueue.map((q, i) => `${i + 1}. ${q.text}`).join("\n")}`;
+
+            const trRes = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: {
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "claude-sonnet-4-6",
+                max_tokens: 2000,
+                messages: [{ role: "user", content: trPrompt }],
+              }),
+            });
+
+            if (!trRes.ok) {
+              console.error("[score-deal] Phase 2d Part 2 FR translation API error:", await trRes.text());
+            } else {
+              const trData = await trRes.json();
+              const trRaw: string = trData.content[0].text;
+              const trCleaned = trRaw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+              try {
+                const trParsed: { translations: string[] } = JSON.parse(trCleaned);
+                const translations = trParsed.translations ?? [];
+                for (let ti = 0; ti < translationQueue.length; ti++) {
+                  const frText = translations[ti];
+                  if (!frText) continue;
+                  const { error: trUpdErr } = await supabase
+                    .from("credit_questions")
+                    .update({ question_text_fr: frText })
+                    .eq("id", translationQueue[ti].id);
+                  if (trUpdErr) console.error(`[score-deal] question_text_fr update error (${translationQueue[ti].id}):`, trUpdErr);
+                }
+                console.log(`[score-deal] Phase 2d Part 2 FR translations saved (${translations.length}).`);
+              } catch (_trParseErr) {
+                console.error("[score-deal] Phase 2d Part 2 FR translation JSON parse error. Raw:", trRaw.slice(0, 200));
+              }
+            }
+          } catch (trErr) {
+            console.error("[score-deal] Phase 2d Part 2 FR translation unhandled error:", trErr);
+          }
+        }
       }
 
       // ── Phase 2d Job B — AI qualitative notes analysis
@@ -900,7 +954,8 @@ Return ONLY valid JSON, no markdown, with this shape:
       "category": "<litigation | going_concern | debt_maturity | covenant | related_party | off_balance_sheet | non_recurring | subsequent_event | concentration | accounting_change | encumbered_assets | projection | other>",
       "materiality": "<high | medium | low>",
       "grounded_in": "<the specific note/figure/disclosure this question is based on — quote or closely reference it>",
-      "question": "<the question to ask the borrower>"
+      "question": "<the question to ask the borrower>",
+      "question_fr": "<French translation of the question — proper standard French for a credit professional; keep finance terms (EBITDA, DSCR) as-is>"
     }
   ]
 }
@@ -969,6 +1024,7 @@ FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
                   source: "ai",
                   related_metric: q.category,
                   question_text: q.question,
+                  question_text_fr: q.question_fr ?? null,
                   priority,
                   status: "pending_review",
                   ai_reviewed: false,
@@ -1109,12 +1165,15 @@ DEAL DETAILS:
 - Use of Funds: ${deal.use_of_funds?.trim() ? deal.use_of_funds : "Not specified by the applicant."}
 If Use of Funds is 'Not specified by the applicant', you MUST include the unspecified use of funds as one of the risks.${collateralLine}${sourcesUsesLine || capLine ? `\n\nIMPORTANT FRAMING NOTE: The capitalization and sources-&-uses figures below are LENDER-ENTERED PRO-FORMA deal structure for the proposed transaction. They are NOT from the borrower's historical statements and are EXPECTED to differ from the computed historical ratios. Do NOT treat differences between pro-forma capitalization and historical computed leverage as a discrepancy, red flag, or reconciliation item. Do NOT flag the requested loan amount differing from total sources & uses as an inconsistency — a facility may fund only part of a transaction.` : ""}${sourcesUsesLine}${capLine}
 
-${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}${mdaBlock}\n\nReturn ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
+${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}${mdaBlock}\n\nAlso provide French translations of the summary, strengths, and risks. The French arrays MUST have exactly the same number of elements in the same order as their English counterparts, each element being the translation of the corresponding English element. Write proper standard French suitable for a credit professional in both Quebec and France. Do not use "courriel". Keep established finance terms that are used in English in French-language finance (EBITDA, DSCR, SAFE, ARR) as-is rather than translating them.\n\nReturn ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
 
 {
   "summary": "<Quantitative analyst narrative — 4-8 sentences. Walk through the key computed ratios and state what each indicates (e.g. 'DSCR of 1.42x sits in the Adequate band, providing moderate but not comfortable debt-service headroom'). Explain year-over-year movements and their drivers (e.g. whether EBITDA growth came from revenue expansion or margin improvement). Identify diagnostically significant divergences between ratios (e.g. strong gross margin alongside thin net margin points to cost pressure below the gross line). Comment on trend direction across the fiscal years available. Note where a ratio sits relative to its threshold band and what that means practically for credit risk. Do NOT restate who the company is, describe the transaction purpose, or give an overall approval verdict — a separate executive summary covers those. Do NOT cite any ratio or figure not present in the data provided to you; describe qualitatively if the figure is unavailable.>",
   "strengths": ["<strength 1>", "<strength 2>", "<strength 3>", "<strength 4>", "<strength 5>"],
   "risks": ["<risk 1>", "<risk 2>", "<risk 3>", "<risk 4>", "<risk 5>"],
+  "summary_fr": "<French translation of the summary — same content and structure, proper standard French>",
+  "strengths_fr": ["<French translation of strength 1>", "<strength 2>", "<strength 3>", "<strength 4>", "<strength 5>"],
+  "risks_fr": ["<French translation of risk 1>", "<risk 2>", "<risk 3>", "<risk 4>", "<risk 5>"],
   "metrics": {
     "leverage": <integer 0-100>,
     "profitability": <integer 0-100>,
@@ -1207,6 +1266,23 @@ Each metric score is 0-100 where 100 is best.`;
         risks: scoring.risks,
         metrics: scoring.metrics,
       });
+      // Persist French narrative fields (non-blocking)
+      try {
+        if (scoring.summary_fr || scoring.strengths_fr || scoring.risks_fr) {
+          const { error: frNarrErr } = await supabase
+            .from("credit_scores")
+            .update({
+              summary_fr: scoring.summary_fr ?? null,
+              strengths_fr: scoring.strengths_fr ?? null,
+              risks_fr: scoring.risks_fr ?? null,
+            })
+            .eq("deal_id", deal_id);
+          if (frNarrErr) console.error("[score-deal] credit_scores FR fields error:", frNarrErr);
+          else console.log("[score-deal] credit_scores FR fields saved.");
+        }
+      } catch (frNarrErr) {
+        console.error("[score-deal] credit_scores FR fields unhandled error:", frNarrErr);
+      }
     } else {
       // Fallback path (no confirmed financials): keep existing LLM-only behavior.
       const { error: upsertError } = await supabase.from("credit_scores").upsert(
@@ -1217,6 +1293,9 @@ Each metric score is 0-100 where 100 is best.`;
           summary: scoring.summary,
           strengths: scoring.strengths,
           risks: scoring.risks,
+          summary_fr: scoring.summary_fr ?? null,
+          strengths_fr: scoring.strengths_fr ?? null,
+          risks_fr: scoring.risks_fr ?? null,
           metrics: scoring.metrics,
           score_source: "llm",
           model_used: "claude-opus-4-8",
@@ -1355,6 +1434,60 @@ ${execParts.join("\n\n")}`;
             console.log("[score-deal] Executive summary saved.");
           }
         }
+      }
+
+      // French executive summary (non-blocking)
+      try {
+        const execPromptFr =
+`You are writing the executive summary section of a credit memo for a Canadian SME lending transaction.
+
+Write a professional executive summary in French, 2–3 paragraphs. Follow these rules exactly:
+
+Paragraph 1: Describe who the company is and what it does. Draw on its industry, location, size (revenue/EBITDA), and years in operation. Write in complete sentences.
+
+Paragraph 2: Explain what the company is asking for and why. Read and interpret the use-of-funds description and, where sources & uses data is provided, weave that context into natural sentences that explain the transaction. Do not quote the raw use-of-funds field verbatim — rephrase it into a proper credit-memo sentence. If no use-of-funds text is available, describe the request by amount and term only.
+
+Paragraph 3: Summarize the credit position at a high level — leverage, debt-service coverage, and the overall assessment. Close by summarising the credit position and noting the score and risk label as an assessment output — nothing more.
+
+Rules: Write for a credit officer. Write proper standard French suitable for a credit professional in both Quebec and France. Do not use "courriel". Keep established finance terms used in English in French-language finance (EBITDA, DSCR, SAFE, ARR) as-is. No bullet points. No headings. No marketing language. No invented facts. If a data point is missing, write around it naturally — do not note its absence. Output only the paragraphs, nothing else. Do NOT recommend approval, decline, or any credit decision. The lender makes the decision, not this analysis. Only cite specific ratios or figures that appear explicitly in the DEAL DATA provided. Do not calculate, derive, or estimate any ratio yourself. When referring to metric coverage, describe it as the proportion of the analytical framework that could be computed from the financial statements provided. Never call it "policy coverage" or imply it measures compliance with any credit policy.
+
+DEAL DATA:
+${execParts.join("\n\n")}`;
+
+        const execFrRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 1000,
+            messages: [{ role: "user", content: execPromptFr }],
+          }),
+        });
+
+        if (!execFrRes.ok) {
+          const errText = await execFrRes.text();
+          console.error("[score-deal] Executive summary FR API error:", errText);
+        } else {
+          const execFrData = await execFrRes.json();
+          const execFrText: string = (execFrData.content[0]?.text ?? "").trim();
+          if (execFrText) {
+            const { error: execFrUpdateErr } = await supabase
+              .from("deals")
+              .update({ executive_summary_fr: execFrText })
+              .eq("id", deal_id);
+            if (execFrUpdateErr) {
+              console.error("[score-deal] Executive summary FR persist error:", execFrUpdateErr);
+            } else {
+              console.log("[score-deal] Executive summary FR saved.");
+            }
+          }
+        }
+      } catch (execFrErr) {
+        console.error("[score-deal] Executive summary FR unhandled error:", execFrErr);
       }
     } catch (execErr) {
       console.error("[score-deal] Executive summary unhandled error:", execErr);
