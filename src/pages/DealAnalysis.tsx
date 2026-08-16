@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase } from "../lib/supabase";
+import { useLanguage } from "../contexts/LanguageContext";
+import { LanguageToggle } from "../components/LanguageToggle";
 
 const NAVY = "#1B2B4B";
 const GOLD = "#D4940A";
@@ -138,7 +140,7 @@ export default function DealAnalysis() {
   const [definitionBubble, setDefinitionBubble] = useState<string | null>(null);
   const [bubbleRect, setBubbleRect] = useState<DOMRect | null>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
-  const [lang, setLang] = useState<"en" | "fr">("en");
+  const { lang } = useLanguage();
   const [sourcesUses, setSourcesUses] = useState<any[]>([]);
   const [capItems, setCapItems] = useState<any[]>([]);
   const [collateral, setCollateral] = useState<any[]>([]);
@@ -521,22 +523,7 @@ export default function DealAnalysis() {
             </div>
           )}
           {/* Language toggle */}
-          <div style={{ display: "flex", gap: 2 }}>
-            {(["en", "fr"] as const).map(l => (
-              <button
-                key={l}
-                onClick={() => setLang(l)}
-                style={{
-                  padding: "3px 10px", borderRadius: 99, border: "1px solid",
-                  fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
-                  letterSpacing: "0.05em", textTransform: "uppercase",
-                  background: lang === l ? NAVY : "transparent",
-                  color: lang === l ? "#fff" : MUTED,
-                  borderColor: lang === l ? NAVY : "#D8D2C8",
-                }}
-              >{l}</button>
-            ))}
-          </div>
+          <LanguageToggle />
         </div>
       </div>
 
