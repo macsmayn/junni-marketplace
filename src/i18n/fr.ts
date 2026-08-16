@@ -57,6 +57,11 @@ const fr: Record<string, string> = {
   "myAnalyses.confidenceModerate":    "Modérée",
   "myAnalyses.confidenceLow":         "Faible",
   "myAnalyses.confidenceIndicative":  "Indicatif",
+
+  // Risk labels (DB values: Strong / Adequate / Weak)
+  "risk.strong":   "Solide",
+  "risk.adequate": "Adéquat",
+  "risk.weak":     "Faible",
 };
 
 export default fr;

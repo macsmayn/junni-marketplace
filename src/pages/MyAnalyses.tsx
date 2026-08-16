@@ -4,6 +4,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { supabase } from "../lib/supabase";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
+import { tRiskLabel } from "../lib/riskLabel";
 
 const NAVY  = "#1B2B4B";
 const GOLD  = "#D4940A";
@@ -113,7 +114,7 @@ export default function MyAnalyses() {
           .eq("auth0_id", user.sub)
           .maybeSingle();
         if (uErr || !userData) {
-          setError(t("myAnalyses.errorAccount"));
+          setError("myAnalyses.errorAccount");
           setLoading(false);
           return;
         }
@@ -127,7 +128,7 @@ export default function MyAnalyses() {
           query = query.eq("borrower_id", userData.id);
         }
         const { data: deals, error: dErr } = await query;
-        if (dErr) { setError(t("myAnalyses.errorLoad")); setLoading(false); return; }
+        if (dErr) { setError("myAnalyses.errorLoad"); setLoading(false); return; }
         if (!deals || deals.length === 0) { setAnalyses([]); setLoading(false); return; }
 
         const dealIds = deals.map((d: any) => d.id);
@@ -154,12 +155,12 @@ export default function MyAnalyses() {
             coverage_pct: s?.coverage_pct ?? null,
           };
         }));
-      } catch (e: any) {
-        setError(e?.message ?? t("myAnalyses.errorUnexpected"));
+      } catch {
+        setError("myAnalyses.errorUnexpected");
       }
       setLoading(false);
     })();
-  }, [auth0Loading, isAuthenticated, user?.sub, lang]);
+  }, [auth0Loading, isAuthenticated, user?.sub]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -269,7 +270,7 @@ export default function MyAnalyses() {
         {/* ── Error ── */}
         {!loading && error && (
           <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: "20px 24px", color: RED, fontSize: 13 }}>
-            {error}
+            {t(error!)}
           </div>
         )}
 
@@ -362,7 +363,7 @@ export default function MyAnalyses() {
                             color: scoreColor(a.overall_score),
                             border: `1px solid ${scoreColor(a.overall_score)}40`,
                           }}>
-                            {a.risk_label}
+                            {tRiskLabel(a.risk_label, t)}
                           </span>
                         ) : <span style={{ color: MUTED, fontSize: 12 }}>—</span>}
                       </td>
@@ -450,7 +451,7 @@ export default function MyAnalyses() {
                           color: scoreColor(a.overall_score),
                           border: `1px solid ${scoreColor(a.overall_score)}40`,
                         }}>
-                          {a.risk_label}
+                          {tRiskLabel(a.risk_label, t)}
                         </span>
                       </div>
                     )}
