@@ -1,7 +1,11 @@
 const RISK_KEYS: Record<string, string> = {
-  strong:   "risk.strong",
-  adequate: "risk.adequate",
-  weak:     "risk.weak",
+  strong:    "risk.strong",
+  adequate:  "risk.adequate",
+  weak:      "risk.weak",
+  "very low": "risk.veryLow",
+  low:       "risk.low",
+  moderate:  "risk.moderate",
+  high:      "risk.high",
 };
 
 export function tRiskLabel(

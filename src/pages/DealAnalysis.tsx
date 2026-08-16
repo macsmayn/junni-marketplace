@@ -1,9 +1,10 @@
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase } from "../lib/supabase";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
+import { tRiskLabel } from "../lib/riskLabel";
 
 const NAVY = "#1B2B4B";
 const GOLD = "#D4940A";
@@ -14,14 +15,13 @@ const MUTED = "#7A7060";
 
 const TIER_ORDER = ["Critical", "Important", "Supplementary", "Optional"];
 
-function fmtValue(v: number | null, name: string, strongBand?: string | null): string {
+function fmtValue(v: number | null, name: string, strongBand?: string | null, lang?: string): string {
   if (v === null || v === undefined) return "—";
   if (strongBand) {
     const b = strongBand.toLowerCase();
     if (b.includes("%")) return `${v.toFixed(1)}%`;
     if (b.includes("x")) return `${v.toFixed(2)}x`;
-    if (b.includes("day")) return `${v.toFixed(1)} days`;
-    // no band token matched — fall through to name-based logic
+    if (b.includes("day")) return `${v.toFixed(1)} ${lang === "fr" ? "jours" : "days"}`;
   }
   const n = name.toLowerCase();
   const isRatio = n.includes("ratio") || n.includes("coverage") || n.includes("dscr") ||
@@ -33,9 +33,9 @@ function fmtValue(v: number | null, name: string, strongBand?: string | null): s
   const isMonths = n.includes("payback") || n.includes("duration");
   const isYears = n.includes("walt") || n.includes("lease term") || n.includes("reserve life") ||
     n.includes("mine life") || n.includes("amortization");
-  if (isDays) return `${v.toFixed(1)} days`;
-  if (isMonths) return `${v.toFixed(1)} months`;
-  if (isYears) return `${v.toFixed(1)} years`;
+  if (isDays) return `${v.toFixed(1)} ${lang === "fr" ? "jours" : "days"}`;
+  if (isMonths) return `${v.toFixed(1)} ${lang === "fr" ? "mois" : "months"}`;
+  if (isYears) return `${v.toFixed(1)} ${lang === "fr" ? "ans" : "years"}`;
   if (isPct) return `${v.toFixed(1)}%`;
   if (isRatio) return `${v.toFixed(2)}x`;
   if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
@@ -43,18 +43,18 @@ function fmtValue(v: number | null, name: string, strongBand?: string | null): s
   return v.toFixed(2);
 }
 
-function gradeChip(grade: string) {
+function gradeChip(grade: string, t: (k: string) => string) {
   const color = grade === "Strong" ? GREEN : grade === "Adequate" ? GOLD : RED;
   return (
     <span style={{
       display: "inline-block", padding: "2px 10px", borderRadius: 99,
       fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
       background: color + "1A", color, border: `1px solid ${color}40`,
-    }}>{grade}</span>
+    }}>{tRiskLabel(grade, t)}</span>
   );
 }
 
-function riskChip(label: string) {
+function riskChip(label: string, t: (k: string) => string) {
   const color = label === "Strong" || label === "Very Low" ? GREEN
     : label === "Adequate" || label === "Low" ? GOLD
     : label === "Moderate" ? "#D97706"
@@ -64,14 +64,14 @@ function riskChip(label: string) {
       display: "inline-block", padding: "4px 14px", borderRadius: 99,
       fontSize: 13, fontWeight: 700, background: color + "1A", color,
       border: `1px solid ${color}40`,
-    }}>{label}</span>
+    }}>{tRiskLabel(label, t)}</span>
   );
 }
 
-function statusLabel(status: string) {
-  if (status === "needs_document_or_input" || status === "needs_input") return { text: "Needs data", color: GOLD };
-  if (status === "needs_review") return { text: "Needs review", color: RED };
-  return { text: "Qualitative", color: MUTED };
+function statusLabelKey(status: string): { key: string; color: string } {
+  if (status === "needs_document_or_input" || status === "needs_input") return { key: "analysis.statusNeedsData", color: GOLD };
+  if (status === "needs_review") return { key: "analysis.statusNeedsReview", color: RED };
+  return { key: "analysis.statusQualitative", color: MUTED };
 }
 
 interface MetricRow {
@@ -91,15 +91,15 @@ interface MetricRow {
 
 function DefContent({ def, lang }: { def: any; lang: "en" | "fr" }) {
   const fr = lang === "fr";
-  const t = (enVal: string | null, frVal: string | null) => (fr && frVal) ? frVal : enVal;
+  const tDef = (enVal: string | null, frVal: string | null) => (fr && frVal) ? frVal : enVal;
   const higher = fr ? "↑ Plus élevé :" : "↑ Higher:";
   const lower  = fr ? "↓ Plus bas :"  : "↓ Lower:";
-  const whatItIs       = t(def.what_it_is,       def.what_it_is_fr);
-  const whatItMeasures = t(def.what_it_measures,  def.what_it_measures_fr);
-  const highMeans      = t(def.high_value_means,  def.high_value_means_fr);
-  const lowMeans       = t(def.low_value_means,   def.low_value_means_fr);
-  const why            = t(def.why_it_matters,    def.why_it_matters_fr);
-  const formula        = t(def.formula_plain,     def.formula_plain_fr);
+  const whatItIs       = tDef(def.what_it_is,       def.what_it_is_fr);
+  const whatItMeasures = tDef(def.what_it_measures,  def.what_it_measures_fr);
+  const highMeans      = tDef(def.high_value_means,  def.high_value_means_fr);
+  const lowMeans       = tDef(def.low_value_means,   def.low_value_means_fr);
+  const why            = tDef(def.why_it_matters,    def.why_it_matters_fr);
+  const formula        = tDef(def.formula_plain,     def.formula_plain_fr);
   return (
     <>
       {whatItIs && (
@@ -140,7 +140,14 @@ export default function DealAnalysis() {
   const [definitionBubble, setDefinitionBubble] = useState<string | null>(null);
   const [bubbleRect, setBubbleRect] = useState<DOMRect | null>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
-  const { lang } = useLanguage();
+  const { lang, t } = useLanguage();
+  const locale = lang === "fr" ? "fr-CA" : "en-US";
+  const dateLocale = lang === "fr" ? "fr-CA" : "en-CA";
+  const fmtAmt = (n: number) =>
+    locale === "fr-CA"
+      ? `${n.toLocaleString("fr-CA")} $`
+      : `$${n.toLocaleString("en-US")}`;
+
   const [sourcesUses, setSourcesUses] = useState<any[]>([]);
   const [capItems, setCapItems] = useState<any[]>([]);
   const [collateral, setCollateral] = useState<any[]>([]);
@@ -205,8 +212,8 @@ export default function DealAnalysis() {
     (async () => {
       setLoading(true);
       const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }, { data: qsData }] = await Promise.all([
-        supabase.from("deals").select("title,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary").eq("id", dealId).single(),
-        supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source").eq("deal_id", dealId).maybeSingle(),
+        supabase.from("deals").select("title,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr").eq("id", dealId).single(),
+        supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source,summary_fr,strengths_fr,risks_fr").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
         supabase.from("users").select("id,role").eq("auth0_id", user?.sub ?? "").maybeSingle(),
         supabase.from("sources_uses_entries").select("side,label,amount,sort_order").eq("deal_id", dealId).order("sort_order"),
@@ -247,7 +254,7 @@ export default function DealAnalysis() {
     })();
   }, [dealId, user?.sub]);
 
-  // ── Benchmark helpers (mirror the Node sizeBand/termBand from aggregate.mjs) ──
+  // ── Benchmark helpers ──
   function sbaBand(amount: number): string {
     if (amount <   100_000) return '<100K';
     if (amount <   250_000) return '100K-250K';
@@ -263,7 +270,6 @@ export default function DealAnalysis() {
     if (months <= 240) return '121-240';
     return '>240';
   }
-  // Weighted aggregate across multiple naics2 rows: sum(chargeoffs)/sum(loans), avg(lgd)
   function aggregateBenchmarkRows(rows: any[]) {
     if (!rows || rows.length === 0) return null;
     const nLoans = rows.reduce((s: number, r: any) => s + (r.n_loans || 0), 0);
@@ -279,7 +285,6 @@ export default function DealAnalysis() {
     setBenchmarkError(null);
     (async () => {
       try {
-        // Fetch both mapping tables in parallel
         const [{ data: naicsMapRow, error: naicsErr }, { data: csbfpMapRow }] = await Promise.all([
           supabase.from('industry_naics_map').select('naics2_codes').eq('industry_key', deal.industry).maybeSingle(),
           supabase.from('industry_csbfp_map').select('csbfp_sectors').eq('industry_key', deal.industry).maybeSingle(),
@@ -291,7 +296,6 @@ export default function DealAnalysis() {
         const dealSB = sbaBand(deal.amount_requested ?? 0);
         const dealTB = sbaTermBand(deal.term_months ?? 0);
 
-        // Fetch SBA rows and CSBFP rows in parallel (skip if no mapping)
         const [{ data: sbaRows, error: sbaErr }, { data: csbfpRows }] = await Promise.all([
           codes.length
             ? supabase.from('sba_benchmarks')
@@ -306,7 +310,6 @@ export default function DealAnalysis() {
         ]);
         if (sbaErr) throw sbaErr;
 
-        // ── SBA aggregation ──
         const all = (sbaRows ?? []) as any[];
         const pick = (scenario: string, sb: string | null, tb: string | null) =>
           sb === null
@@ -319,7 +322,6 @@ export default function DealAnalysis() {
         const totalBase   = aggregateBenchmarkRows(baseSectorRows)?.n_loans ?? 0;
         const totalStress = aggregateBenchmarkRows(stressSectorRows)?.n_loans ?? 0;
 
-        // ── CSBFP aggregation (weighted sums, not averages of rates) ──
         let csbfp: { defaultRate: number; lossRate: number; totalLoans: number; totalLoanValue: number; totalClaimValue: number; reliable: boolean } | null = null;
         if (csbfpRows && csbfpRows.length > 0) {
           const totalLoans      = csbfpRows.reduce((s: number, r: any) => s + (r.n_loans ?? 0), 0);
@@ -344,26 +346,30 @@ export default function DealAnalysis() {
           noMapping: codes.length === 0,
           csbfp,
         });
-      } catch (e: any) {
-        setBenchmarkError('Failed to load benchmark data.');
+      } catch {
+        setBenchmarkError("analysis.benchmarkError");
       } finally {
         setBenchmarkLoading(false);
       }
     })();
   }, [deal?.industry, deal?.amount_requested, deal?.term_months]);
 
-  if (auth0Loading) return <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "Inter, sans-serif" }}>Loading…</div>;
+  if (auth0Loading) return (
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "Inter, sans-serif" }}>
+      {t("common.loading")}
+    </div>
+  );
   if (!isAuthenticated) { setLocation("/login"); return null; }
 
   if (loading) return (
     <div style={{ minHeight: "100vh", background: CREAM, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif", color: NAVY }}>
-      Loading analysis…
+      {t("analysis.loadingAnalysis")}
     </div>
   );
 
   if (!deal) return (
     <div style={{ minHeight: "100vh", background: CREAM, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif", color: RED }}>
-      Deal not found.
+      {t("analysis.dealNotFound")}
     </div>
   );
 
@@ -371,13 +377,13 @@ export default function DealAnalysis() {
     <div style={{ minHeight: "100vh", background: CREAM, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif" }}>
       <div style={{ textAlign: "center", padding: 40 }}>
         <div style={{ fontSize: 32, marginBottom: 16 }}>🔒</div>
-        <div style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 22, color: NAVY, marginBottom: 8 }}>Not authorized</div>
-        <div style={{ color: MUTED, fontSize: 14, marginBottom: 24 }}>You don't have access to this analysis.</div>
+        <div style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 22, color: NAVY, marginBottom: 8 }}>{t("analysis.notAuthorized")}</div>
+        <div style={{ color: MUTED, fontSize: 14, marginBottom: 24 }}>{t("analysis.noAccess")}</div>
         <button
           onClick={() => setLocation("/lender-dashboard")}
           style={{ background: NAVY, color: "#fff", border: "none", borderRadius: 8, padding: "10px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
         >
-          Back to dashboard
+          {t("analysis.backToDashboard")}
         </button>
       </div>
     </div>
@@ -385,7 +391,31 @@ export default function DealAnalysis() {
 
   const scored = metrics.filter(m => m.counted);
   const notScored = metrics.filter(m => !m.counted);
-  const byTier = TIER_ORDER.map(t => ({ tier: t, rows: scored.filter(m => m.tier === t) })).filter(g => g.rows.length > 0);
+  const byTier = TIER_ORDER.map(tier => ({ tier, rows: scored.filter(m => m.tier === tier) })).filter(g => g.rows.length > 0);
+
+  // French DB content with English fallback
+  const displayExecSummary = (lang === "fr" && deal.executive_summary_fr?.trim())
+    ? deal.executive_summary_fr
+    : deal.executive_summary;
+  const displaySummary = score
+    ? ((lang === "fr" && score.summary_fr) ? score.summary_fr : score.summary)
+    : null;
+  const displayStrengths = score
+    ? ((lang === "fr" && score.strengths_fr?.length) ? score.strengths_fr : score.strengths)
+    : null;
+  const displayRisks = score
+    ? ((lang === "fr" && score.risks_fr?.length) ? score.risks_fr : score.risks)
+    : null;
+
+  const tierLabel = (tier: string) => {
+    const map: Record<string, string> = {
+      Critical:     t("analysis.tierCritical"),
+      Important:    t("analysis.tierImportant"),
+      Supplementary: t("analysis.tierSupplementary"),
+      Optional:     t("analysis.tierOptional"),
+    };
+    return map[tier] ?? tier;
+  };
 
   const openBubble = (metricName: string, rect: DOMRect) => {
     if (definitionBubble === metricName) {
@@ -451,18 +481,27 @@ export default function DealAnalysis() {
     setAddingSaving(false);
   };
 
+  const scoreConfidenceLabel = (pct: number) => {
+    if (pct >= 60) return t("analysis.scoreConfidenceHigh");
+    if (pct >= 30) return t("analysis.scoreConfidenceModerate");
+    if (pct >= 20) return t("analysis.scoreConfidenceLow");
+    return t("analysis.scoreConfidenceIndicative");
+  };
+
+  const priorityLabel = (p: string) =>
+    p === "high" ? t("analysis.priorityHigh") : p === "medium" ? t("analysis.priorityMedium") : t("analysis.priorityLow");
+
   return (
     <div style={{ minHeight: "100vh", background: CREAM, fontFamily: "Inter, sans-serif", color: NAVY }}>
 
       {/* ── Nav bar ── */}
       <div style={{ background: "#fff", borderBottom: "1px solid #E8E2D9", padding: "12px 24px", display: "flex", alignItems: "center", gap: 16 }}>
         <button onClick={() => window.history.back()} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, fontFamily: "Inter, sans-serif", padding: 0 }}>
-          ← Back
+          {t("analysis.back")}
         </button>
         <span style={{ color: "#E8E2D9" }}>|</span>
-        <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>Deal Analysis</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{t("analysis.pageTitle")}</span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          {/* Download memo */}
           {deal && (
             <div ref={memoRef} style={{ position: "relative" }}>
               <button
@@ -475,7 +514,7 @@ export default function DealAnalysis() {
                   letterSpacing: "0.03em",
                 }}
               >
-                Download memo ↓
+                {t("analysis.downloadMemo")}
               </button>
               {memoOpen && (
                 <div style={{
@@ -485,14 +524,14 @@ export default function DealAnalysis() {
                 }}>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: "pointer", marginBottom: 8 }}>
                     <input type="checkbox" checked={memoIncludeQ} onChange={e => setMemoIncludeQ(e.target.checked)} />
-                    Include diligence questions
+                    {t("analysis.includeDiligenceQ")}
                   </label>
                   {memoIncludeQ && (
                     <div style={{ paddingLeft: 20, marginBottom: 10 }}>
                       {(["answered", "all"] as const).map(opt => (
                         <label key={opt} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 4 }}>
                           <input type="radio" name="memoQFilter" value={opt} checked={memoQFilter === opt} onChange={() => setMemoQFilter(opt)} />
-                          {opt === "answered" ? "Answered only" : "All questions"}
+                          {opt === "answered" ? t("analysis.memoAnsweredOnly") : t("analysis.memoAllQuestions")}
                         </label>
                       ))}
                     </div>
@@ -508,21 +547,20 @@ export default function DealAnalysis() {
                       disabled={!!memoGenerating}
                       style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "none", background: NAVY, color: "#fff", fontSize: 11, fontWeight: 700, cursor: memoGenerating ? "wait" : "pointer", fontFamily: "Inter, sans-serif" }}
                     >
-                      {memoGenerating === "pdf" ? "Generating…" : "Export PDF"}
+                      {memoGenerating === "pdf" ? t("analysis.generating") : t("analysis.exportPDF")}
                     </button>
                     <button
                       onClick={() => handleMemoDownload("docx")}
                       disabled={!!memoGenerating}
                       style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: `1px solid ${NAVY}`, background: "transparent", color: NAVY, fontSize: 11, fontWeight: 700, cursor: memoGenerating ? "wait" : "pointer", fontFamily: "Inter, sans-serif" }}
                     >
-                      {memoGenerating === "docx" ? "Generating…" : "Export Word"}
+                      {memoGenerating === "docx" ? t("analysis.generating") : t("analysis.exportWord")}
                     </button>
                   </div>
                 </div>
               )}
             </div>
           )}
-          {/* Language toggle */}
           <LanguageToggle />
         </div>
       </div>
@@ -532,14 +570,14 @@ export default function DealAnalysis() {
         {/* ── 1. Header ── */}
         <div style={{ marginBottom: 28 }}>
           <h1 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: isMobile ? 24 : 30, color: NAVY, margin: 0, lineHeight: 1.15 }}>
-            {deal.title ?? "Untitled Deal"}
+            {deal.title ?? t("analysis.untitled")}
           </h1>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 20px", marginTop: 10, fontSize: 13, color: MUTED }}>
             <span>{deal.industry ?? "—"}</span>
             <span>·</span>
-            <span>${Number(deal.amount_requested ?? 0).toLocaleString()} requested</span>
+            <span>{fmtAmt(Number(deal.amount_requested ?? 0))} {t("analysis.requested")}</span>
             <span>·</span>
-            <span>{deal.term_months ?? "—"} months @ {deal.interest_rate ?? "—"}%</span>
+            <span>{deal.term_months ?? "—"} {t("analysis.monthsWord")} @ {deal.interest_rate ?? "—"}%</span>
           </div>
         </div>
 
@@ -550,33 +588,33 @@ export default function DealAnalysis() {
               <div style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: isMobile ? 56 : 72, color: NAVY, lineHeight: 1 }}>
                 {score.overall_score ?? "—"}
               </div>
-              <div style={{ fontSize: 11, color: MUTED, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>out of 100</div>
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("analysis.outOf100")}</div>
             </div>
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                {score.risk_label && riskChip(score.risk_label)}
+                {score.risk_label && riskChip(score.risk_label, t)}
                 {score.score_source === "engine" && (
                   <span style={{ fontSize: 10, fontWeight: 600, color: GOLD, border: `1px solid ${GOLD}50`, borderRadius: 99, padding: "2px 8px", letterSpacing: "0.05em" }}>
-                    DETERMINISTIC ENGINE
+                    {t("analysis.deterministicEngine")}
                   </span>
                 )}
                 {score.critical_floor_applied && (
                   <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: RED, borderRadius: 99, padding: "2px 9px", letterSpacing: "0.04em" }}>{
                     score.capped_reason === "severe_critical"
-                      ? "⚠ Score capped: a critical metric is in distress (below viability threshold)"
+                      ? t("analysis.capSevereCritical")
                       : score.capped_reason === "multiple_weak_criticals"
-                      ? "⚠ Score capped: two or more critical metrics are weak"
-                      : "⚠ CRITICAL FLOOR APPLIED"
+                      ? t("analysis.capMultipleWeak")
+                      : t("analysis.criticalFloor")
                   }</span>
                 )}
               </div>
               {metrics.length > 0 && (
                 <div style={{ fontSize: 13, color: MUTED }}>
-                  Based on{" "}
+                  {t("analysis.basedOn")}{" "}
                   <strong style={{ color: NAVY }}>{scored.length}</strong> of{" "}
-                  <strong style={{ color: NAVY }}>{metrics.length}</strong> metrics{" "}
+                  <strong style={{ color: NAVY }}>{metrics.length}</strong> {t("analysis.metricsWord")}{" "}
                   {score.coverage_pct != null && (
-                    <span style={{ color: MUTED }}>({score.coverage_pct}% coverage)</span>
+                    <span style={{ color: MUTED }}>({score.coverage_pct}% {t("analysis.coveragePct")})</span>
                   )}
                 </div>
               )}
@@ -586,10 +624,10 @@ export default function DealAnalysis() {
                     display: "inline-block", fontSize: 10, fontWeight: 700, color: "#fff", borderRadius: 99, padding: "2px 9px", letterSpacing: "0.04em",
                     background: score.coverage_pct >= 60 ? "#059669" : score.coverage_pct >= 30 ? "#D4940A" : score.coverage_pct >= 20 ? "#EA580C" : "#7A7060",
                   }}>
-                    {score.coverage_pct >= 60 ? "High confidence" : score.coverage_pct >= 30 ? "Moderate confidence" : score.coverage_pct >= 20 ? "Low confidence" : "Indicative only"}
+                    {scoreConfidenceLabel(score.coverage_pct)}
                   </span>
                   <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
-                    Confidence reflects how many of this industry's metrics could be computed from the financial statements provided.
+                    {t("analysis.confidenceNote")}
                   </div>
                 </div>
               )}
@@ -597,19 +635,19 @@ export default function DealAnalysis() {
           </div>
         ) : (
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: "24px", marginBottom: 28, color: MUTED, fontSize: 13 }}>
-            No score available yet for this deal.
+            {t("analysis.noScore")}
           </div>
         )}
 
         {/* ── 2b. Executive Summary ── */}
-        {deal.executive_summary?.trim() && (
+        {displayExecSummary?.trim() && (
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginBottom: 24 }}>
             <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 16px" }}>
-              Executive Summary
+              {t("analysis.executiveSummary")}
             </h2>
-            {(deal.executive_summary.includes("\n\n")
-              ? deal.executive_summary.split("\n\n")
-              : deal.executive_summary.split("\n")
+            {(displayExecSummary.includes("\n\n")
+              ? displayExecSummary.split("\n\n")
+              : displayExecSummary.split("\n")
             ).filter((p: string) => p.trim()).map((p: string, i: number) => (
               <p key={i} style={{ fontSize: 14, lineHeight: 1.7, color: "#222222", margin: 0, marginBottom: 12 }}>{p.trim()}</p>
             ))}
@@ -620,13 +658,13 @@ export default function DealAnalysis() {
         {byTier.length > 0 && (
           <div style={{ marginBottom: 24 }}>
             <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 4px" }}>
-              Scored Metrics
+              {t("analysis.scoredMetrics")}
             </h2>
-            <p style={{ margin: "0 0 14px", fontSize: 12, color: MUTED }}>Computed from the borrower's confirmed historical financial statements.</p>
+            <p style={{ margin: "0 0 14px", fontSize: 12, color: MUTED }}>{t("analysis.scoredMetricsSub")}</p>
             {byTier.map(({ tier, rows }) => (
               <div key={tier} style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: MUTED, marginBottom: 6, paddingLeft: 2 }}>
-                  {tier}
+                  {tierLabel(tier)}
                 </div>
                 <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 12, overflow: "hidden" }}>
                   {rows.map((row, i) => {
@@ -635,15 +673,13 @@ export default function DealAnalysis() {
                     const hasDef = !!definitions[row.metric_name];
                     return (
                       <div key={row.metric_name} style={{ borderBottom: isLast ? "none" : "1px solid #F0EDE8" }}>
-                        {/* Row header — click to expand grade detail */}
                         <div
                           style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr auto auto" : "2fr 1fr 1fr auto", alignItems: "center", gap: isMobile ? 8 : 16, padding: isMobile ? "12px 14px" : "13px 18px", cursor: "pointer" }}
                           onClick={() => setExpandedRow(isExpanded ? null : row.metric_name)}
                         >
                           <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{row.metric_name}</span>
-                          <span style={{ fontSize: 13, color: MUTED, textAlign: "right" }}>{fmtValue(row.value, row.metric_name, row.strong_band)}</span>
-                          <span>{gradeChip(row.grade)}</span>
-                          {/* ⓘ — opens definition bubble, does not expand row */}
+                          <span style={{ fontSize: 13, color: MUTED, textAlign: "right" }}>{fmtValue(row.value, row.metric_name, row.strong_band, lang)}</span>
+                          <span>{gradeChip(row.grade, t)}</span>
                           <span
                             style={{ fontSize: 14, color: hasDef ? GOLD : "#C8C0B0", userSelect: "none", cursor: hasDef ? "pointer" : "default", lineHeight: 1 }}
                             title={hasDef ? "What is this metric?" : undefined}
@@ -655,26 +691,24 @@ export default function DealAnalysis() {
                           >ⓘ</span>
                         </div>
 
-                        {/* Band row (muted, desktop only, hidden when expanded) */}
                         {!isMobile && !isExpanded && (row.strong_band || row.adequate_band || row.weak_band) && (
                           <div style={{ display: "flex", gap: 20, padding: "0 18px 10px", fontSize: 11, color: MUTED }}>
-                            <span>Strong: {row.strong_band ?? "—"}</span>
-                            <span>Adequate: {row.adequate_band ?? "—"}</span>
-                            <span>Weak: {row.weak_band ?? "—"}</span>
+                            <span>{t("analysis.bandStrong")}: {row.strong_band ?? "—"}</span>
+                            <span>{t("analysis.bandAdequate")}: {row.adequate_band ?? "—"}</span>
+                            <span>{t("analysis.bandWeak")}: {row.weak_band ?? "—"}</span>
                           </div>
                         )}
 
-                        {/* Expanded — grade detail only (no definition) */}
                         {isExpanded && (
                           <div style={{ padding: isMobile ? "0 14px 14px" : "0 18px 16px", borderTop: "1px solid #F0EDE8", background: CREAM }}>
                             <div style={{ fontSize: 12, color: MUTED, marginTop: 10, lineHeight: 1.7 }}>
-                              {row.compute_detail && <div><strong>Formula:</strong> {row.compute_detail}</div>}
-                              {row.grade_reason && <div style={{ marginTop: 4 }}><strong>Grade reason:</strong> {row.grade_reason}</div>}
+                              {row.compute_detail && <div><strong>{t("analysis.formulaLabel")}</strong> {row.compute_detail}</div>}
+                              {row.grade_reason && <div style={{ marginTop: 4 }}><strong>{t("analysis.gradeReasonLabel")}</strong> {row.grade_reason}</div>}
                               {(row.strong_band || row.adequate_band || row.weak_band) && (
                                 <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
-                                  {row.strong_band && <span style={{ color: GREEN }}>Strong: {row.strong_band}</span>}
-                                  {row.adequate_band && <span style={{ color: GOLD }}>Adequate: {row.adequate_band}</span>}
-                                  {row.weak_band && <span style={{ color: RED }}>Weak: {row.weak_band}</span>}
+                                  {row.strong_band && <span style={{ color: GREEN }}>{t("analysis.bandStrong")}: {row.strong_band}</span>}
+                                  {row.adequate_band && <span style={{ color: GOLD }}>{t("analysis.bandAdequate")}: {row.adequate_band}</span>}
+                                  {row.weak_band && <span style={{ color: RED }}>{t("analysis.bandWeak")}: {row.weak_band}</span>}
                                 </div>
                               )}
                             </div>
@@ -697,18 +731,18 @@ export default function DealAnalysis() {
               style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "Inter, sans-serif", marginBottom: 10 }}
             >
               <span style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY }}>
-                Not Scored ({notScored.length})
+                {t("analysis.notScoredSection")} ({notScored.length})
               </span>
               <span style={{ fontSize: 13, color: MUTED, transform: notScoredOpen ? "rotate(180deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▼</span>
             </button>
             {notScoredOpen && (
               <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 12, overflow: "hidden" }}>
                 {notScored.map((row, i) => {
-                  const sl = statusLabel(row.status);
+                  const sl = statusLabelKey(row.status);
                   return (
                     <div key={row.metric_name} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr 2fr", gap: isMobile ? 2 : 16, padding: isMobile ? "10px 14px" : "11px 18px", borderBottom: i < notScored.length - 1 ? "1px solid #F0EDE8" : "none", alignItems: "start" }}>
                       <span style={{ fontSize: 13, fontWeight: 500, color: NAVY }}>{row.metric_name}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: sl.color, textTransform: "uppercase", letterSpacing: "0.05em" }}>{sl.text}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: sl.color, textTransform: "uppercase", letterSpacing: "0.05em" }}>{t(sl.key)}</span>
                       <span style={{ fontSize: 12, color: MUTED }}>{row.compute_detail ?? row.grade_reason ?? "—"}</span>
                     </div>
                   );
@@ -719,30 +753,30 @@ export default function DealAnalysis() {
         )}
 
         {/* ── 5. Narrative ── */}
-        {score && (score.summary || score.strengths?.length || score.risks?.length) && (
+        {score && (displaySummary || displayStrengths?.length || displayRisks?.length) && (
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px" }}>
             <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 14px" }}>
-              Analyst Narrative
+              {t("analysis.analystNarrative")}
             </h2>
-            {score.summary && (
-              <p style={{ fontSize: 14, color: NAVY, lineHeight: 1.7, margin: "0 0 20px" }}>{score.summary}</p>
+            {displaySummary && (
+              <p style={{ fontSize: 14, color: NAVY, lineHeight: 1.7, margin: "0 0 20px" }}>{displaySummary}</p>
             )}
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 20 : 32 }}>
-              {score.strengths?.length > 0 && (
+              {displayStrengths?.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: GREEN, marginBottom: 10 }}>Strengths</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: GREEN, marginBottom: 10 }}>{t("analysis.strengths")}</div>
                   <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
-                    {score.strengths.map((s: string, i: number) => (
+                    {displayStrengths.map((s: string, i: number) => (
                       <li key={i} style={{ fontSize: 13, color: NAVY, lineHeight: 1.5 }}>{s}</li>
                     ))}
                   </ul>
                 </div>
               )}
-              {score.risks?.length > 0 && (
+              {displayRisks?.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: RED, marginBottom: 10 }}>Risks</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: RED, marginBottom: 10 }}>{t("analysis.risks")}</div>
                   <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
-                    {score.risks.map((r: string, i: number) => (
+                    {displayRisks.map((r: string, i: number) => (
                       <li key={i} style={{ fontSize: 13, color: NAVY, lineHeight: 1.5 }}>{r}</li>
                     ))}
                   </ul>
@@ -766,10 +800,10 @@ export default function DealAnalysis() {
 
           const priBadge = (priority: string) => {
             const cfg = priority === "high"
-              ? { color: RED,  bg: "rgba(220,38,38,0.08)",   label: "High" }
+              ? { color: RED,  bg: "rgba(220,38,38,0.08)",   label: t("analysis.priorityHigh") }
               : priority === "medium"
-              ? { color: GOLD, bg: "rgba(212,148,10,0.08)",  label: "Medium" }
-              : { color: MUTED,bg: "rgba(122,112,96,0.08)",  label: "Low" };
+              ? { color: GOLD, bg: "rgba(212,148,10,0.08)",  label: t("analysis.priorityMedium") }
+              : { color: MUTED,bg: "rgba(122,112,96,0.08)",  label: t("analysis.priorityLow") };
             return (
               <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", padding: "2px 7px", borderRadius: 99, background: cfg.bg, color: cfg.color, textTransform: "uppercase" as const }}>
                 {cfg.label}
@@ -779,10 +813,10 @@ export default function DealAnalysis() {
 
           const srcChip = (source: string) => {
             const cfg = source === "ai"
-              ? { label: "AI-flagged",   color: NAVY, bg: "rgba(27,43,75,0.07)" }
+              ? { label: t("analysis.sourceAI"),   color: NAVY, bg: "rgba(27,43,75,0.07)" }
               : source === "user"
-              ? { label: "Added by you", color: GOLD, bg: "rgba(212,148,10,0.10)" }
-              : { label: "Rule-based",   color: MUTED,bg: "rgba(122,112,96,0.07)" };
+              ? { label: t("analysis.sourceUser"), color: GOLD, bg: "rgba(212,148,10,0.10)" }
+              : { label: t("analysis.sourceRule"), color: MUTED,bg: "rgba(122,112,96,0.07)" };
             return (
               <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 4, background: cfg.bg, color: cfg.color }}>
                 {cfg.label}
@@ -793,16 +827,17 @@ export default function DealAnalysis() {
           const fmtMetric = (s: string) => s.replace(/_/g, " ").replace(/^\w/, c => c.toUpperCase());
 
           const STATUS_OPTS = [
-            { value: "open",      label: "Open" },
-            { value: "asked",     label: "Asked" },
-            { value: "answered",  label: "Answered" },
-            { value: "dismissed", label: "Dismissed" },
+            { value: "open",      label: t("analysis.statusOpen") },
+            { value: "asked",     label: t("analysis.statusAsked") },
+            { value: "answered",  label: t("analysis.statusAnswered") },
+            { value: "dismissed", label: t("analysis.statusDismissed") },
           ];
 
           const renderCard = (q: any) => {
             const draft = questionAnswers[q.id] ?? (q.answer ?? "");
             const savingA = savingAnswer === q.id;
             const savingS = savingStatus === q.id;
+            const qText = (lang === "fr" && q.question_text_fr) ? q.question_text_fr : q.question_text;
             return (
               <div key={q.id} style={{ border: "1px solid #E8E2D9", borderRadius: 10, padding: isMobile ? "14px" : "18px", background: "#fff" }}>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 10 }}>
@@ -814,9 +849,9 @@ export default function DealAnalysis() {
                     </span>
                   )}
                 </div>
-                <p style={{ margin: "0 0 14px", fontSize: 14, color: NAVY, lineHeight: 1.6, fontWeight: 500 }}>{q.question_text}</p>
+                <p style={{ margin: "0 0 14px", fontSize: 14, color: NAVY, lineHeight: 1.6, fontWeight: 500 }}>{qText}</p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center", marginBottom: 14 }}>
-                  <span style={{ fontSize: 11, color: MUTED, marginRight: 2 }}>Status:</span>
+                  <span style={{ fontSize: 11, color: MUTED, marginRight: 2 }}>{t("analysis.statusLabel")}</span>
                   {STATUS_OPTS.map(opt => {
                     const active = q.status === opt.value;
                     return (
@@ -838,10 +873,10 @@ export default function DealAnalysis() {
                   })}
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 6 }}>Answer</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 6 }}>{t("analysis.answerLabel")}</div>
                   <textarea
                     value={draft}
-                    placeholder="Record the borrower's response or your notes here…"
+                    placeholder={t("analysis.answerPlaceholder")}
                     onChange={e => setQuestionAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
                     style={{
                       width: "100%", minHeight: 72, padding: "8px 10px",
@@ -853,7 +888,7 @@ export default function DealAnalysis() {
                   />
                   {q.answered_at && (
                     <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>
-                      Answered {new Date(q.answered_at).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })}
+                      {t("analysis.answeredOn")} {new Date(q.answered_at).toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" })}
                     </div>
                   )}
                   <button
@@ -867,22 +902,29 @@ export default function DealAnalysis() {
                       fontFamily: "Inter, sans-serif",
                       opacity: savingA || !draft.trim() ? 0.5 : 1,
                     }}
-                  >{savingA ? "Saving…" : "Save answer"}</button>
+                  >{savingA ? t("analysis.savingEllipsis") : t("analysis.saveAnswer")}</button>
                 </div>
               </div>
             );
           };
 
+          const dqHeading = (() => {
+            const base = t("analysis.diligenceQuestions");
+            if (openCount > 0) return `${base} (${openCount} ${t("analysis.dilQOpenSuffix")})`;
+            if (questions.length > 0) return `${base} (${t("analysis.dilQAllResolved")})`;
+            return base;
+          })();
+
           return (
             <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
               <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 20px" }}>
-                Diligence Questions{openCount > 0 ? ` (${openCount} open)` : questions.length > 0 ? " (all resolved)" : ""}
+                {dqHeading}
               </h2>
 
               {questionsLoading ? (
-                <div style={{ color: MUTED, fontSize: 13, padding: "8px 0" }}>Loading questions…</div>
+                <div style={{ color: MUTED, fontSize: 13, padding: "8px 0" }}>{t("analysis.dilQLoading")}</div>
               ) : questions.length === 0 ? (
-                <div style={{ color: MUTED, fontSize: 13, padding: "8px 0 16px" }}>No diligence questions generated for this analysis.</div>
+                <div style={{ color: MUTED, fontSize: 13, padding: "8px 0 16px" }}>{t("analysis.dilQNone")}</div>
               ) : (
                 <>
                   {outstanding.length > 0 ? (
@@ -890,7 +932,7 @@ export default function DealAnalysis() {
                       {outstanding.map(renderCard)}
                     </div>
                   ) : (
-                    <div style={{ color: MUTED, fontSize: 13, padding: "4px 0 8px" }}>All questions resolved.</div>
+                    <div style={{ color: MUTED, fontSize: 13, padding: "4px 0 8px" }}>{t("analysis.dilQAllResolvedMsg")}</div>
                   )}
                   {resolved.length > 0 && (
                     <div style={{ marginTop: 16 }}>
@@ -899,7 +941,7 @@ export default function DealAnalysis() {
                         style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "Inter, sans-serif" }}
                       >
                         <span style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>
-                          {showResolved ? "▲ Hide" : "▼ Show"} answered/dismissed ({resolved.length})
+                          {showResolved ? `▲ ${t("analysis.hideResolved")}` : `▼ ${t("analysis.showResolved")}`} ({resolved.length})
                         </span>
                       </button>
                       {showResolved && (
@@ -923,14 +965,14 @@ export default function DealAnalysis() {
                       fontSize: 12, fontWeight: 600, color: MUTED,
                       cursor: "pointer", fontFamily: "Inter, sans-serif",
                     }}
-                  >＋ Add question</button>
+                  >{t("analysis.addQuestion")}</button>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>New question</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>{t("analysis.newQuestion")}</div>
                     <textarea
                       value={newQuestionText}
                       autoFocus
-                      placeholder="What additional information do you need from the borrower?"
+                      placeholder={t("analysis.newQuestionPlaceholder")}
                       onChange={e => setNewQuestionText(e.target.value)}
                       style={{
                         width: "100%", minHeight: 80, padding: "8px 10px",
@@ -941,7 +983,7 @@ export default function DealAnalysis() {
                     />
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>Priority:</span>
+                        <span style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>{t("analysis.priority")}</span>
                         {(["high", "medium", "low"] as const).map(p => (
                           <button
                             key={p}
@@ -954,7 +996,7 @@ export default function DealAnalysis() {
                               color: newQuestionPriority === p ? "#fff" : MUTED,
                               borderColor: newQuestionPriority === p ? NAVY : "#D8D2C8",
                             }}
-                          >{p.charAt(0).toUpperCase() + p.slice(1)}</button>
+                          >{priorityLabel(p)}</button>
                         ))}
                       </div>
                       <button
@@ -967,11 +1009,11 @@ export default function DealAnalysis() {
                           fontFamily: "Inter, sans-serif",
                           opacity: !newQuestionText.trim() || addingSaving ? 0.5 : 1,
                         }}
-                      >{addingSaving ? "Saving…" : "Add"}</button>
+                      >{addingSaving ? t("analysis.savingEllipsis") : t("analysis.add")}</button>
                       <button
                         onClick={() => { setAddingQuestion(false); setNewQuestionText(""); setNewQuestionPriority("medium"); }}
                         style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #E8E2D9", background: "transparent", color: MUTED, fontSize: 12, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
-                      >Cancel</button>
+                      >{t("common.cancel")}</button>
                     </div>
                   </div>
                 )}
@@ -1010,21 +1052,21 @@ export default function DealAnalysis() {
             borderBottom: "1px solid #F3EFE8", verticalAlign: "middle" as const,
           };
           const fmtPct = (v: number) => `${(v * 100).toFixed(1)}%`;
-          const fmtN   = (n: number) => `of ${n.toLocaleString()} loans`;
+          const fmtN   = (n: number) => `of ${n.toLocaleString(locale)} ${t("analysis.loansWord")}`;
 
           if (benchmarkLoading) {
             return (
               <div style={cardStyle}>
-                <h2 style={hd}>Historical Benchmark</h2>
-                <div style={{ color: MUTED, fontSize: 13, paddingTop: 8 }}>Loading benchmark data…</div>
+                <h2 style={hd}>{t("analysis.historicalBenchmark")}</h2>
+                <div style={{ color: MUTED, fontSize: 13, paddingTop: 8 }}>{t("analysis.benchmarkLoading")}</div>
               </div>
             );
           }
           if (benchmarkError) {
             return (
               <div style={cardStyle}>
-                <h2 style={hd}>Historical Benchmark</h2>
-                <div style={{ color: RED, fontSize: 13, paddingTop: 8 }}>{benchmarkError}</div>
+                <h2 style={hd}>{t("analysis.historicalBenchmark")}</h2>
+                <div style={{ color: RED, fontSize: 13, paddingTop: 8 }}>{t(benchmarkError)}</div>
               </div>
             );
           }
@@ -1038,8 +1080,8 @@ export default function DealAnalysis() {
           if (!hasCsbfp && !hasSba) {
             return (
               <div style={cardStyle}>
-                <h2 style={hd}>Historical Benchmark</h2>
-                <div style={{ color: MUTED, fontSize: 13 }}>No comparable benchmark for this industry.</div>
+                <h2 style={hd}>{t("analysis.historicalBenchmark")}</h2>
+                <div style={{ color: MUTED, fontSize: 13 }}>{t("analysis.noMapping")}</div>
               </div>
             );
           }
@@ -1052,11 +1094,10 @@ export default function DealAnalysis() {
 
           return (
             <div style={cardStyle}>
-              <h2 style={hd}>Historical Benchmark</h2>
+              <h2 style={hd}>{t("analysis.historicalBenchmark")}</h2>
 
               {/* ── Canada sub-section ── */}
               {hasCsbfp && (() => {
-                // loan_value is stored in $000s — convert to a readable dollar string
                 const fmtDollars = (v: number) => {
                   const d = v * 1000;
                   if (d >= 1e9) return `$${(d / 1e9).toFixed(2)}B`;
@@ -1064,23 +1105,22 @@ export default function DealAnalysis() {
                   return `$${Math.round(d).toLocaleString()}`;
                 };
                 const rows: { label: string; rate: number; denom: string }[] = [
-                  { label: "Loans that defaulted",      rate: csbfp!.defaultRate, denom: fmtN(csbfp!.totalLoans) },
-                  { label: "Share of loaned value lost", rate: csbfp!.lossRate,   denom: `of ${fmtDollars(csbfp!.totalLoanValue)} lent` },
+                  { label: t("analysis.benchRowDefaulted"), rate: csbfp!.defaultRate, denom: fmtN(csbfp!.totalLoans) },
+                  { label: t("analysis.benchRowLossRate"),  rate: csbfp!.lossRate,   denom: `of ${fmtDollars(csbfp!.totalLoanValue)} ${t("analysis.lentWord")}` },
                 ];
                 return (
                   <>
-                    <div style={subHd}>Canada — Canada Small Business Financing Program</div>
-                    {/* Industry label above the table */}
+                    <div style={subHd}>{t("analysis.canadaProgram")}</div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: NAVY, marginBottom: 10 }}>
-                      {industryLabel} sector
+                      {industryLabel} {t("analysis.sectorSuffix")}
                     </div>
                     <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                         <thead>
                           <tr>
-                            <th style={{ ...thStyle, textAlign: "left" as const }}>Metric</th>
+                            <th style={{ ...thStyle, textAlign: "left" as const }}>{t("analysis.benchColMetric")}</th>
                             <th style={{ ...thStyle, minWidth: 160 }}>
-                              <span style={{ color: NAVY, fontWeight: 700 }}>Cumulative, 1999–2026</span>
+                              <span style={{ color: NAVY, fontWeight: 700 }}>{t("analysis.benchColCumulative")}</span>
                             </th>
                           </tr>
                         </thead>
@@ -1101,11 +1141,11 @@ export default function DealAnalysis() {
                     </div>
                     {!csbfp!.reliable && (
                       <div style={{ fontSize: 11, color: MUTED, fontStyle: "italic", marginTop: 8 }}>
-                        Based on a small sample — treat as indicative only.
+                        {t("analysis.benchSmallSample")}
                       </div>
                     )}
                     <div style={{ fontSize: 11, color: MUTED, marginTop: !csbfp!.reliable ? 4 : 8 }}>
-                      Cumulative across the program's full history, 1999–2026.
+                      {t("analysis.benchCumHistory")}
                     </div>
                   </>
                 );
@@ -1118,32 +1158,32 @@ export default function DealAnalysis() {
                   borderTop: "1px solid #E8E2D9", borderBottom: "1px solid #E8E2D9",
                   padding: "12px 0",
                 }}>
-                  These are different lending programs and the figures are not directly comparable. The Canadian program caps loans at $1.15 million and is heavily weighted toward accommodation and food services; the U.S. program lends up to $5 million across a broader mix. Canadian figures are cumulative long-run rates; U.S. figures are cohort default rates with a downturn scenario.
+                  {t("analysis.benchSeparatorNote")}
                 </div>
               )}
 
               {/* ── US sub-section ── */}
               {hasSba && (
                 <>
-                  <div style={subHd}>United States — SBA 7(a)</div>
+                  <div style={subHd}>{t("analysis.usProgram")}</div>
                   <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
                         <tr>
-                          <th style={{ ...thStyle, textAlign: "left" as const }}>Segment</th>
+                          <th style={{ ...thStyle, textAlign: "left" as const }}>{t("analysis.benchColSegment")}</th>
                           <th style={{ ...thStyle, minWidth: 130 }}>
-                            <span style={{ color: NAVY, fontWeight: 700 }}>Loans that defaulted</span>
-                            <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>Normal cycle · FY2010–2016</div>
+                            <span style={{ color: NAVY, fontWeight: 700 }}>{t("analysis.benchRowDefaulted")}</span>
+                            <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>{t("analysis.benchNormalCycle")}</div>
                           </th>
                           <th style={{ ...thStyle, minWidth: 130 }}>
-                            <span style={{ color: RED, fontWeight: 700 }}>Loans that defaulted</span>
-                            <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>2008 downturn · FY2004–2008</div>
+                            <span style={{ color: RED, fontWeight: 700 }}>{t("analysis.benchRowDefaulted")}</span>
+                            <div style={{ fontWeight: 400, fontSize: 10, color: MUTED, textTransform: "none" as const, letterSpacing: 0 }}>{t("analysis.benchDownturn")}</div>
                           </th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr>
-                          <td style={tdLabel}><span style={{ fontWeight: 600 }}>{industryLabel} sector</span></td>
+                          <td style={tdLabel}><span style={{ fontWeight: 600 }}>{industryLabel} {t("analysis.sectorSuffix")}</span></td>
                           <td style={tdCell}>
                             <div style={{ fontWeight: 700, fontSize: 15, color: NAVY }}>{fmtPct(base!.sector!.default_rate)}</div>
                             <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(base!.sector!.n_loans)}</div>
@@ -1156,8 +1196,8 @@ export default function DealAnalysis() {
                         {hasSegment ? (
                           <tr>
                             <td style={{ ...tdLabel, borderBottom: "none" }}>
-                              <span style={{ fontWeight: 500 }}>{dealSB} · {dealTB} months</span>
-                              <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>Loans of similar size and term</div>
+                              <span style={{ fontWeight: 500 }}>{dealSB} · {dealTB} {t("analysis.monthsWord")}</span>
+                              <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>{t("analysis.benchSimilarLoans")}</div>
                             </td>
                             <td style={{ ...tdCell, borderBottom: "none" }}>
                               <div style={{ fontWeight: 700, fontSize: 15, color: NAVY }}>{fmtPct(base!.segment!.default_rate)}</div>
@@ -1171,7 +1211,7 @@ export default function DealAnalysis() {
                         ) : (
                           <tr>
                             <td colSpan={3} style={{ ...tdLabel, borderBottom: "none", color: MUTED, fontWeight: 400, fontSize: 12, fontStyle: "italic" }}>
-                              There were too few loans of this size and term to show a reliable figure, so only the sector-wide result is shown above.
+                              {t("analysis.benchTooFew")}
                             </td>
                           </tr>
                         )}
@@ -1187,26 +1227,26 @@ export default function DealAnalysis() {
                     const ratio = base!.segment!.default_rate / sectorDR;
                     if (ratio >= 1.3) return (
                       <div style={{ marginTop: 14, fontSize: 12, color: NAVY, lineHeight: 1.6, borderLeft: `3px solid ${GOLD}`, paddingLeft: 12 }}>
-                        Loans of this size and term <strong>defaulted notably more often</strong> than the sector as a whole. In SBA lending, shorter terms are typically associated with working-capital facilities and younger or thinner-margin businesses, so this pattern likely reflects the type of borrower that seeks these terms rather than the loan structure itself.
+                        {t("analysis.benchDefaultedPre")} <strong>{t("analysis.benchDefaultedMoreStrong")}</strong> {t("analysis.benchDefaultedMorePost")}
                       </div>
                     );
                     if (ratio <= 0.75) return (
                       <div style={{ marginTop: 14, fontSize: 12, color: NAVY, lineHeight: 1.6, borderLeft: `3px solid ${GOLD}`, paddingLeft: 12 }}>
-                        Loans of this size and term <strong>defaulted less often</strong> than the sector as a whole. Longer amortisation and larger facilities generally indicate established borrowers with harder collateral, which historically supported better repayment performance.
+                        {t("analysis.benchDefaultedPre")} <strong>{t("analysis.benchDefaultedLessStrong")}</strong> {t("analysis.benchDefaultedLessPost")}
                       </div>
                     );
                     return null;
                   })()}
 
                   {/* LGD */}
-                  <div style={{ marginTop: 16, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" as const, color: MUTED, marginBottom: 4 }}>Loss Given Default</div>
+                  <div style={{ marginTop: 16, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" as const, color: MUTED, marginBottom: 4 }}>{t("analysis.lgdTitle")}</div>
                   <div style={{ fontSize: 12, color: NAVY, lineHeight: 1.6 }}>
-                    When these loans did fail, lenders lost about <strong>~{baseLGD} cents on every dollar owed</strong> in a normal cycle — and about <strong style={{ color: RED }}>~{stressLGD} cents</strong> in the 2008 downturn, because collateral was worth less at the same time defaults rose.
+                    {t("analysis.lgdPre")} <strong>~{baseLGD} {t("analysis.lgdNormalBold")}</strong> {t("analysis.lgdBetween")} <strong style={{ color: RED }}>~{stressLGD} cents</strong> {t("analysis.lgdPost")}
                   </div>
 
                   {/* Caveat */}
                   <div style={{ marginTop: 12, fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
-                    This benchmark comes from {totalN!.toLocaleString()} comparable loans within a dataset of 698,000 U.S. Small Business Administration 7(a) loans that have fully run their course. The normal-cycle figures cover loans approved between 2010 and 2016; the downturn figures cover loans approved between 2004 and 2008, which absorbed the financial crisis. This is U.S. small-business lending data shown for context. It describes how similar loans performed in the past — it is not a prediction about this borrower.
+                    {t("analysis.benchCaveatPre")} {totalN!.toLocaleString(locale)} {t("analysis.benchCaveatPost")}
                   </div>
                 </>
               )}
@@ -1214,10 +1254,10 @@ export default function DealAnalysis() {
           );
         })()}
 
-        {/* ── Sources & Uses (fallback: Use of Funds text) ── */}
+        {/* ── Sources & Uses ── */}
         {sourcesUses.length > 0 ? (
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 16 }}>Sources & Uses</div>
+            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 16 }}>{t("analysis.sourcesUses")}</div>
             {(() => {
               const uses = sourcesUses.filter((e: any) => e.side === "use");
               const sources = sourcesUses.filter((e: any) => e.side === "source");
@@ -1228,32 +1268,32 @@ export default function DealAnalysis() {
                 <>
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 24 }}>
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>Uses</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>{t("analysis.uses")}</div>
                       {uses.map((e: any, i: number) => (
                         <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < uses.length - 1 ? "1px solid #E8E2D9" : "none", fontSize: 13 }}>
                           <span style={{ color: NAVY }}>{e.label}</span>
-                          <span style={{ color: NAVY, fontWeight: 500 }}>${Number(e.amount).toLocaleString()}</span>
+                          <span style={{ color: NAVY, fontWeight: 500 }}>{fmtAmt(Number(e.amount))}</span>
                         </div>
                       ))}
                       <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 0", marginTop: 4, fontSize: 13, fontWeight: 700, color: NAVY, borderTop: "2px solid #E8E2D9" }}>
-                        <span>Total Uses</span><span>${totalUses.toLocaleString()}</span>
+                        <span>{t("analysis.totalUses")}</span><span>{fmtAmt(totalUses)}</span>
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>Sources</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>{t("analysis.sources")}</div>
                       {sources.map((e: any, i: number) => (
                         <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < sources.length - 1 ? "1px solid #E8E2D9" : "none", fontSize: 13 }}>
                           <span style={{ color: NAVY }}>{e.label}</span>
-                          <span style={{ color: NAVY, fontWeight: 500 }}>${Number(e.amount).toLocaleString()}</span>
+                          <span style={{ color: NAVY, fontWeight: 500 }}>{fmtAmt(Number(e.amount))}</span>
                         </div>
                       ))}
                       <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 0", marginTop: 4, fontSize: 13, fontWeight: 700, color: NAVY, borderTop: "2px solid #E8E2D9" }}>
-                        <span>Total Sources</span><span>${totalSources.toLocaleString()}</span>
+                        <span>{t("analysis.totalSources")}</span><span>{fmtAmt(totalSources)}</span>
                       </div>
                     </div>
                   </div>
                   {gap > 0 && totalUses + totalSources > 0 && (
-                    <div style={{ marginTop: 14, fontSize: 12, fontWeight: 600, color: RED }}>Out of balance by ${gap.toLocaleString()}</div>
+                    <div style={{ marginTop: 14, fontSize: 12, fontWeight: 600, color: RED }}>{t("analysis.outOfBalance")} {fmtAmt(gap)}</div>
                   )}
                 </>
               );
@@ -1261,7 +1301,7 @@ export default function DealAnalysis() {
           </div>
         ) : deal?.use_of_funds ? (
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 10 }}>Use of Funds</div>
+            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 10 }}>{t("analysis.useOfFunds")}</div>
             <p style={{ fontSize: 14, color: NAVY, lineHeight: 1.7, margin: 0 }}>{deal.use_of_funds}</p>
           </div>
         ) : null}
@@ -1286,15 +1326,16 @@ export default function DealAnalysis() {
           const evProvided = deal?.enterprise_value != null ? Number(deal.enterprise_value) : null;
           const evProxy = totalCap - cashVal;
           let cumDebt = 0;
+          const capHeaders = [t("analysis.capColInstrument"), t("analysis.capColCategory"), t("analysis.capColAmount"), t("analysis.capColPctCap"), ...(hasEbitda ? [t("analysis.capColXEbitda")] : [])];
           return (
             <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 4 }}>Capitalization</div>
-              <p style={{ margin: "0 0 14px", fontSize: 12, color: MUTED }}>Pro-forma transaction structure — reflects the proposed deal, not the borrower's historical balance sheet.</p>
+              <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 4 }}>{t("analysis.capitalization")}</div>
+              <p style={{ margin: "0 0 14px", fontSize: 12, color: MUTED }}>{t("analysis.capProFormaNote")}</p>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid #E8E2D9" }}>
-                      {["Instrument", "Category", "Amount", "% of Cap", ...(hasEbitda ? ["× EBITDA"] : [])].map(h => (
+                      {capHeaders.map(h => (
                         <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{h}</th>
                       ))}
                     </tr>
@@ -1309,27 +1350,27 @@ export default function DealAnalysis() {
                         <tr key={i} style={{ borderBottom: i < sorted.length - 1 ? "1px solid #E8E2D9" : "none" }}>
                           <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{row.label}</td>
                           <td style={{ padding: "8px 10px", color: MUTED }}>{row.category}</td>
-                          <td style={{ padding: "8px 10px", color: NAVY }}>${amt.toLocaleString()}</td>
+                          <td style={{ padding: "8px 10px", color: NAVY }}>{fmtAmt(amt)}</td>
                           <td style={{ padding: "8px 10px", color: MUTED }}>{pctCap}</td>
                           {hasEbitda && <td style={{ padding: "8px 10px", color: xEbitda ? NAVY : MUTED }}>{xEbitda || "—"}</td>}
                         </tr>
                       );
                     })}
                     <tr style={{ borderTop: "2px solid #E8E2D9", background: "#FAFAF9" }}>
-                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>Total Debt</td>
-                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>${totalDebt.toLocaleString()}</td>
+                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>{t("analysis.capTotalDebt")}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(totalDebt)}</td>
                       <td style={{ padding: "8px 10px", color: MUTED }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</td>
                       {hasEbitda && <td style={{ padding: "8px 10px", fontWeight: 600, color: NAVY }}>{totalDebt > 0 ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "—"}</td>}
                     </tr>
                     <tr style={{ background: "#FAFAF9" }}>
-                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>Total Equity</td>
-                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>${totalEquity.toLocaleString()}</td>
+                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>{t("analysis.capTotalEquity")}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(totalEquity)}</td>
                       <td style={{ padding: "8px 10px", color: MUTED }}>{totalCap > 0 ? `${(totalEquity / totalCap * 100).toFixed(1)}%` : "—"}</td>
                       {hasEbitda && <td></td>}
                     </tr>
                     <tr style={{ borderTop: "2px solid #E8E2D9" }}>
-                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>Total Capitalization</td>
-                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>${totalCap.toLocaleString()}</td>
+                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{t("analysis.capTotalCap")}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(totalCap)}</td>
                       <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>100%</td>
                       {hasEbitda && <td></td>}
                     </tr>
@@ -1338,17 +1379,17 @@ export default function DealAnalysis() {
               </div>
               <div style={{ marginTop: 16, borderTop: "1px solid #E8E2D9", paddingTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                 {[
-                  { label: "Senior Debt / EBITDA (pro-forma)", value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
-                  { label: "Total Debt / EBITDA (pro-forma)", value: hasEbitda ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
-                  { label: "Net Debt / EBITDA (pro-forma)", value: hasEbitda ? `${(netDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
-                  ...(hasRevolver ? [{ label: "Authorized Revolver Limit", value: `$${rl!.toLocaleString()}` }] : []),
-                  { label: `Available Liquidity${!hasRevolver ? " (cash only — no revolver data)" : ""}`, value: `$${availLiquidity.toLocaleString()}` },
+                  { label: t("analysis.capSeniorDebtEbitda"), value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
+                  { label: t("analysis.capTotalDebtEbitda"), value: hasEbitda ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
+                  { label: t("analysis.capNetDebtEbitda"), value: hasEbitda ? `${(netDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
+                  ...(hasRevolver ? [{ label: t("analysis.capRevolverLimit"), value: fmtAmt(rl!) }] : []),
+                  { label: hasRevolver ? t("analysis.capAvailLiquidity") : t("analysis.capAvailLiquidityCashOnly"), value: fmtAmt(availLiquidity) },
                   (() => {
-                    if (evProvided !== null) return { label: "EV (provided)", value: `$${evProvided.toLocaleString()}` };
-                    if (totalEquity > 0 && evProxy > 0) return { label: "EV (proxy: total cap net of cash)", value: `$${evProxy.toLocaleString()}` };
-                    return { label: "EV (proxy: total cap net of cash)", value: "n/m", hint: "(add equity to capitalization for EV)" };
+                    if (evProvided !== null) return { label: t("analysis.capEVProvided"), value: fmtAmt(evProvided) };
+                    if (totalEquity > 0 && evProxy > 0) return { label: t("analysis.capEVProxy"), value: fmtAmt(evProxy) };
+                    return { label: t("analysis.capEVProxy"), value: "n/m", hint: t("analysis.capEVHint") };
                   })(),
-                  { label: "Debt / Total Capitalization (pro-forma)", value: totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—" },
+                  { label: t("analysis.capDebtToCap"), value: totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—" },
                 ].map(({ label, value, hint }: { label: string; value: string; hint?: string }) => (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, alignItems: "baseline" }}>
                     <span style={{ color: MUTED }}>{label}{hint ? <span style={{ opacity: 0.65, marginLeft: 6, fontSize: 11 }}>{hint}</span> : null}</span>
@@ -1356,10 +1397,10 @@ export default function DealAnalysis() {
                   </div>
                 ))}
                 {totalEquity === 0 && (
-                  <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>No equity entered — Debt/Cap and EV reflect a debt-only capitalization.</div>
+                  <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>{t("analysis.capNoEquity")}</div>
                 )}
-                {!hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>EBITDA unavailable — leverage multiples shown as n/m</div>}
-                {hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7 }}>EBITDA ${ebitdaVal.toLocaleString()}{cashVal > 0 ? ` · Cash $${cashVal.toLocaleString()}` : ""}</div>}
+                {!hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>{t("analysis.capNoEbitda")}</div>}
+                {hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7 }}>EBITDA {fmtAmt(ebitdaVal)}{cashVal > 0 ? ` · Cash ${fmtAmt(cashVal)}` : ""}</div>}
               </div>
             </div>
           );
@@ -1368,12 +1409,12 @@ export default function DealAnalysis() {
         {/* ── Collateral & Asset Coverage ── */}
         {collateral.length > 0 && (
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24, marginBottom: 8 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 14 }}>Collateral & Asset Coverage</div>
+            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 14 }}>{t("analysis.collateralTitle")}</div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid #E8E2D9" }}>
-                    {["Asset", "Description", "Market Value", "Advance %", "Lending Value"].map(h => (
+                    {[t("analysis.collColAsset"), t("analysis.collColDescription"), t("analysis.collColMarketValue"), t("analysis.collColAdvance"), t("analysis.collColLendingValue")].map(h => (
                       <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
@@ -1383,9 +1424,9 @@ export default function DealAnalysis() {
                     <tr key={i} style={{ borderBottom: i < collateral.length - 1 ? "1px solid #E8E2D9" : "none" }}>
                       <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{row.asset_type}</td>
                       <td style={{ padding: "8px 10px", color: MUTED, fontSize: 12 }}>{row.description || "—"}</td>
-                      <td style={{ padding: "8px 10px", color: NAVY }}>${Number(row.market_value || 0).toLocaleString()}</td>
+                      <td style={{ padding: "8px 10px", color: NAVY }}>{fmtAmt(Number(row.market_value || 0))}</td>
                       <td style={{ padding: "8px 10px", color: MUTED }}>{row.advance_rate}%</td>
-                      <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>${Number(row.lending_value || 0).toLocaleString()}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{fmtAmt(Number(row.lending_value || 0))}</td>
                     </tr>
                   ))}
                   {(() => {
@@ -1398,15 +1439,15 @@ export default function DealAnalysis() {
                     return (
                       <>
                         <tr style={{ borderTop: "2px solid #E8E2D9" }}>
-                          <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>Total</td>
-                          <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>${sumMarket.toLocaleString()}</td>
+                          <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>{t("analysis.collTotal")}</td>
+                          <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(sumMarket)}</td>
                           <td></td>
-                          <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>${sumLending.toLocaleString()}</td>
+                          <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(sumLending)}</td>
                         </tr>
                         {coverage !== null && (
                           <tr>
                             <td colSpan={5} style={{ padding: "10px 10px 4px", fontSize: 12, color: MUTED }}>
-                              Lending value ${sumLending.toLocaleString()} ÷ total debt ${totalDebt.toLocaleString()} (existing ${existing.toLocaleString()} + requested ${requested.toLocaleString()}) = <strong style={{ color: NAVY }}>{coverage.toFixed(2)}x</strong>
+                              {t("analysis.collCoveragePre")} {fmtAmt(sumLending)} {t("analysis.collCoverageMid")} {fmtAmt(totalDebt)} ({t("analysis.collCoverageExisting")} {fmtAmt(existing)} + {t("analysis.collCoverageRequested")} {fmtAmt(requested)}) = <strong style={{ color: NAVY }}>{coverage.toFixed(2)}x</strong>
                             </td>
                           </tr>
                         )}
@@ -1420,7 +1461,7 @@ export default function DealAnalysis() {
         )}
       </div>
 
-      {/* ── Definition bubble — desktop (fixed card) ── */}
+      {/* ── Definition bubble — desktop ── */}
       {definitionBubble && !isMobile && bubbleRect && definitions[definitionBubble] && (
         <div
           ref={bubbleRef}
