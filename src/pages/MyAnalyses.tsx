@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase } from "../lib/supabase";
+import { useLanguage } from "../contexts/LanguageContext";
+import { LanguageToggle } from "../components/LanguageToggle";
 
 const NAVY  = "#1B2B4B";
 const GOLD  = "#D4940A";
@@ -12,13 +14,14 @@ const MUTED = "#7A7060";
 const BORDER = "#E8E2D9";
 const ORANGE = "#EA580C";
 
-function fmtCurrency(n: number | null): string {
+function fmtCurrency(n: number | null, locale = "en-US"): string {
   if (n == null) return "—";
+  if (locale === "fr-CA") return `${Math.round(n).toLocaleString("fr-CA")} $`;
   return `$${Math.round(n).toLocaleString("en-US")}`;
 }
 
-function fmtDate(s: string): string {
-  return new Date(s).toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" });
+function fmtDate(s: string, locale = "en-CA"): string {
+  return new Date(s).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
 }
 
 function scoreColor(s: number | null): string {
@@ -28,12 +31,12 @@ function scoreColor(s: number | null): string {
   return RED;
 }
 
-function confidenceLabel(pct: number | null): string {
+function tConfidence(pct: number | null, t: (key: string) => string): string {
   if (pct == null) return "";
-  if (pct >= 60) return "High";
-  if (pct >= 30) return "Moderate";
-  if (pct >= 20) return "Low";
-  return "Indicative";
+  if (pct >= 60) return t("myAnalyses.confidenceHigh");
+  if (pct >= 30) return t("myAnalyses.confidenceModerate");
+  if (pct >= 20) return t("myAnalyses.confidenceLow");
+  return t("myAnalyses.confidenceIndicative");
 }
 
 function confidenceColor(pct: number | null): string {
@@ -79,6 +82,10 @@ const tdStyle: React.CSSProperties = {
 export default function MyAnalyses() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: auth0Loading } = useAuth0();
+  const { lang, t } = useLanguage();
+  const locale = lang === "fr" ? "fr-CA" : "en-US";
+  const dateLocale = lang === "fr" ? "fr-CA" : "en-CA";
+
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,7 +113,7 @@ export default function MyAnalyses() {
           .eq("auth0_id", user.sub)
           .maybeSingle();
         if (uErr || !userData) {
-          setError("Could not load your account.");
+          setError(t("myAnalyses.errorAccount"));
           setLoading(false);
           return;
         }
@@ -120,7 +127,7 @@ export default function MyAnalyses() {
           query = query.eq("borrower_id", userData.id);
         }
         const { data: deals, error: dErr } = await query;
-        if (dErr) { setError("Failed to load analyses."); setLoading(false); return; }
+        if (dErr) { setError(t("myAnalyses.errorLoad")); setLoading(false); return; }
         if (!deals || deals.length === 0) { setAnalyses([]); setLoading(false); return; }
 
         const dealIds = deals.map((d: any) => d.id);
@@ -148,11 +155,11 @@ export default function MyAnalyses() {
           };
         }));
       } catch (e: any) {
-        setError(e?.message ?? "Unexpected error.");
+        setError(e?.message ?? t("myAnalyses.errorUnexpected"));
       }
       setLoading(false);
     })();
-  }, [auth0Loading, isAuthenticated, user?.sub]);
+  }, [auth0Loading, isAuthenticated, user?.sub, lang]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -179,7 +186,7 @@ export default function MyAnalyses() {
 
   if (auth0Loading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif", color: NAVY }}>
-      Loading…
+      {t("common.loading")}
     </div>
   );
 
@@ -196,16 +203,17 @@ export default function MyAnalyses() {
           onClick={() => setLocation("/lender-dashboard")}
           style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, fontFamily: "Inter, sans-serif", padding: 0 }}
         >
-          ← Dashboard
+          {t("myAnalyses.backToDashboard")}
         </button>
         <span style={{ color: BORDER }}>|</span>
-        <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>My Analyses</span>
-        <div style={{ marginLeft: "auto" }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{t("myAnalyses.title")}</span>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+          <LanguageToggle />
           <button
             onClick={() => setLocation("/new-analysis")}
             style={{ background: GOLD, color: "#fff", border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
           >
-            ✦ New Analysis
+            ✦ {t("myAnalyses.newAnalysis")}
           </button>
         </div>
       </div>
@@ -220,13 +228,13 @@ export default function MyAnalyses() {
         }}>
           <div>
             <h1 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: isMobile ? 26 : 32, color: NAVY, margin: 0, lineHeight: 1.1 }}>
-              My Analyses
+              {t("myAnalyses.title")}
             </h1>
             {!loading && !error && (
               <div style={{ color: MUTED, fontSize: 13, marginTop: 5 }}>
                 {analyses.length === 0
-                  ? "No analyses yet"
-                  : `${analyses.length} analysis${analyses.length !== 1 ? "es" : ""}`}
+                  ? t("myAnalyses.noAnalysesYet")
+                  : `${analyses.length} ${analyses.length !== 1 ? t("myAnalyses.analyses") : t("myAnalyses.analysis")}`}
               </div>
             )}
           </div>
@@ -245,7 +253,7 @@ export default function MyAnalyses() {
                   letterSpacing: "0.03em",
                 }}
               >
-                {mode === "list" ? "List" : "Cards"}
+                {mode === "list" ? t("myAnalyses.viewList") : t("myAnalyses.viewCards")}
               </button>
             ))}
           </div>
@@ -254,7 +262,7 @@ export default function MyAnalyses() {
         {/* ── Loading ── */}
         {loading && (
           <div style={{ textAlign: "center", padding: "80px 0", color: MUTED, fontSize: 14 }}>
-            Loading analyses…
+            {t("myAnalyses.loadingAnalyses")}
           </div>
         )}
 
@@ -269,16 +277,16 @@ export default function MyAnalyses() {
         {!loading && !error && analyses.length === 0 && (
           <div style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 16, padding: "72px 32px", textAlign: "center" }}>
             <div style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 700, fontSize: 22, color: NAVY, marginBottom: 10 }}>
-              No analyses yet
+              {t("myAnalyses.noAnalysesYet")}
             </div>
             <div style={{ color: MUTED, fontSize: 13, marginBottom: 28, maxWidth: 340, margin: "0 auto 28px" }}>
-              Run your first analysis to see credit scores and financial metrics here.
+              {t("myAnalyses.noAnalysesBody")}
             </div>
             <button
               onClick={() => setLocation("/new-analysis")}
               style={{ background: GOLD, color: "#fff", border: "none", borderRadius: 8, padding: "10px 26px", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
             >
-              ✦ New Analysis
+              ✦ {t("myAnalyses.newAnalysis")}
             </button>
           </div>
         )}
@@ -290,28 +298,28 @@ export default function MyAnalyses() {
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${BORDER}`, background: CREAM }}>
-                    <th style={thStyle}>Company</th>
-                    <th style={thStyle}>Industry</th>
+                    <th style={thStyle}>{t("myAnalyses.colCompany")}</th>
+                    <th style={thStyle}>{t("myAnalyses.colIndustry")}</th>
                     <th
                       style={{ ...thStyle, cursor: "pointer", userSelect: "none" }}
                       onClick={() => toggleSort("amount_requested")}
                     >
-                      Amount{sortIcon("amount_requested")}
+                      {t("myAnalyses.colAmount")}{sortIcon("amount_requested")}
                     </th>
-                    <th style={thStyle}>Term</th>
+                    <th style={thStyle}>{t("myAnalyses.colTerm")}</th>
                     <th
                       style={{ ...thStyle, cursor: "pointer", userSelect: "none" }}
                       onClick={() => toggleSort("overall_score")}
                     >
-                      Score{sortIcon("overall_score")}
+                      {t("myAnalyses.colScore")}{sortIcon("overall_score")}
                     </th>
-                    <th style={thStyle}>Risk</th>
-                    <th style={thStyle}>Confidence</th>
+                    <th style={thStyle}>{t("myAnalyses.colRisk")}</th>
+                    <th style={thStyle}>{t("myAnalyses.colConfidence")}</th>
                     <th
                       style={{ ...thStyle, cursor: "pointer", userSelect: "none" }}
                       onClick={() => toggleSort("created_at")}
                     >
-                      Date{sortIcon("created_at")}
+                      {t("myAnalyses.colDate")}{sortIcon("created_at")}
                     </th>
                   </tr>
                 </thead>
@@ -325,14 +333,12 @@ export default function MyAnalyses() {
                       onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                     >
                       <td style={{ ...tdStyle, fontWeight: 600, color: NAVY, minWidth: 200, maxWidth: 320 }}>
-                        <div style={{ lineHeight: 1.4 }}>
-                          {a.title}
-                        </div>
+                        <div style={{ lineHeight: 1.4 }}>{a.title}</div>
                       </td>
                       <td style={{ ...tdStyle, color: MUTED }}>{a.industry}</td>
-                      <td style={tdStyle}>{fmtCurrency(a.amount_requested)}</td>
+                      <td style={tdStyle}>{fmtCurrency(a.amount_requested, locale)}</td>
                       <td style={{ ...tdStyle, color: MUTED }}>
-                        {a.term_months != null ? `${a.term_months} mo` : "—"}
+                        {a.term_months != null ? `${a.term_months} ${t("myAnalyses.monthsShort")}` : "—"}
                       </td>
                       <td style={tdStyle}>
                         {a.overall_score != null ? (
@@ -343,7 +349,9 @@ export default function MyAnalyses() {
                             {a.overall_score}
                           </span>
                         ) : (
-                          <span style={{ color: MUTED, fontSize: 12, fontStyle: "italic" }}>Not scored</span>
+                          <span style={{ color: MUTED, fontSize: 12, fontStyle: "italic" }}>
+                            {t("myAnalyses.notScored")}
+                          </span>
                         )}
                       </td>
                       <td style={tdStyle}>
@@ -364,12 +372,12 @@ export default function MyAnalyses() {
                             fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
                             background: confidenceColor(a.coverage_pct), color: "#fff",
                           }}>
-                            {confidenceLabel(a.coverage_pct)}
+                            {tConfidence(a.coverage_pct, t)}
                           </span>
                         ) : <span style={{ color: MUTED, fontSize: 12 }}>—</span>}
                       </td>
                       <td style={{ ...tdStyle, color: MUTED, whiteSpace: "nowrap" }}>
-                        {fmtDate(a.created_at)}
+                        {fmtDate(a.created_at, dateLocale)}
                       </td>
                     </tr>
                   ))}
@@ -417,25 +425,25 @@ export default function MyAnalyses() {
                       </div>
                     ) : (
                       <div style={{ fontSize: 13, color: MUTED, fontStyle: "italic", paddingTop: 12 }}>
-                        Not scored yet
+                        {t("myAnalyses.notScoredYet")}
                       </div>
                     )}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                     {a.coverage_pct != null && (
                       <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                        <span style={{ fontSize: 10, color: MUTED }}>Data confidence:</span>
+                        <span style={{ fontSize: 10, color: MUTED }}>{t("myAnalyses.dataConfidence")}</span>
                         <span style={{
                           fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 99,
                           background: confidenceColor(a.coverage_pct), color: "#fff",
                         }}>
-                          {confidenceLabel(a.coverage_pct)}
+                          {tConfidence(a.coverage_pct, t)}
                         </span>
                       </div>
                     )}
                     {a.risk_label && (
                       <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                        <span style={{ fontSize: 10, color: MUTED }}>Rating:</span>
+                        <span style={{ fontSize: 10, color: MUTED }}>{t("myAnalyses.rating")}</span>
                         <span style={{
                           fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 99,
                           background: scoreColor(a.overall_score) + "1A",
@@ -457,14 +465,14 @@ export default function MyAnalyses() {
 
                 {/* Amount + term */}
                 <div style={{ display: "flex", gap: 8, fontSize: 12, color: MUTED, alignItems: "center" }}>
-                  <span>{fmtCurrency(a.amount_requested)}</span>
+                  <span>{fmtCurrency(a.amount_requested, locale)}</span>
                   {a.term_months != null && <span style={{ color: BORDER }}>·</span>}
-                  {a.term_months != null && <span>{a.term_months} mo</span>}
+                  {a.term_months != null && <span>{a.term_months} {t("myAnalyses.monthsShort")}</span>}
                 </div>
 
                 {/* Date */}
                 <div style={{ fontSize: 11, color: MUTED, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${BORDER}` }}>
-                  {fmtDate(a.created_at)}
+                  {fmtDate(a.created_at, dateLocale)}
                 </div>
               </div>
             ))}
