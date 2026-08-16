@@ -25,6 +25,12 @@ const en: Record<string, string> = {
   "analysis.howScoreCalculated":   "How This Score Was Calculated",
   "analysis.scoringFramework":     "Scoring Framework",
   "analysis.noMapping":            "No comparable benchmark for this industry.",
+  "analysis.ofWord":               "of",
+  "analysis.sectorPrefix":         "",
+  "analysis.whatIsMetric":         "What is this metric?",
+  "analysis.cashWord":             "Cash",
+  "analysis.reasonNeedsDocument":  "Requires a supporting document or external source",
+  "analysis.reasonNoFormula":      "No formula defined for this industry",
 
   // DealAnalysis — loading / auth states
   "analysis.loadingAnalysis":      "Loading analysis…",
@@ -121,7 +127,7 @@ const en: Record<string, string> = {
   "analysis.benchmarkLoading":     "Loading benchmark data…",
   "analysis.benchmarkError":       "Failed to load benchmark data.",
   "analysis.canadaProgram":        "Canada — Canada Small Business Financing Program",
-  "analysis.sectorSuffix":         "sector",
+  "analysis.sectorSuffix":         " sector",
   "analysis.benchColMetric":       "Metric",
   "analysis.benchColCumulative":   "Cumulative, 1999–2026",
   "analysis.benchRowDefaulted":    "Loans that defaulted",

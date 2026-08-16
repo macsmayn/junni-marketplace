@@ -25,6 +25,12 @@ const fr: Record<string, string> = {
   "analysis.howScoreCalculated":   "Comment ce score a été calculé",
   "analysis.scoringFramework":     "Cadre de cotation",
   "analysis.noMapping":            "Aucune donnée comparative disponible pour ce secteur.",
+  "analysis.ofWord":               "sur",
+  "analysis.sectorPrefix":         "Secteur ",
+  "analysis.whatIsMetric":         "Qu'est-ce que cet indicateur ?",
+  "analysis.cashWord":             "Trésorerie",
+  "analysis.reasonNeedsDocument":  "Nécessite un document justificatif ou une source externe",
+  "analysis.reasonNoFormula":      "Aucune formule définie pour ce secteur",
 
   // DealAnalysis — loading / auth states
   "analysis.loadingAnalysis":      "Chargement de l'analyse…",
@@ -121,7 +127,7 @@ const fr: Record<string, string> = {
   "analysis.benchmarkLoading":     "Chargement des données comparatives…",
   "analysis.benchmarkError":       "Échec du chargement des données comparatives.",
   "analysis.canadaProgram":        "Canada — Programme de financement des petites entreprises du Canada",
-  "analysis.sectorSuffix":         "secteur",
+  "analysis.sectorSuffix":         "",
   "analysis.benchColMetric":       "Indicateur",
   "analysis.benchColCumulative":   "Cumulatif, 1999–2026",
   "analysis.benchRowDefaulted":    "Prêts en défaut",
@@ -146,7 +152,7 @@ const fr: Record<string, string> = {
   "analysis.lgdPre":               "Lorsque ces prêts ont défailli, les prêteurs ont perdu environ",
   "analysis.lgdNormalBold":        "cents par dollar dû",
   "analysis.lgdBetween":           "en cycle normal — et environ",
-  "analysis.lgdPost":              "cents lors de la crise de 2008, la valeur des garanties ayant chuté au même moment que les défauts augmentaient.",
+  "analysis.lgdPost":              "lors de la crise de 2008, la valeur des garanties ayant chuté au même moment que les défauts augmentaient.",
   "analysis.benchCaveatPre":       "Cette référence est établie à partir de",
   "analysis.benchCaveatPost":      "prêts comparables issus d'un ensemble de 698 000 prêts SBA 7(a) américains ayant atteint leur terme. Les chiffres du cycle normal couvrent les prêts approuvés entre 2010 et 2016 ; les chiffres de récession couvrent les prêts approuvés entre 2004 et 2008, qui ont subi la crise financière. Il s'agit de données de prêts aux petites entreprises américaines présentées à titre de référence. Elles décrivent la performance passée de prêts similaires — ce n'est pas une prédiction sur cet emprunteur.",
 

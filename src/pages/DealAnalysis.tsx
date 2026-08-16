@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { tRiskLabel } from "../lib/riskLabel";
+import { translateBandUnits } from "../lib/bandUnits";
 
 const NAVY = "#1B2B4B";
 const GOLD = "#D4940A";
@@ -66,6 +67,18 @@ function riskChip(label: string, t: (k: string) => string) {
       border: `1px solid ${color}40`,
     }}>{tRiskLabel(label, t)}</span>
   );
+}
+
+function humanizeNotScoredReason(detail: string | null, reason: string | null, t: (k: string) => string): string {
+  const raw = detail ?? reason ?? "";
+  if (!raw) return "—";
+  if (raw.includes("=DOC") || raw.includes("=EXT") || raw.includes("primary_resolution=DOC") || raw.includes("primary_resolution=EXT")) {
+    return t("analysis.reasonNeedsDocument");
+  }
+  if (raw.toLowerCase().includes("no computation registered")) {
+    return t("analysis.reasonNoFormula");
+  }
+  return raw;
 }
 
 function statusLabelKey(status: string): { key: string; color: string } {
@@ -611,7 +624,7 @@ export default function DealAnalysis() {
               {metrics.length > 0 && (
                 <div style={{ fontSize: 13, color: MUTED }}>
                   {t("analysis.basedOn")}{" "}
-                  <strong style={{ color: NAVY }}>{scored.length}</strong> of{" "}
+                  <strong style={{ color: NAVY }}>{scored.length}</strong>{" "}{t("analysis.ofWord")}{" "}
                   <strong style={{ color: NAVY }}>{metrics.length}</strong> {t("analysis.metricsWord")}{" "}
                   {score.coverage_pct != null && (
                     <span style={{ color: MUTED }}>({score.coverage_pct}% {t("analysis.coveragePct")})</span>
@@ -682,7 +695,7 @@ export default function DealAnalysis() {
                           <span>{gradeChip(row.grade, t)}</span>
                           <span
                             style={{ fontSize: 14, color: hasDef ? GOLD : "#C8C0B0", userSelect: "none", cursor: hasDef ? "pointer" : "default", lineHeight: 1 }}
-                            title={hasDef ? "What is this metric?" : undefined}
+                            title={hasDef ? t("analysis.whatIsMetric") : undefined}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (!hasDef) return;
@@ -693,9 +706,9 @@ export default function DealAnalysis() {
 
                         {!isMobile && !isExpanded && (row.strong_band || row.adequate_band || row.weak_band) && (
                           <div style={{ display: "flex", gap: 20, padding: "0 18px 10px", fontSize: 11, color: MUTED }}>
-                            <span>{t("analysis.bandStrong")}: {row.strong_band ?? "—"}</span>
-                            <span>{t("analysis.bandAdequate")}: {row.adequate_band ?? "—"}</span>
-                            <span>{t("analysis.bandWeak")}: {row.weak_band ?? "—"}</span>
+                            <span>{t("analysis.bandStrong")}: {translateBandUnits(row.strong_band, lang) ?? "—"}</span>
+                            <span>{t("analysis.bandAdequate")}: {translateBandUnits(row.adequate_band, lang) ?? "—"}</span>
+                            <span>{t("analysis.bandWeak")}: {translateBandUnits(row.weak_band, lang) ?? "—"}</span>
                           </div>
                         )}
 
@@ -706,9 +719,9 @@ export default function DealAnalysis() {
                               {row.grade_reason && <div style={{ marginTop: 4 }}><strong>{t("analysis.gradeReasonLabel")}</strong> {row.grade_reason}</div>}
                               {(row.strong_band || row.adequate_band || row.weak_band) && (
                                 <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
-                                  {row.strong_band && <span style={{ color: GREEN }}>{t("analysis.bandStrong")}: {row.strong_band}</span>}
-                                  {row.adequate_band && <span style={{ color: GOLD }}>{t("analysis.bandAdequate")}: {row.adequate_band}</span>}
-                                  {row.weak_band && <span style={{ color: RED }}>{t("analysis.bandWeak")}: {row.weak_band}</span>}
+                                  {row.strong_band && <span style={{ color: GREEN }}>{t("analysis.bandStrong")}: {translateBandUnits(row.strong_band, lang)}</span>}
+                                  {row.adequate_band && <span style={{ color: GOLD }}>{t("analysis.bandAdequate")}: {translateBandUnits(row.adequate_band, lang)}</span>}
+                                  {row.weak_band && <span style={{ color: RED }}>{t("analysis.bandWeak")}: {translateBandUnits(row.weak_band, lang)}</span>}
                                 </div>
                               )}
                             </div>
@@ -743,7 +756,7 @@ export default function DealAnalysis() {
                     <div key={row.metric_name} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr 2fr", gap: isMobile ? 2 : 16, padding: isMobile ? "10px 14px" : "11px 18px", borderBottom: i < notScored.length - 1 ? "1px solid #F0EDE8" : "none", alignItems: "start" }}>
                       <span style={{ fontSize: 13, fontWeight: 500, color: NAVY }}>{row.metric_name}</span>
                       <span style={{ fontSize: 11, fontWeight: 700, color: sl.color, textTransform: "uppercase", letterSpacing: "0.05em" }}>{t(sl.key)}</span>
-                      <span style={{ fontSize: 12, color: MUTED }}>{row.compute_detail ?? row.grade_reason ?? "—"}</span>
+                      <span style={{ fontSize: 12, color: MUTED }}>{humanizeNotScoredReason(row.compute_detail, row.grade_reason, t)}</span>
                     </div>
                   );
                 })}
@@ -1052,7 +1065,7 @@ export default function DealAnalysis() {
             borderBottom: "1px solid #F3EFE8", verticalAlign: "middle" as const,
           };
           const fmtPct = (v: number) => `${(v * 100).toFixed(1)}%`;
-          const fmtN   = (n: number) => `of ${n.toLocaleString(locale)} ${t("analysis.loansWord")}`;
+          const fmtN   = (n: number) => `${t("analysis.ofWord")} ${n.toLocaleString(locale)} ${t("analysis.loansWord")}`;
 
           if (benchmarkLoading) {
             return (
@@ -1100,19 +1113,24 @@ export default function DealAnalysis() {
               {hasCsbfp && (() => {
                 const fmtDollars = (v: number) => {
                   const d = v * 1000;
+                  if (locale === "fr-CA") {
+                    if (d >= 1e9) return `${(d / 1e9).toFixed(2).replace(".", ",")} G$`;
+                    if (d >= 1e6) return `${(d / 1e6).toFixed(1).replace(".", ",")} M$`;
+                    return `${Math.round(d).toLocaleString("fr-CA")} $`;
+                  }
                   if (d >= 1e9) return `$${(d / 1e9).toFixed(2)}B`;
                   if (d >= 1e6) return `$${(d / 1e6).toFixed(1)}M`;
                   return `$${Math.round(d).toLocaleString()}`;
                 };
                 const rows: { label: string; rate: number; denom: string }[] = [
                   { label: t("analysis.benchRowDefaulted"), rate: csbfp!.defaultRate, denom: fmtN(csbfp!.totalLoans) },
-                  { label: t("analysis.benchRowLossRate"),  rate: csbfp!.lossRate,   denom: `of ${fmtDollars(csbfp!.totalLoanValue)} ${t("analysis.lentWord")}` },
+                  { label: t("analysis.benchRowLossRate"),  rate: csbfp!.lossRate,   denom: `${t("analysis.ofWord")} ${fmtDollars(csbfp!.totalLoanValue)} ${t("analysis.lentWord")}` },
                 ];
                 return (
                   <>
                     <div style={subHd}>{t("analysis.canadaProgram")}</div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: NAVY, marginBottom: 10 }}>
-                      {industryLabel} {t("analysis.sectorSuffix")}
+                      {t("analysis.sectorPrefix")}{industryLabel}{t("analysis.sectorSuffix")}
                     </div>
                     <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -1183,7 +1201,7 @@ export default function DealAnalysis() {
                       </thead>
                       <tbody>
                         <tr>
-                          <td style={tdLabel}><span style={{ fontWeight: 600 }}>{industryLabel} {t("analysis.sectorSuffix")}</span></td>
+                          <td style={tdLabel}><span style={{ fontWeight: 600 }}>{t("analysis.sectorPrefix")}{industryLabel}{t("analysis.sectorSuffix")}</span></td>
                           <td style={tdCell}>
                             <div style={{ fontWeight: 700, fontSize: 15, color: NAVY }}>{fmtPct(base!.sector!.default_rate)}</div>
                             <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{fmtN(base!.sector!.n_loans)}</div>
@@ -1400,7 +1418,7 @@ export default function DealAnalysis() {
                   <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>{t("analysis.capNoEquity")}</div>
                 )}
                 {!hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>{t("analysis.capNoEbitda")}</div>}
-                {hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7 }}>EBITDA {fmtAmt(ebitdaVal)}{cashVal > 0 ? ` · Cash ${fmtAmt(cashVal)}` : ""}</div>}
+                {hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7 }}>EBITDA {fmtAmt(ebitdaVal)}{cashVal > 0 ? ` · ${t("analysis.cashWord")} ${fmtAmt(cashVal)}` : ""}</div>}
               </div>
             </div>
           );
