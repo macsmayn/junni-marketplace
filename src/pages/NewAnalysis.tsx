@@ -1397,10 +1397,10 @@ export default function NewAnalysis() {
                         ))}
                       </div>
                     )}
-                    {!sourcesRows.some(r => r.label === "New loan facility (this request)") && (
+                    {!sourcesRows.some(r => r.label === "New loan facility (this request)" || r.label === "Nouvelle facilité de prêt (cette demande)") && (
                       <button type="button"
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", marginBottom: 10, display: "inline-block" }}
-                        onClick={() => setSourcesRows(prev => [...prev, { label: "New loan facility (this request)", amount: fmtNum(parseNum(amountRequested) ?? 0) }])}>
+                        onClick={() => setSourcesRows(prev => [...prev, { label: t("newAnalysis.defaultLoanLabel"), amount: fmtNum(parseNum(amountRequested) ?? 0) }])}>
                         {t("newAnalysis.newLoanFacilityBtn")} ({fmtAmt(parseNum(amountRequested) ?? 0)})
                       </button>
                     )}
@@ -1588,11 +1588,11 @@ export default function NewAnalysis() {
                     );
                   })()}
                   {/* Ghost chip for new facility */}
-                  {!capItemRows.some(r => r.label === "New facility (this request)") && (
+                  {!capItemRows.some(r => r.label === "New facility (this request)" || r.label === "Nouvelle facilité (cette demande)") && (
                     <div style={{ padding: "10px 18px", borderTop: `1px solid ${BORDER}` }}>
                       <button type="button"
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", display: "inline-block" }}
-                        onClick={() => setCapItemRows(prev => [...prev, { category: "Senior Debt", label: "New facility (this request)", amount: fmtNum(parseNum(amountRequested) ?? 0), rate: "", notes: "" }])}>
+                        onClick={() => setCapItemRows(prev => [...prev, { category: "Senior Debt", label: t("newAnalysis.defaultFacilityLabel"), amount: fmtNum(parseNum(amountRequested) ?? 0), rate: "", notes: "" }])}>
                         {t("newAnalysis.newFacilityCapBtn")} ({fmtAmt(parseNum(amountRequested) ?? 0)})
                       </button>
                     </div>
@@ -1602,7 +1602,7 @@ export default function NewAnalysis() {
                     <div style={{ padding: "10px 18px", borderTop: `1px solid ${BORDER}` }}>
                       <button type="button"
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", display: "inline-block" }}
-                        onClick={() => setCapItemRows(prev => [...prev, { category: "Common Equity", label: "Common Equity", amount: fmtNum(parseNum(edits[0]?.["equity"] ?? "") ?? 0), rate: "", notes: "" }])}>
+                        onClick={() => setCapItemRows(prev => [...prev, { category: "Common Equity", label: t("newAnalysis.defaultEquityLabel"), amount: fmtNum(parseNum(edits[0]?.["equity"] ?? "") ?? 0), rate: "", notes: "" }])}>
                         {t("newAnalysis.commonEquityBtn")} ({fmtAmt(parseNum(edits[0]?.["equity"] ?? "") ?? 0)})
                       </button>
                     </div>
