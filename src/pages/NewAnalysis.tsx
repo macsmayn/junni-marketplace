@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase } from "../lib/supabase";
 import { checkFinancials } from "../lib/financialSanity";
+import { useLanguage } from "../contexts/LanguageContext";
+import { LanguageToggle } from "../components/LanguageToggle";
 
 const NAVY = "#1B2B4B";
 const GOLD = "#D4940A";
@@ -21,43 +23,91 @@ const INDUSTRIES = [
   "Transportation & Logistics", "Wholesale & Distribution",
 ];
 
-const FIELD_GROUPS: { label: string; fields: { key: string; label: string }[] }[] = [
+const INDUSTRY_LABELS_FR: Record<string, string> = {
+  "Agriculture & Agri-Food":           "Agriculture et agroalimentaire",
+  "Construction":                       "Construction",
+  "Education":                          "Éducation",
+  "Energy":                             "Énergie",
+  "Financial Services":                 "Services financiers",
+  "Food & Beverage":                    "Alimentation et boissons",
+  "Government & Public Sector":         "Gouvernement et secteur public",
+  "Healthcare & Life Sciences":         "Santé et sciences de la vie",
+  "Hospitality & Lodging":              "Hôtellerie et hébergement",
+  "Insurance":                          "Assurance",
+  "Manufacturing":                      "Fabrication",
+  "Media & Entertainment":              "Médias et divertissement",
+  "Mining & Metals":                    "Mines et métaux",
+  "Other":                              "Autre",
+  "Professional Services":              "Services professionnels",
+  "Real Estate":                        "Immobilier",
+  "Retail & Consumer":                  "Commerce de détail et consommation",
+  "Special Purpose Vehicles":           "Véhicules à usage spécial",
+  "Technology & Telecommunications":    "Technologie et télécommunications",
+  "Transportation & Logistics":         "Transport et logistique",
+  "Wholesale & Distribution":           "Commerce de gros et distribution",
+};
+
+const CAP_CAT_LABELS_FR: Record<string, string> = {
+  "Senior Debt":        "Dette senior",
+  "Subordinated Debt":  "Dette subordonnée",
+  "Shareholder Loans":  "Prêts d'actionnaires",
+  "Preferred Equity":   "Actions privilégiées",
+  "Common Equity":      "Capitaux propres ordinaires",
+  "Other":              "Autre",
+};
+
+const COLL_TYPE_LABELS_FR: Record<string, string> = {
+  "Accounts Receivable":   "Comptes clients",
+  "Inventory":             "Stocks",
+  "Equipment & Machinery": "Équipement et machinerie",
+  "Real Estate":           "Immobilier",
+  "Cash & Securities":     "Trésorerie et valeurs mobilières",
+  "Other":                 "Autre",
+};
+
+const FIELD_GROUPS: { label: string; fields: { key: string; labelKey: string }[] }[] = [
   {
     label: "Income Statement",
     fields: [
-      { key: "revenue",                   label: "Revenue" },
-      { key: "cogs",                      label: "Cost of Goods Sold" },
-      { key: "gross_profit",              label: "Gross Profit" },
-      { key: "operating_expenses",        label: "Operating Expenses" },
-      { key: "depreciation_amortization", label: "Depreciation & Amortization" },
-      { key: "ebitda",                    label: "EBITDA" },
-      { key: "interest_expense",          label: "Interest Expense" },
-      { key: "net_income",                label: "Net Income" },
+      { key: "revenue",                   labelKey: "newAnalysis.fieldRevenue" },
+      { key: "cogs",                      labelKey: "newAnalysis.fieldCogs" },
+      { key: "gross_profit",              labelKey: "newAnalysis.fieldGrossProfit" },
+      { key: "operating_expenses",        labelKey: "newAnalysis.fieldOpEx" },
+      { key: "depreciation_amortization", labelKey: "newAnalysis.fieldDA" },
+      { key: "ebitda",                    labelKey: "newAnalysis.fieldEbitda" },
+      { key: "interest_expense",          labelKey: "newAnalysis.fieldInterestExpense" },
+      { key: "net_income",                labelKey: "newAnalysis.fieldNetIncome" },
     ],
   },
   {
     label: "Balance Sheet",
     fields: [
-      { key: "cash",                label: "Cash & Equivalents" },
-      { key: "accounts_receivable", label: "Accounts Receivable" },
-      { key: "inventory",           label: "Inventory" },
-      { key: "current_assets",      label: "Current Assets" },
-      { key: "total_assets",        label: "Total Assets" },
-      { key: "accounts_payable",    label: "Accounts Payable" },
-      { key: "current_liabilities", label: "Current Liabilities" },
-      { key: "total_debt",          label: "Total Debt" },
-      { key: "total_liabilities",   label: "Total Liabilities" },
-      { key: "equity",              label: "Equity" },
+      { key: "cash",                labelKey: "newAnalysis.fieldCashEquiv" },
+      { key: "accounts_receivable", labelKey: "newAnalysis.fieldAccountsReceivable" },
+      { key: "inventory",           labelKey: "newAnalysis.fieldInventory" },
+      { key: "current_assets",      labelKey: "newAnalysis.fieldCurrentAssets" },
+      { key: "total_assets",        labelKey: "newAnalysis.fieldTotalAssets" },
+      { key: "accounts_payable",    labelKey: "newAnalysis.fieldAccountsPayable" },
+      { key: "current_liabilities", labelKey: "newAnalysis.fieldCurrentLiabilities" },
+      { key: "total_debt",          labelKey: "newAnalysis.fieldTotalDebt" },
+      { key: "total_liabilities",   labelKey: "newAnalysis.fieldTotalLiabilities" },
+      { key: "equity",              labelKey: "newAnalysis.fieldEquity" },
     ],
   },
   {
     label: "Cash Flow Statement",
     fields: [
-      { key: "cfo",   label: "Cash Flow from Operations" },
-      { key: "capex", label: "Capital Expenditures (CapEx)" },
+      { key: "cfo",   labelKey: "newAnalysis.fieldCfo" },
+      { key: "capex", labelKey: "newAnalysis.fieldCapex" },
     ],
   },
 ];
+
+const GROUP_LABEL_KEY: Record<string, string> = {
+  "Income Statement":    "newAnalysis.groupIncomeStatement",
+  "Balance Sheet":       "newAnalysis.groupBalanceSheet",
+  "Cash Flow Statement": "newAnalysis.groupCashFlow",
+};
 
 const FIELDS = FIELD_GROUPS.flatMap(g => g.fields);
 
@@ -118,7 +168,18 @@ const CAP_CATEGORY_ORDER: Record<string, number> = {
 export default function NewAnalysis() {
   const { user } = useAuth0();
   const [, setLocation] = useLocation();
+  const { lang, t } = useLanguage();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
+
+  const locale = lang === "fr" ? "fr-CA" : "en-US";
+  const fmtAmt = (n: number) =>
+    locale === "fr-CA"
+      ? `${n.toLocaleString("fr-CA")} $`
+      : `$${n.toLocaleString("en-US")}`;
+
+  const industryDisplay = (eng: string) => lang === "fr" ? (INDUSTRY_LABELS_FR[eng] ?? eng) : eng;
+  const capCatDisplay = (c: string) => lang === "fr" ? (CAP_CAT_LABELS_FR[c] ?? c) : c;
+  const collTypeDisplay = (tp: string) => lang === "fr" ? (COLL_TYPE_LABELS_FR[tp] ?? tp) : tp;
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900);
@@ -137,11 +198,11 @@ export default function NewAnalysis() {
   const [province, setProvince] = useState("");
   const [city, setCity] = useState("");
   const [yearsInBusiness, setYearsInBusiness] = useState("");
-  const [step1Error, setStep1Error] = useState("");
+  const [step1Error, setStep1Error] = useState(""); // i18n key
   const [step1Loading, setStep1Loading] = useState(false);
   const [step1FieldErrors, setStep1FieldErrors] = useState<Set<string>>(new Set());
 
-  // Draft add-button errors: field key → error message
+  // Draft add-button errors: field key → i18n key
   const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
 
   // After step 1
@@ -150,7 +211,8 @@ export default function NewAnalysis() {
 
   // Step 2
   const [files, setFiles] = useState<File[]>([]);
-  const [fileError, setFileError] = useState("");
+  const [fileError, setFileError] = useState(""); // i18n key
+  const [fileErrorDetail, setFileErrorDetail] = useState(""); // file names appended after key
   const [extracting, setExtracting] = useState(false);
   const [noFinancials, setNoFinancials] = useState(false);
 
@@ -168,13 +230,13 @@ export default function NewAnalysis() {
   const [finRows, setFinRows] = useState<FinRow[]>([]);
   const [edits, setEdits] = useState<Record<number, Record<string, string>>>({});
   const [confirming, setConfirming] = useState(false);
-  const [confirmError, setConfirmError] = useState("");
+  const [confirmError, setConfirmError] = useState(""); // i18n key
   const [sanityOverride, setSanityOverride] = useState(false);
 
   // Step 2 — units confirmation gate
   const [pendingRows, setPendingRows] = useState<any[] | null>(null);
   const [pendingUnits, setPendingUnits] = useState<"units" | "thousands" | "millions" | null>(null);
-  const [unitsGateError, setUnitsGateError] = useState("");
+  const [unitsGateError, setUnitsGateError] = useState(""); // i18n key
   const [unitsApplying, setUnitsApplying] = useState(false);
 
   // Step 3 — Sources & Uses
@@ -216,7 +278,8 @@ export default function NewAnalysis() {
       .maybeSingle();
 
     if (userErr || !userData) {
-      setStep1Error(userErr ? `Account lookup failed: ${userErr.message}` : "Could not find your account. Please try again.");
+      console.error("[NewAnalysis] account lookup:", userErr?.message);
+      setStep1Error("newAnalysis.errorAccountLookup");
       setStep1Loading(false);
       return;
     }
@@ -245,7 +308,8 @@ export default function NewAnalysis() {
       .single();
 
     if (dealErr || !dealData) {
-      setStep1Error(dealErr ? `Failed to create analysis: ${dealErr.message}` : "Failed to create analysis. Please try again.");
+      console.error("[NewAnalysis] create deal:", dealErr?.message);
+      setStep1Error("newAnalysis.errorCreateFailed");
       setStep1Loading(false);
       return;
     }
@@ -266,10 +330,12 @@ export default function NewAnalysis() {
       return !allowed.includes(ext);
     });
     if (rejected.length > 0) {
-      setFileError(`PDF or Excel — Word not supported. Remove: ${rejected.map(f => f.name).join(", ")}`);
+      setFileError("newAnalysis.dropzoneReject");
+      setFileErrorDetail(rejected.map(f => f.name).join(", "));
       return;
     }
     setFileError("");
+    setFileErrorDetail("");
     setFiles(prev => [...prev, ...selected]);
   }
 
@@ -284,9 +350,10 @@ export default function NewAnalysis() {
 
   // ── Step 2: extract ─────────────────────────────────────────────────
   async function handleExtract() {
-    if (files.length === 0) { setFileError("Upload at least one file."); return; }
+    if (files.length === 0) { setFileError("newAnalysis.errorUploadOneFile"); setFileErrorDetail(""); return; }
     if (!dealId || !userId) return;
     setFileError("");
+    setFileErrorDetail("");
     setNoFinancials(false);
     setExtracting(true);
 
@@ -296,7 +363,9 @@ export default function NewAnalysis() {
         .from("documents")
         .upload(path, file, { contentType: file.type });
       if (upErr) {
-        setFileError(`Upload failed for ${file.name}: ${upErr.message}`);
+        console.error("[NewAnalysis] upload:", file.name, upErr.message);
+        setFileError("newAnalysis.errorUploadFailed");
+        setFileErrorDetail("");
         setExtracting(false);
         return;
       }
@@ -310,7 +379,9 @@ export default function NewAnalysis() {
         doc_category: "Financial Statement",
       });
       if (docErr) {
-        setFileError(`Failed to record document ${file.name}: ${docErr.message}`);
+        console.error("[NewAnalysis] doc record:", file.name, docErr.message);
+        setFileError("newAnalysis.errorDocRecord");
+        setFileErrorDetail("");
         setExtracting(false);
         return;
       }
@@ -320,7 +391,9 @@ export default function NewAnalysis() {
       body: { deal_id: dealId, extract_only: true },
     });
     if (invokeErr) {
-      setFileError(`Extraction failed: ${invokeErr.message}`);
+      console.error("[NewAnalysis] extraction:", invokeErr.message);
+      setFileError("newAnalysis.errorExtraction");
+      setFileErrorDetail("");
       setExtracting(false);
       return;
     }
@@ -334,13 +407,13 @@ export default function NewAnalysis() {
     setExtracting(false);
 
     if (rowsErr) {
-      setFileError(`Failed to load extracted data: ${rowsErr.message}`);
+      console.error("[NewAnalysis] load extracted:", rowsErr.message);
+      setFileError("newAnalysis.errorLoadExtracted");
+      setFileErrorDetail("");
       return;
     }
 
     if (rows && rows.length > 0) {
-      // Default the gate selection to detected units (if present and not 'units'),
-      // but leave unconfirmed — lender must explicitly click Continue
       const detected = rows[0]?.units_detected as "units" | "thousands" | "millions" | null;
       setPendingUnits(detected && detected !== "units" ? detected : null);
       setPendingRows(rows);
@@ -363,8 +436,7 @@ export default function NewAnalysis() {
       FIELDS.forEach(({ key }) => { initEdits[i][key] = fmtNum(r[key]); });
     });
     setEdits(initEdits);
-    // Prefill capCash from most-recent FY confirmed value (first row = most recent)
-    setCapCash(prev => prev !== "" ? prev : (edits[0]?.["cash"] ?? fmtNum(rows[0]?.cash) ?? ""));
+    setCapCash(prev => prev !== "" ? prev : (initEdits[0]?.["cash"] ?? fmtNum(rows[0]?.cash) ?? ""));
     setStep(3);
   }
 
@@ -405,12 +477,14 @@ export default function NewAnalysis() {
           .select("id");
         console.log(`[units-gate] Result FY${row.fiscal_year}:`, { data: updData, error });
         if (error) {
-          setUnitsGateError(`Failed to save corrected figures (FY${row.fiscal_year}): ${error.message}`);
+          console.error("[units-gate] patch failed:", row.fiscal_year, error.message);
+          setUnitsGateError("newAnalysis.errorUnitsSave");
           setUnitsApplying(false);
           return;
         }
         if (!updData || updData.length === 0) {
-          setUnitsGateError(`Scaled figures for FY${row.fiscal_year} were not written — the row may be read-only or was not found. Contact support if this persists.`);
+          console.error("[units-gate] patch not written:", row.fiscal_year);
+          setUnitsGateError("newAnalysis.errorUnitsNotWritten");
           setUnitsApplying(false);
           return;
         }
@@ -418,7 +492,7 @@ export default function NewAnalysis() {
       }
 
       if (updatedCount === 0) {
-        setUnitsGateError("No rows were updated — the extracted rows may be missing IDs. Re-extract and try again.");
+        setUnitsGateError("newAnalysis.errorNoRowsUpdated");
         setUnitsApplying(false);
         return;
       }
@@ -429,19 +503,20 @@ export default function NewAnalysis() {
       .update({ units_override: pendingUnits })
       .eq("id", dealId);
     if (dealErr) {
-      setUnitsGateError(`Failed to save units: ${dealErr.message}`);
+      console.error("[units-gate] save units:", dealErr.message);
+      setUnitsGateError("newAnalysis.errorUnitsSave");
       setUnitsApplying(false);
       return;
     }
 
-    // Re-fetch DB-confirmed rows so Step 3 reads the same source of truth as the engine
     const { data: confirmedRows, error: refetchErr } = await supabase
       .from("extracted_financials")
       .select("*")
       .eq("deal_id", dealId)
       .order("fiscal_year", { ascending: false });
     if (refetchErr || !confirmedRows || confirmedRows.length === 0) {
-      setUnitsGateError(`Figures saved but failed to reload: ${refetchErr?.message ?? "no rows returned"}`);
+      console.error("[units-gate] reload:", refetchErr?.message);
+      setUnitsGateError("newAnalysis.errorUnitsReload");
       setUnitsApplying(false);
       return;
     }
@@ -470,12 +545,22 @@ export default function NewAnalysis() {
           .from("extracted_financials")
           .update({ ...values, borrower_confirmed: true })
           .eq("id", row.id);
-        if (error) { setConfirmError(`Failed to save FY${row.fiscal_year}: ${error.message}`); setConfirming(false); return; }
+        if (error) {
+          console.error("[confirm] save FY:", row.fiscal_year, error.message);
+          setConfirmError("newAnalysis.errorSaveFY");
+          setConfirming(false);
+          return;
+        }
       } else {
         const { error } = await supabase
           .from("extracted_financials")
           .insert({ deal_id: dealId, fiscal_year: row.fiscal_year, ...values, borrower_confirmed: true });
-        if (error) { setConfirmError(`Failed to save FY${row.fiscal_year}: ${error.message}`); setConfirming(false); return; }
+        if (error) {
+          console.error("[confirm] insert FY:", row.fiscal_year, error.message);
+          setConfirmError("newAnalysis.errorSaveFY");
+          setConfirming(false);
+          return;
+        }
       }
     }
 
@@ -493,16 +578,21 @@ export default function NewAnalysis() {
       })
       .eq("id", dealId);
     if (dealUpdateErr) {
-      setConfirmError(`Failed to confirm deal: ${dealUpdateErr.message}`);
+      console.error("[confirm] deal update:", dealUpdateErr.message);
+      setConfirmError("newAnalysis.errorConfirm");
       setConfirming(false);
       return;
     }
 
-    // Sources & Uses: delete then re-insert (skip entirely when no valid uses rows)
     const validUsesRows = usesRows.filter(r => r.label.trim() && r.amount.trim());
     if (validUsesRows.length > 0) {
       const { error: suDelErr } = await supabase.from("sources_uses_entries").delete().eq("deal_id", dealId);
-      if (suDelErr) { setConfirmError(`Failed to save Sources & Uses: ${suDelErr.message}`); setConfirming(false); return; }
+      if (suDelErr) {
+        console.error("[confirm] delete S&U:", suDelErr.message);
+        setConfirmError("newAnalysis.errorSaveSU");
+        setConfirming(false);
+        return;
+      }
       const suInsert: any[] = [
         ...validUsesRows.map((r, i) => ({
           deal_id: dealId, side: "use", label: r.label.trim(), amount: parseNum(r.amount) ?? 0, sort_order: i,
@@ -513,13 +603,22 @@ export default function NewAnalysis() {
       ];
       if (suInsert.length > 0) {
         const { error: suInsErr } = await supabase.from("sources_uses_entries").insert(suInsert);
-        if (suInsErr) { setConfirmError(`Failed to insert Sources & Uses: ${suInsErr.message}`); setConfirming(false); return; }
+        if (suInsErr) {
+          console.error("[confirm] insert S&U:", suInsErr.message);
+          setConfirmError("newAnalysis.errorInsertSU");
+          setConfirming(false);
+          return;
+        }
       }
     }
 
-    // Capitalization items: delete then re-insert
     const { error: ciDelErr } = await supabase.from("capitalization_items").delete().eq("deal_id", dealId);
-    if (ciDelErr) { setConfirmError(`Failed to save capitalization: ${ciDelErr.message}`); setConfirming(false); return; }
+    if (ciDelErr) {
+      console.error("[confirm] delete cap:", ciDelErr.message);
+      setConfirmError("newAnalysis.errorSaveCap");
+      setConfirming(false);
+      return;
+    }
     const ciInsert = capItemRows.filter(r => r.label.trim() && r.amount.trim()).map((r, i) => ({
       deal_id: dealId,
       category: r.category,
@@ -531,12 +630,21 @@ export default function NewAnalysis() {
     }));
     if (ciInsert.length > 0) {
       const { error: ciInsErr } = await supabase.from("capitalization_items").insert(ciInsert);
-      if (ciInsErr) { setConfirmError(`Failed to insert capitalization: ${ciInsErr.message}`); setConfirming(false); return; }
+      if (ciInsErr) {
+        console.error("[confirm] insert cap:", ciInsErr.message);
+        setConfirmError("newAnalysis.errorInsertCap");
+        setConfirming(false);
+        return;
+      }
     }
 
-    // Collateral: delete then re-insert
     const { error: collDelErr } = await supabase.from("collateral_assets").delete().eq("deal_id", dealId);
-    if (collDelErr) { setConfirmError(`Failed to save collateral: ${collDelErr.message}`); setConfirming(false); return; }
+    if (collDelErr) {
+      console.error("[confirm] delete coll:", collDelErr.message);
+      setConfirmError("newAnalysis.errorSaveColl");
+      setConfirming(false);
+      return;
+    }
     const collInsert = collRows.filter(r => r.market_value.trim()).map(r => {
       const mv = parseNum(r.market_value) ?? 0;
       const ar = parseFloat(r.advance_rate) || 0;
@@ -551,14 +659,20 @@ export default function NewAnalysis() {
     });
     if (collInsert.length > 0) {
       const { error: collInsErr } = await supabase.from("collateral_assets").insert(collInsert);
-      if (collInsErr) { setConfirmError(`Failed to insert collateral: ${collInsErr.message}`); setConfirming(false); return; }
+      if (collInsErr) {
+        console.error("[confirm] insert coll:", collInsErr.message);
+        setConfirmError("newAnalysis.errorInsertColl");
+        setConfirming(false);
+        return;
+      }
     }
 
     const { error: scoreErr } = await supabase.functions.invoke("score-deal", {
       body: { deal_id: dealId },
     });
     if (scoreErr) {
-      setConfirmError(`Scoring failed: ${scoreErr.message}`);
+      console.error("[confirm] scoring:", scoreErr.message);
+      setConfirmError("newAnalysis.errorScoring");
       setConfirming(false);
       return;
     }
@@ -567,28 +681,28 @@ export default function NewAnalysis() {
   }
 
   function addUsesRow() {
-    if (!usesDraft.label.trim()) { setDraftErrors(p => ({ ...p, usesLabel: "Enter a label first" })); return; }
+    if (!usesDraft.label.trim()) { setDraftErrors(p => ({ ...p, usesLabel: "newAnalysis.suDraftEnterLabel" })); return; }
     setDraftErrors(p => { const n = { ...p }; delete n.usesLabel; return n; });
     setUsesRows(prev => [...prev, { ...usesDraft }]);
     setUsesDraft({ label: "", amount: "" });
   }
 
   function addSourcesRow() {
-    if (!sourcesDraft.label.trim()) { setDraftErrors(p => ({ ...p, sourcesLabel: "Enter a label first" })); return; }
+    if (!sourcesDraft.label.trim()) { setDraftErrors(p => ({ ...p, sourcesLabel: "newAnalysis.suDraftEnterLabel" })); return; }
     setDraftErrors(p => { const n = { ...p }; delete n.sourcesLabel; return n; });
     setSourcesRows(prev => [...prev, { ...sourcesDraft }]);
     setSourcesDraft({ label: "", amount: "" });
   }
 
   function addCapItemRow() {
-    if (!capItemDraft.label.trim()) { setDraftErrors(p => ({ ...p, capLabel: "Enter a label first" })); return; }
+    if (!capItemDraft.label.trim()) { setDraftErrors(p => ({ ...p, capLabel: "newAnalysis.capAddLabelError" })); return; }
     setDraftErrors(p => { const n = { ...p }; delete n.capLabel; return n; });
     setCapItemRows(prev => [...prev, { ...capItemDraft }]);
     setCapItemDraft({ category: "Senior Debt", label: "", amount: "", rate: "", notes: "" });
   }
 
   function addCollRow() {
-    if (!collDraft.market_value.trim()) { setDraftErrors(p => ({ ...p, collMarketValue: "Enter a market value first" })); return; }
+    if (!collDraft.market_value.trim()) { setDraftErrors(p => ({ ...p, collMarketValue: "newAnalysis.collAddMarketValueError" })); return; }
     setDraftErrors(p => { const n = { ...p }; delete n.collMarketValue; return n; });
     setCollRows(prev => [...prev, { ...collDraft }]);
     setCollDraft({ asset_type: "Accounts Receivable", description: "", market_value: "", advance_rate: "75" });
@@ -624,17 +738,21 @@ export default function NewAnalysis() {
     cursor: "pointer", fontFamily: "Inter, sans-serif",
   };
 
-  const STEP_LABELS = ["Company & Terms", "Documents", "Review & Score"];
+  const STEP_LABELS = [
+    t("newAnalysis.step1Label"),
+    t("newAnalysis.step2Label"),
+    t("newAnalysis.step3Label"),
+  ];
 
   // ── Sanity check (live from current edits) ───────────────────────────
   const sanity = checkFinancials({
-    revenue:          parseNum(edits[0]?.["revenue"]          ?? ""),
-    cogs:             parseNum(edits[0]?.["cogs"]             ?? ""),
-    gross_profit:     parseNum(edits[0]?.["gross_profit"]     ?? ""),
-    ebitda:           parseNum(edits[0]?.["ebitda"]           ?? ""),
-    total_assets:     parseNum(edits[0]?.["total_assets"]     ?? ""),
-    total_liabilities:parseNum(edits[0]?.["total_liabilities"]?? ""),
-    equity:           parseNum(edits[0]?.["equity"]           ?? ""),
+    revenue:           parseNum(edits[0]?.["revenue"]           ?? ""),
+    cogs:              parseNum(edits[0]?.["cogs"]              ?? ""),
+    gross_profit:      parseNum(edits[0]?.["gross_profit"]      ?? ""),
+    ebitda:            parseNum(edits[0]?.["ebitda"]            ?? ""),
+    total_assets:      parseNum(edits[0]?.["total_assets"]      ?? ""),
+    total_liabilities: parseNum(edits[0]?.["total_liabilities"] ?? ""),
+    equity:            parseNum(edits[0]?.["equity"]            ?? ""),
   }, parseNum(amountRequested));
 
   // ── Render ───────────────────────────────────────────────────────────
@@ -653,7 +771,10 @@ export default function NewAnalysis() {
         >
           Junni
         </span>
-        <span style={{ fontSize: 13, opacity: 0.65 }}>New Analysis</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <span style={{ fontSize: 13, opacity: 0.65 }}>{t("newAnalysis.navTitle")}</span>
+          <LanguageToggle />
+        </div>
       </div>
 
       {/* STEP INDICATOR */}
@@ -710,50 +831,50 @@ export default function NewAnalysis() {
               fontFamily: "Fraunces, serif", fontWeight: 800,
               fontSize: isMobile ? 24 : 30, margin: "0 0 8px", color: NAVY,
             }}>
-              Company & Terms
+              {t("newAnalysis.step1Heading")}
             </h2>
             <p style={{ margin: "0 0 32px", color: MUTED, fontSize: 14, lineHeight: 1.6 }}>
-              Enter the borrower's company details and the proposed loan terms for this analysis.
+              {t("newAnalysis.step1Sub")}
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               <div>
-                <label style={labelStyle}>Company Name *</label>
+                <label style={labelStyle}>{t("newAnalysis.fieldCompanyName")} *</label>
                 <input
                   style={{ ...inputStyle, ...(step1FieldErrors.has("companyName") ? { borderColor: RED } : {}) }}
-                  placeholder="e.g. Acme Manufacturing Inc."
+                  placeholder={t("newAnalysis.placeholderCompanyName")}
                   value={companyName}
                   onChange={e => { setCompanyName(e.target.value); if (e.target.value.trim()) setStep1FieldErrors(p => { const n = new Set(p); n.delete("companyName"); return n; }); }}
                 />
-                {step1FieldErrors.has("companyName") && <div style={{ color: RED, fontSize: 11, marginTop: 4 }}>Required</div>}
+                {step1FieldErrors.has("companyName") && <div style={{ color: RED, fontSize: 11, marginTop: 4 }}>{t("newAnalysis.required")}</div>}
               </div>
 
               <div>
-                <label style={labelStyle}>Industry *</label>
+                <label style={labelStyle}>{t("newAnalysis.fieldIndustry")} *</label>
                 <select
                   style={{ ...inputStyle, ...(step1FieldErrors.has("industry") ? { borderColor: RED } : {}) }}
                   value={industry}
                   onChange={e => { setIndustry(e.target.value); if (e.target.value) setStep1FieldErrors(p => { const n = new Set(p); n.delete("industry"); return n; }); }}
                 >
-                  <option value="">Select industry…</option>
-                  {INDUSTRIES.map(ind => <option key={ind} value={ind}>{ind}</option>)}
+                  <option value="">{t("newAnalysis.selectIndustry")}</option>
+                  {INDUSTRIES.map(ind => <option key={ind} value={ind}>{industryDisplay(ind)}</option>)}
                 </select>
-                {step1FieldErrors.has("industry") && <div style={{ color: RED, fontSize: 11, marginTop: 4 }}>Required</div>}
+                {step1FieldErrors.has("industry") && <div style={{ color: RED, fontSize: 11, marginTop: 4 }}>{t("newAnalysis.required")}</div>}
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
                 <div>
-                  <label style={labelStyle}>Amount Requested (CAD) *</label>
+                  <label style={labelStyle}>{t("newAnalysis.fieldAmountRequested")} *</label>
                   <input
                     style={{ ...inputStyle, ...(step1FieldErrors.has("amountRequested") ? { borderColor: RED } : {}) }}
                     placeholder="e.g. 2,500,000"
                     value={amountRequested}
                     onChange={e => { setAmountRequested(e.target.value); if (parseNum(e.target.value) ?? 0 > 0) setStep1FieldErrors(p => { const n = new Set(p); n.delete("amountRequested"); return n; }); }}
                   />
-                  {step1FieldErrors.has("amountRequested") && <div style={{ color: RED, fontSize: 11, marginTop: 4 }}>Required</div>}
+                  {step1FieldErrors.has("amountRequested") && <div style={{ color: RED, fontSize: 11, marginTop: 4 }}>{t("newAnalysis.required")}</div>}
                 </div>
                 <div>
-                  <label style={labelStyle}>Term (months)</label>
+                  <label style={labelStyle}>{t("newAnalysis.fieldTermMonths")}</label>
                   <input
                     style={inputStyle}
                     type="number"
@@ -766,7 +887,7 @@ export default function NewAnalysis() {
 
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
                 <div>
-                  <label style={labelStyle}>Interest Rate (%)</label>
+                  <label style={labelStyle}>{t("newAnalysis.fieldInterestRate")}</label>
                   <input
                     style={inputStyle}
                     type="number"
@@ -776,7 +897,7 @@ export default function NewAnalysis() {
                   />
                 </div>
                 <div>
-                  <label style={labelStyle}>Province</label>
+                  <label style={labelStyle}>{t("newAnalysis.fieldProvince")}</label>
                   <input
                     style={inputStyle}
                     placeholder="e.g. Ontario"
@@ -788,7 +909,7 @@ export default function NewAnalysis() {
 
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
                 <div>
-                  <label style={labelStyle}>City</label>
+                  <label style={labelStyle}>{t("newAnalysis.fieldCity")}</label>
                   <input
                     style={inputStyle}
                     placeholder="e.g. Toronto"
@@ -797,7 +918,7 @@ export default function NewAnalysis() {
                   />
                 </div>
                 <div>
-                  <label style={labelStyle}>Years in Business</label>
+                  <label style={labelStyle}>{t("newAnalysis.fieldYearsInBusiness")}</label>
                   <input
                     style={inputStyle}
                     type="number"
@@ -810,7 +931,7 @@ export default function NewAnalysis() {
               </div>
 
               <div>
-                <label style={labelStyle}>Existing Debt ($)</label>
+                <label style={labelStyle}>{t("newAnalysis.fieldExistingDebt")}</label>
                 <input
                   style={inputStyle}
                   placeholder="e.g. 500,000"
@@ -820,30 +941,30 @@ export default function NewAnalysis() {
               </div>
 
               <div>
-                <label style={labelStyle}>Use of Funds</label>
+                <label style={labelStyle}>{t("newAnalysis.fieldUseOfFunds")}</label>
                 <textarea
                   style={{ ...inputStyle, resize: "vertical", minHeight: 80 }}
                   rows={3}
-                  placeholder="e.g. Equipment purchase, working capital, refinancing…"
+                  placeholder={t("newAnalysis.useOfFundsPlaceholder")}
                   value={useOfFunds}
                   onChange={e => setUseOfFunds(e.target.value)}
                 />
-                <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>(recommended — the analysis will flag it as a risk if left blank)</div>
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{t("newAnalysis.useOfFundsHint")}</div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
                 <div>
-                  <label style={labelStyle}>Authorized Revolver Limit ($)</label>
+                  <label style={labelStyle}>{t("newAnalysis.fieldRevolverLimit")}</label>
                   <input
                     style={inputStyle}
                     placeholder="e.g. 1,000,000"
                     value={revolverLimit}
                     onChange={e => setRevolverLimit(e.target.value)}
                   />
-                  <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Include the new facility if revolving</div>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{t("newAnalysis.revolverLimitHint")}</div>
                 </div>
                 <div>
-                  <label style={labelStyle}>Revolver Currently Drawn ($)</label>
+                  <label style={labelStyle}>{t("newAnalysis.fieldRevolverDrawn")}</label>
                   <input
                     style={inputStyle}
                     placeholder="e.g. 400,000"
@@ -854,7 +975,7 @@ export default function NewAnalysis() {
               </div>
 
               <div>
-                <label style={labelStyle}>Enterprise Value ($, if known)</label>
+                <label style={labelStyle}>{t("newAnalysis.fieldEnterpriseValue")}</label>
                 <input
                   style={inputStyle}
                   placeholder="e.g. 12,000,000"
@@ -866,11 +987,12 @@ export default function NewAnalysis() {
 
             {step1FieldErrors.size > 0 && (
               <div style={{ marginTop: 16, color: RED, fontSize: 13 }}>
-                {`Missing required fields: ${[
-                  step1FieldErrors.has("companyName") ? "Company Name" : "",
-                  step1FieldErrors.has("industry") ? "Industry" : "",
-                  step1FieldErrors.has("amountRequested") ? "Amount Requested" : "",
-                ].filter(Boolean).join(", ")}`}
+                {t("newAnalysis.missingFields")}{" "}
+                {[
+                  step1FieldErrors.has("companyName") ? t("newAnalysis.fieldCompanyName") : "",
+                  step1FieldErrors.has("industry") ? t("newAnalysis.fieldIndustry") : "",
+                  step1FieldErrors.has("amountRequested") ? t("newAnalysis.fieldAmountRequested") : "",
+                ].filter(Boolean).join(", ")}
               </div>
             )}
 
@@ -880,18 +1002,18 @@ export default function NewAnalysis() {
                 background: "#FEF2F2", border: `1px solid ${RED}30`,
                 borderRadius: 8, color: RED, fontSize: 13,
               }}>
-                {step1Error}
+                {t(step1Error)}
               </div>
             )}
 
             <div style={{ marginTop: 32, display: "flex", justifyContent: "flex-end", gap: 12 }}>
-              <button style={btnGhost} onClick={() => setLocation("/lender-dashboard")}>Cancel</button>
+              <button style={btnGhost} onClick={() => setLocation("/lender-dashboard")}>{t("newAnalysis.btnCancel")}</button>
               <button
                 style={step1Loading ? { ...btnGold, opacity: 0.6, cursor: "not-allowed" } : btnGold}
                 disabled={step1Loading}
                 onClick={handleStep1}
               >
-                {step1Loading ? "Creating…" : "Continue →"}
+                {step1Loading ? t("newAnalysis.btnCreating") : t("newAnalysis.btnContinue")}
               </button>
             </div>
           </div>
@@ -904,10 +1026,10 @@ export default function NewAnalysis() {
               fontFamily: "Fraunces, serif", fontWeight: 800,
               fontSize: isMobile ? 24 : 30, margin: "0 0 8px", color: NAVY,
             }}>
-              Upload Financial Statements
+              {t("newAnalysis.step2Heading")}
             </h2>
             <p style={{ margin: "0 0 32px", color: MUTED, fontSize: 14, lineHeight: 1.6 }}>
-              Upload 2–3 years of financial statements. We'll extract the key figures automatically.
+              {t("newAnalysis.step2Sub")}
             </p>
 
             {/* Drop zone */}
@@ -931,15 +1053,15 @@ export default function NewAnalysis() {
               />
               <div style={{ fontSize: 28, marginBottom: 10 }}>📎</div>
               <div style={{ fontWeight: 600, color: NAVY, marginBottom: 4, fontSize: 14 }}>
-                Click to upload or drag and drop
+                {t("newAnalysis.dropzoneClick")}
               </div>
               <div style={{ fontSize: 12, color: MUTED }}>
-                PDF or Excel — Word not supported
+                {t("newAnalysis.dropzoneFormat")}
               </div>
             </div>
 
             <p style={{ margin: "12px 0 0", fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
-              Tip: upload the MD&amp;A or management commentary alongside the financials — the analysis will read it for business context (customer concentration, outlook, risks). Any informative PDF works.
+              {t("newAnalysis.dropzoneTip")}
             </p>
 
             {fileError && (
@@ -948,7 +1070,7 @@ export default function NewAnalysis() {
                 background: "#FEF2F2", border: `1px solid ${RED}30`,
                 borderRadius: 6, color: RED, fontSize: 13,
               }}>
-                {fileError}
+                {t(fileError)}{fileErrorDetail ? ` ${fileErrorDetail}` : ""}
               </div>
             )}
 
@@ -987,9 +1109,9 @@ export default function NewAnalysis() {
                 borderRadius: 10, textAlign: "center",
               }}>
                 <div style={{ fontSize: 22, marginBottom: 8 }}>⏳</div>
-                <div style={{ fontWeight: 600, color: NAVY, marginBottom: 4 }}>Extracting financials</div>
+                <div style={{ fontWeight: 600, color: NAVY, marginBottom: 4 }}>{t("newAnalysis.extractingTitle")}</div>
                 <div style={{ fontSize: 13, color: MUTED }}>
-                  This takes 30–90 seconds — please keep this page open.
+                  {t("newAnalysis.extractingSub")}
                 </div>
               </div>
             )}
@@ -1002,24 +1124,24 @@ export default function NewAnalysis() {
                 borderRadius: 10,
               }}>
                 <div style={{ fontWeight: 600, color: NAVY, marginBottom: 6 }}>
-                  No financials could be extracted
+                  {t("newAnalysis.noFinancialsTitle")}
                 </div>
                 <div style={{ fontSize: 13, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>
-                  The documents may be scanned images or in an unsupported format. You can enter the figures manually instead.
+                  {t("newAnalysis.noFinancialsSub")}
                 </div>
-                <button style={btnNavy} onClick={handleManualEntry}>Enter manually →</button>
+                <button style={btnNavy} onClick={handleManualEntry}>{t("newAnalysis.btnManualEntry")}</button>
               </div>
             )}
 
             {!extracting && !noFinancials && pendingRows === null && (
               <div style={{ marginTop: 32, display: "flex", justifyContent: "flex-end", gap: 12 }}>
-                <button style={btnGhost} onClick={() => setStep(1)}>← Back</button>
+                <button style={btnGhost} onClick={() => setStep(1)}>{t("newAnalysis.btnBack")}</button>
                 <button
                   style={files.length === 0 ? { ...btnGold, opacity: 0.5, cursor: "not-allowed" } : btnGold}
                   disabled={files.length === 0}
                   onClick={handleExtract}
                 >
-                  Extract financials →
+                  {t("newAnalysis.btnExtract")}
                 </button>
               </div>
             )}
@@ -1027,25 +1149,30 @@ export default function NewAnalysis() {
             {!extracting && pendingRows !== null && pendingRows.length > 0 && (
               <div style={{ marginTop: 28, background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: "22px 24px" }}>
                 <div style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 18, color: NAVY, marginBottom: 6 }}>
-                  Confirm statement units
+                  {t("newAnalysis.unitsTitle")}
                 </div>
                 <div style={{ fontSize: 13, color: MUTED, marginBottom: 18, lineHeight: 1.5 }}>
-                  Detected: <strong style={{ color: NAVY }}>{pendingRows[0]?.units_detected ?? "not detected"}</strong>
-                  {" — from: \""}
+                  {t("newAnalysis.unitsDetected")}{" "}
+                  <strong style={{ color: NAVY }}>{pendingRows[0]?.units_detected ?? t("newAnalysis.unitsNotDetected")}</strong>
+                  {" "}{t("newAnalysis.unitsFrom")}{" \""}
                   <em>{pendingRows[0]?.units_evidence ?? "—"}</em>
                   {'"'}
                 </div>
 
                 <div style={{ background: CREAM, borderRadius: 8, padding: "12px 14px", marginBottom: 20 }}>
-                  <div style={{ fontWeight: 600, color: NAVY, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Raw extracted figures (as-is)</div>
+                  <div style={{ fontWeight: 600, color: NAVY, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>{t("newAnalysis.unitsRawFigures")}</div>
                   {(["revenue", "total_assets", "ebitda"] as const).map(key => {
-                    const labels: Record<string, string> = { revenue: "Revenue", total_assets: "Total Assets", ebitda: "EBITDA" };
+                    const labels: Record<string, string> = {
+                      revenue: t("newAnalysis.fieldRevenue"),
+                      total_assets: t("newAnalysis.fieldTotalAssets"),
+                      ebitda: "EBITDA",
+                    };
                     const val = pendingRows[0]?.[key];
                     return (
                       <div key={key} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13 }}>
                         <span style={{ color: MUTED }}>{labels[key]}</span>
                         <strong style={{ color: NAVY }}>
-                          {val != null ? `$${Math.round(val).toLocaleString()}` : "—"}
+                          {val != null ? fmtAmt(Math.round(val)) : "—"}
                         </strong>
                       </div>
                     );
@@ -1054,12 +1181,12 @@ export default function NewAnalysis() {
 
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ fontWeight: 600, color: NAVY, fontSize: 13, marginBottom: 12 }}>
-                    Confirm the units these figures are in:
+                    {t("newAnalysis.unitsConfirmLabel")}
                   </div>
                   {([
-                    { value: "units" as const, label: "Actual dollars — no conversion needed" },
-                    { value: "thousands" as const, label: "Thousands — multiply all figures by 1,000" },
-                    { value: "millions" as const, label: "Millions — multiply all figures by 1,000,000" },
+                    { value: "units" as const, labelKey: "newAnalysis.unitsActual" },
+                    { value: "thousands" as const, labelKey: "newAnalysis.unitsThousands" },
+                    { value: "millions" as const, labelKey: "newAnalysis.unitsMillions" },
                   ]).map(opt => (
                     <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, cursor: "pointer", fontSize: 13 }}>
                       <input
@@ -1070,26 +1197,26 @@ export default function NewAnalysis() {
                         onChange={() => setPendingUnits(opt.value)}
                         style={{ flexShrink: 0 }}
                       />
-                      <span style={{ color: NAVY }}>{opt.label}</span>
+                      <span style={{ color: NAVY }}>{t(opt.labelKey)}</span>
                     </label>
                   ))}
                 </div>
 
                 {unitsGateError && (
-                  <div style={{ color: RED, fontSize: 13, marginBottom: 12 }}>{unitsGateError}</div>
+                  <div style={{ color: RED, fontSize: 13, marginBottom: 12 }}>{t(unitsGateError)}</div>
                 )}
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                   <button style={{ ...btnGhost, fontSize: 13, padding: "8px 16px" }}
                     onClick={() => { setPendingRows(null); setPendingUnits(null); setUnitsGateError(""); }}>
-                    ← Re-extract
+                    {t("newAnalysis.btnReExtract")}
                   </button>
                   <button
                     style={(pendingUnits === null || unitsApplying) ? { ...btnGold, opacity: 0.6, cursor: "not-allowed" } : btnGold}
                     disabled={pendingUnits === null || unitsApplying}
                     onClick={handleUnitsConfirm}
                   >
-                    {unitsApplying ? "Applying…" : "Continue to review →"}
+                    {unitsApplying ? t("newAnalysis.btnApplying") : t("newAnalysis.btnContinueToReview")}
                   </button>
                 </div>
               </div>
@@ -1104,31 +1231,31 @@ export default function NewAnalysis() {
               fontFamily: "Fraunces, serif", fontWeight: 800,
               fontSize: isMobile ? 24 : 30, margin: "0 0 8px", color: NAVY,
             }}>
-              Review & Confirm
+              {t("newAnalysis.step3Heading")}
             </h2>
             <p style={{ margin: "0 0 4px", color: MUTED, fontSize: 14, lineHeight: 1.6 }}>
-              Review the extracted figures and correct any errors before scoring.
+              {t("newAnalysis.step3Sub")}
             </p>
             <p style={{ margin: "0 0 28px", fontSize: 12, color: MUTED }}>
-              All amounts in CAD. Leave a field blank if the figure does not apply.
+              {t("newAnalysis.step3Sub2")}
             </p>
 
             {sanity.blocks.length > 0 && (
               <div style={{ background: "#FEF2F2", border: `1px solid ${RED}`, borderRadius: 8, padding: "14px 16px", marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, color: RED, fontSize: 13, marginBottom: 8 }}>Figures require verification before scoring</div>
+                <div style={{ fontWeight: 700, color: RED, fontSize: 13, marginBottom: 8 }}>{t("newAnalysis.sanityBlockTitle")}</div>
                 {sanity.blocks.map(b => (
                   <div key={b.code} style={{ color: RED, fontSize: 13, marginBottom: 4 }}>• {b.message}</div>
                 ))}
                 <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 12, cursor: "pointer", fontSize: 12, color: MUTED }}>
                   <input type="checkbox" checked={sanityOverride} onChange={e => setSanityOverride(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
-                  I have verified these figures against the source statement and confirm they are correct
+                  {t("newAnalysis.sanityOverrideLabel")}
                 </label>
               </div>
             )}
 
             {sanity.warns.length > 0 && (
               <div style={{ background: "#FFFBEB", border: "1px solid #F59E0B", borderRadius: 8, padding: "14px 16px", marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, color: "#92400E", fontSize: 13, marginBottom: 8 }}>Figures to review</div>
+                <div style={{ fontWeight: 700, color: "#92400E", fontSize: 13, marginBottom: 8 }}>{t("newAnalysis.sanityWarnTitle")}</div>
                 {sanity.warns.map(w => (
                   <div key={w.code} style={{ color: "#92400E", fontSize: 13, marginBottom: 4 }}>• {w.message}</div>
                 ))}
@@ -1149,7 +1276,7 @@ export default function NewAnalysis() {
                     FY{row.fiscal_year}
                   </span>
                   {rowIdx === 0 && (
-                    <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.65 }}>Most recent</span>
+                    <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.65 }}>{t("newAnalysis.mostRecent")}</span>
                   )}
                 </div>
 
@@ -1164,17 +1291,17 @@ export default function NewAnalysis() {
                         fontVariant: "small-caps", letterSpacing: "0.07em",
                         textTransform: "uppercase", color: NAVY,
                       }}>
-                        {group.label}
+                        {t(GROUP_LABEL_KEY[group.label] ?? group.label)}
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr" }}>
-                        {group.fields.map(({ key, label }, fIdx) => {
+                        {group.fields.map(({ key, labelKey }, fIdx) => {
                           const isLast = fIdx === n - 1;
                           return (
                             <div key={key} style={{
                               padding: "12px 18px",
                               borderBottom: isLast ? "none" : `1px solid ${BORDER}`,
                             }}>
-                              <label style={{ ...labelStyle, marginBottom: 5 }}>{label}</label>
+                              <label style={{ ...labelStyle, marginBottom: 5 }}>{t(labelKey)}</label>
                               <input
                                 style={{ ...inputStyle, fontSize: 13, padding: "8px 10px" }}
                                 type="text"
@@ -1200,8 +1327,8 @@ export default function NewAnalysis() {
                 onClick={() => setSuOpen(o => !o)}
               >
                 <span>
-                  <span style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 15, color: NAVY }}>Sources & Uses </span>
-                  <span style={{ fontSize: 12, color: MUTED, fontFamily: "Inter, sans-serif" }}>(optional)</span>
+                  <span style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 15, color: NAVY }}>{t("newAnalysis.suSectionTitle")} </span>
+                  <span style={{ fontSize: 12, color: MUTED, fontFamily: "Inter, sans-serif" }}>{t("newAnalysis.optional")}</span>
                 </span>
                 <span style={{ color: MUTED, fontSize: 11, transform: suOpen ? "rotate(180deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▼</span>
               </button>
@@ -1209,7 +1336,7 @@ export default function NewAnalysis() {
                 <div style={{ border: `1px solid ${BORDER}`, borderTop: "none", borderRadius: "0 0 12px 12px", background: "#fff" }}>
                   {/* Uses */}
                   <div style={{ padding: "16px 18px", borderBottom: `1px solid ${BORDER}` }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>Uses of Funds</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>{t("newAnalysis.suUsesTitle")}</div>
                     {usesRows.length > 0 && (
                       <div style={{ marginBottom: 10 }}>
                         {usesRows.map((row, i) => (
@@ -1232,28 +1359,28 @@ export default function NewAnalysis() {
                     )}
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: 8, alignItems: "end" }}>
                       <div>
-                        <label style={labelStyle}>Item</label>
+                        <label style={labelStyle}>{t("newAnalysis.suDraftItem")}</label>
                         <input
                           style={{ ...inputStyle, ...(draftErrors.usesLabel ? { borderColor: RED } : {}) }}
                           placeholder="e.g. Equipment purchase"
                           value={usesDraft.label}
                           onChange={e => { setUsesDraft(p => ({ ...p, label: e.target.value })); if (e.target.value.trim()) setDraftErrors(p => { const n = { ...p }; delete n.usesLabel; return n; }); }}
                         />
-                        {draftErrors.usesLabel && <div style={{ color: RED, fontSize: 11, marginTop: 3 }}>{draftErrors.usesLabel}</div>}
+                        {draftErrors.usesLabel && <div style={{ color: RED, fontSize: 11, marginTop: 3 }}>{t(draftErrors.usesLabel)}</div>}
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
                         <div style={{ flex: 1 }}>
-                          <label style={labelStyle}>Amount ($)</label>
+                          <label style={labelStyle}>{t("newAnalysis.suDraftAmount")}</label>
                           <input style={inputStyle} placeholder="e.g. 1,200,000" value={usesDraft.amount}
                             onChange={e => setUsesDraft(p => ({ ...p, amount: e.target.value }))} />
                         </div>
-                        <button type="button" style={{ ...btnNavy, padding: "10px 16px", fontSize: 13, whiteSpace: "nowrap" }} onClick={addUsesRow}>+ Add</button>
+                        <button type="button" style={{ ...btnNavy, padding: "10px 16px", fontSize: 13, whiteSpace: "nowrap" }} onClick={addUsesRow}>{t("newAnalysis.suAddBtn")}</button>
                       </div>
                     </div>
                   </div>
                   {/* Sources */}
                   <div style={{ padding: "16px 18px", borderBottom: `1px solid ${BORDER}` }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>Sources of Funds</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>{t("newAnalysis.suSourcesTitle")}</div>
                     {sourcesRows.length > 0 && (
                       <div style={{ marginBottom: 10 }}>
                         {sourcesRows.map((row, i) => (
@@ -1278,27 +1405,27 @@ export default function NewAnalysis() {
                       <button type="button"
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", marginBottom: 10, display: "inline-block" }}
                         onClick={() => setSourcesRows(prev => [...prev, { label: "New loan facility (this request)", amount: fmtNum(parseNum(amountRequested) ?? 0) }])}>
-                        + New loan facility (${fmtNum(parseNum(amountRequested) ?? 0)})
+                        {t("newAnalysis.newLoanFacilityBtn")} ({fmtAmt(parseNum(amountRequested) ?? 0)})
                       </button>
                     )}
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: 8, alignItems: "end" }}>
                       <div>
-                        <label style={labelStyle}>Item</label>
+                        <label style={labelStyle}>{t("newAnalysis.suDraftItem")}</label>
                         <input
                           style={{ ...inputStyle, ...(draftErrors.sourcesLabel ? { borderColor: RED } : {}) }}
                           placeholder="e.g. New loan facility"
                           value={sourcesDraft.label}
                           onChange={e => { setSourcesDraft(p => ({ ...p, label: e.target.value })); if (e.target.value.trim()) setDraftErrors(p => { const n = { ...p }; delete n.sourcesLabel; return n; }); }}
                         />
-                        {draftErrors.sourcesLabel && <div style={{ color: RED, fontSize: 11, marginTop: 3 }}>{draftErrors.sourcesLabel}</div>}
+                        {draftErrors.sourcesLabel && <div style={{ color: RED, fontSize: 11, marginTop: 3 }}>{t(draftErrors.sourcesLabel)}</div>}
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
                         <div style={{ flex: 1 }}>
-                          <label style={labelStyle}>Amount ($)</label>
+                          <label style={labelStyle}>{t("newAnalysis.suDraftAmount")}</label>
                           <input style={inputStyle} placeholder="e.g. 1,500,000" value={sourcesDraft.amount}
                             onChange={e => setSourcesDraft(p => ({ ...p, amount: e.target.value }))} />
                         </div>
-                        <button type="button" style={{ ...btnNavy, padding: "10px 16px", fontSize: 13, whiteSpace: "nowrap" }} onClick={addSourcesRow}>+ Add</button>
+                        <button type="button" style={{ ...btnNavy, padding: "10px 16px", fontSize: 13, whiteSpace: "nowrap" }} onClick={addSourcesRow}>{t("newAnalysis.suAddBtn")}</button>
                       </div>
                     </div>
                   </div>
@@ -1310,11 +1437,11 @@ export default function NewAnalysis() {
                     return (
                       <div style={{ padding: "12px 18px", fontSize: 12 }}>
                         <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-                          <span style={{ color: MUTED }}>Total Uses: <strong style={{ color: NAVY }}>${fmtNum(totalUses)}</strong></span>
-                          <span style={{ color: MUTED }}>Total Sources: <strong style={{ color: NAVY }}>${fmtNum(totalSources)}</strong></span>
+                          <span style={{ color: MUTED }}>{t("newAnalysis.suTotalUses")} <strong style={{ color: NAVY }}>{fmtAmt(totalUses)}</strong></span>
+                          <span style={{ color: MUTED }}>{t("newAnalysis.suTotalSources")} <strong style={{ color: NAVY }}>{fmtAmt(totalSources)}</strong></span>
                         </div>
                         {gap > 0 && totalUses + totalSources > 0 && (
-                          <div style={{ color: RED, fontWeight: 600, marginTop: 6 }}>Out of balance by ${fmtNum(gap)}</div>
+                          <div style={{ color: RED, fontWeight: 600, marginTop: 6 }}>{t("newAnalysis.suOutOfBalance")} {fmtAmt(gap)}</div>
                         )}
                       </div>
                     );
@@ -1331,8 +1458,8 @@ export default function NewAnalysis() {
                 onClick={() => setCapItemOpen(o => !o)}
               >
                 <span>
-                  <span style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 15, color: NAVY }}>Capitalization </span>
-                  <span style={{ fontSize: 12, color: MUTED, fontFamily: "Inter, sans-serif" }}>(optional)</span>
+                  <span style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 15, color: NAVY }}>{t("newAnalysis.capSectionTitle")} </span>
+                  <span style={{ fontSize: 12, color: MUTED, fontFamily: "Inter, sans-serif" }}>{t("newAnalysis.optional")}</span>
                 </span>
                 <span style={{ color: MUTED, fontSize: 11, transform: capItemOpen ? "rotate(180deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▼</span>
               </button>
@@ -1340,10 +1467,10 @@ export default function NewAnalysis() {
                 <div style={{ border: `1px solid ${BORDER}`, borderTop: "none", borderRadius: "0 0 12px 12px", background: "#fff" }}>
                   {/* Cash input — always shown when open */}
                   <div style={{ padding: "14px 18px", borderBottom: `1px solid ${BORDER}`, display: "flex", alignItems: "center", gap: 16 }}>
-                    <label style={{ ...labelStyle, marginBottom: 0, whiteSpace: "nowrap" }}>Cash & Equivalents ($)</label>
+                    <label style={{ ...labelStyle, marginBottom: 0, whiteSpace: "nowrap" }}>{t("newAnalysis.capCashLabel")}</label>
                     <input
                       style={{ ...inputStyle, maxWidth: 200 }}
-                      placeholder="from financials or override"
+                      placeholder={t("newAnalysis.capCashPlaceholder")}
                       value={capCash}
                       onChange={e => setCapCash(e.target.value)}
                     />
@@ -1370,7 +1497,14 @@ export default function NewAnalysis() {
                     return (
                       <div style={{ overflowX: "auto" }}>
                         <div style={{ display: "grid", gridTemplateColumns: "2fr 150px 120px 70px 90px 32px", minWidth: 600, padding: "8px 18px", borderBottom: `1px solid ${BORDER}` }}>
-                          {["Instrument", "Category", "Amount", "% Cap", "× EBITDA", ""].map((h, i) => (
+                          {[
+                            t("newAnalysis.capColInstrument"),
+                            t("newAnalysis.capColCategory"),
+                            t("newAnalysis.capColAmount"),
+                            t("newAnalysis.capColPctCap"),
+                            t("newAnalysis.capColXEbitda"),
+                            "",
+                          ].map((h, i) => (
                             <span key={i} style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, padding: "0 4px" }}>{h}</span>
                           ))}
                         </div>
@@ -1394,7 +1528,7 @@ export default function NewAnalysis() {
                                 value={row.category}
                                 onChange={e => setCapItemRows(prev => prev.map((r, j) => j === row.origIdx ? { ...r, category: e.target.value } : r))}
                               >
-                                {CAP_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                                {CAP_CATEGORIES.map(c => <option key={c} value={c}>{capCatDisplay(c)}</option>)}
                               </select>
                               <input
                                 style={{ ...inputStyle, fontSize: 13, padding: "5px 8px" }}
@@ -1409,49 +1543,49 @@ export default function NewAnalysis() {
                           );
                         })}
                         <div style={{ display: "grid", gridTemplateColumns: "2fr 150px 120px 70px 90px 32px", minWidth: 600, padding: "8px 18px", borderTop: `2px solid ${BORDER}`, background: "#FAFAF9" }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: MUTED, padding: "0 4px", gridColumn: "1 / 3" }}>Total Debt</span>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>${fmtNum(totalDebt)}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: MUTED, padding: "0 4px", gridColumn: "1 / 3" }}>{t("newAnalysis.capTotalDebt")}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>{fmtAmt(totalDebt)}</span>
                           <span style={{ fontSize: 13, color: MUTED, padding: "0 4px" }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</span>
                           <span style={{ fontSize: 13, color: NAVY, padding: "0 4px" }}>{hasEbitda ? `${(totalDebt / ebitdaVal!).toFixed(2)}x` : totalDebt > 0 ? "n/m" : "—"}</span>
                           <span></span>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "2fr 150px 120px 70px 90px 32px", minWidth: 600, padding: "8px 18px", borderBottom: `2px solid ${BORDER}`, background: "#FAFAF9" }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: MUTED, padding: "0 4px", gridColumn: "1 / 3" }}>Total Equity</span>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>${fmtNum(totalEquity)}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: MUTED, padding: "0 4px", gridColumn: "1 / 3" }}>{t("newAnalysis.capTotalEquity")}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>{fmtAmt(totalEquity)}</span>
                           <span style={{ fontSize: 13, color: MUTED, padding: "0 4px" }}>{totalCap > 0 ? `${(totalEquity / totalCap * 100).toFixed(1)}%` : "—"}</span>
                           <span></span><span></span>
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "2fr 150px 120px 70px 90px 32px", minWidth: 600, padding: "8px 18px" }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: NAVY, padding: "0 4px", gridColumn: "1 / 3" }}>Total Capitalization</span>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>${fmtNum(totalCap)}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: NAVY, padding: "0 4px", gridColumn: "1 / 3" }}>{t("newAnalysis.capTotalCap")}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>{fmtAmt(totalCap)}</span>
                           <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>100%</span>
                           <span></span><span></span>
                         </div>
                         {/* Metrics panel */}
                         <div style={{ padding: "14px 18px", borderTop: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 8 }}>
                           {[
-                            { label: "Senior Debt / EBITDA", value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal!).toFixed(2)}x` : "n/m" },
-                            { label: "Total Debt / EBITDA", value: hasEbitda ? `${(totalDebt / ebitdaVal!).toFixed(2)}x` : "n/m" },
-                            { label: "Net Debt / EBITDA", value: hasEbitda ? `${(netDebt / ebitdaVal!).toFixed(2)}x` : "n/m" },
-                            ...(hasRevolver ? [{ label: "Authorized Revolver Limit", value: `$${fmtNum(rl)}` }] : []),
-                            { label: `Available Liquidity${!hasRevolver ? " (cash only — no revolver data)" : ""}`, value: `$${fmtNum(availLiquidity)}` },
+                            { labelKey: "newAnalysis.capMetricSeniorDebt", value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal!).toFixed(2)}x` : "n/m" },
+                            { labelKey: "newAnalysis.capMetricTotalDebt", value: hasEbitda ? `${(totalDebt / ebitdaVal!).toFixed(2)}x` : "n/m" },
+                            { labelKey: "newAnalysis.capMetricNetDebt", value: hasEbitda ? `${(netDebt / ebitdaVal!).toFixed(2)}x` : "n/m" },
+                            ...(hasRevolver ? [{ labelKey: "newAnalysis.capMetricRevolverLimit", value: fmtAmt(rl!) }] : []),
+                            { labelKey: hasRevolver ? "newAnalysis.capMetricLiquidity" : "newAnalysis.capMetricLiquidityCashOnly", value: fmtAmt(availLiquidity) },
                             (() => {
-                              if (evProvided !== null) return { label: "EV (provided)", value: `$${fmtNum(evProvided)}` };
-                              if (totalEquity > 0 && evProxy > 0) return { label: "EV (proxy: total cap net of cash)", value: `$${fmtNum(evProxy)}` };
-                              return { label: "EV (proxy: total cap net of cash)", value: "n/m", hint: "(add equity to capitalization for EV)" };
+                              if (evProvided !== null) return { labelKey: "newAnalysis.capMetricEVProvided", value: fmtAmt(evProvided), hintKey: undefined };
+                              if (totalEquity > 0 && evProxy > 0) return { labelKey: "newAnalysis.capMetricEVProxy", value: fmtAmt(evProxy), hintKey: undefined };
+                              return { labelKey: "newAnalysis.capMetricEVProxy", value: "n/m", hintKey: "newAnalysis.capMetricEVHint" };
                             })(),
-                          ].map(({ label, value, hint }: { label: string; value: string; hint?: string }) => (
-                            <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, alignItems: "baseline" }}>
-                              <span style={{ color: MUTED }}>{label}{hint ? <span style={{ opacity: 0.65, marginLeft: 6, fontSize: 11 }}>{hint}</span> : null}</span>
+                          ].map(({ labelKey, value, hintKey }: { labelKey: string; value: string; hintKey?: string }) => (
+                            <div key={labelKey} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, alignItems: "baseline" }}>
+                              <span style={{ color: MUTED }}>{t(labelKey)}{hintKey ? <span style={{ opacity: 0.65, marginLeft: 6, fontSize: 11 }}>{t(hintKey)}</span> : null}</span>
                               <span style={{ fontWeight: 600, color: NAVY }}>{value}</span>
                             </div>
                           ))}
                           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                            <span style={{ color: MUTED }}>Debt / Total Capitalization</span>
+                            <span style={{ color: MUTED }}>{t("newAnalysis.capMetricDebtToCap")}</span>
                             <span style={{ fontWeight: 600, color: NAVY }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</span>
                           </div>
                           {totalEquity === 0 && (
-                            <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>No equity entered — Debt/Cap and EV reflect a debt-only capitalization.</div>
+                            <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>{t("newAnalysis.capNoEquity")}</div>
                           )}
                         </div>
                       </div>
@@ -1463,7 +1597,7 @@ export default function NewAnalysis() {
                       <button type="button"
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", display: "inline-block" }}
                         onClick={() => setCapItemRows(prev => [...prev, { category: "Senior Debt", label: "New facility (this request)", amount: fmtNum(parseNum(amountRequested) ?? 0), rate: "", notes: "" }])}>
-                        + New facility — Senior Debt (${fmtNum(parseNum(amountRequested) ?? 0)})
+                        {t("newAnalysis.newFacilityCapBtn")} ({fmtAmt(parseNum(amountRequested) ?? 0)})
                       </button>
                     </div>
                   )}
@@ -1473,52 +1607,52 @@ export default function NewAnalysis() {
                       <button type="button"
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", display: "inline-block" }}
                         onClick={() => setCapItemRows(prev => [...prev, { category: "Common Equity", label: "Common Equity", amount: fmtNum(parseNum(edits[0]?.["equity"] ?? "") ?? 0), rate: "", notes: "" }])}>
-                        + Common Equity (${fmtNum(parseNum(edits[0]?.["equity"] ?? "") ?? 0)})
+                        {t("newAnalysis.commonEquityBtn")} ({fmtAmt(parseNum(edits[0]?.["equity"] ?? "") ?? 0)})
                       </button>
                     </div>
                   )}
                   {/* Add-row form */}
                   <div style={{ padding: "16px 18px", borderTop: `1px solid ${BORDER}` }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Add instrument</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>{t("newAnalysis.capAddTitle")}</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
                         <div>
-                          <label style={labelStyle}>Category</label>
+                          <label style={labelStyle}>{t("newAnalysis.capAddCategory")}</label>
                           <select style={inputStyle} value={capItemDraft.category}
                             onChange={e => setCapItemDraft(p => ({ ...p, category: e.target.value }))}>
-                            {CAP_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                            {CAP_CATEGORIES.map(c => <option key={c} value={c}>{capCatDisplay(c)}</option>)}
                           </select>
                         </div>
                         <div>
-                          <label style={labelStyle}>Instrument / Label</label>
+                          <label style={labelStyle}>{t("newAnalysis.capAddLabel")}</label>
                           <input
                             style={{ ...inputStyle, ...(draftErrors.capLabel ? { borderColor: RED } : {}) }}
                             placeholder="e.g. Term loan — RBC"
                             value={capItemDraft.label}
                             onChange={e => { setCapItemDraft(p => ({ ...p, label: e.target.value })); if (e.target.value.trim()) setDraftErrors(p => { const n = { ...p }; delete n.capLabel; return n; }); }}
                           />
-                          {draftErrors.capLabel && <div style={{ color: RED, fontSize: 11, marginTop: 3 }}>{draftErrors.capLabel}</div>}
+                          {draftErrors.capLabel && <div style={{ color: RED, fontSize: 11, marginTop: 3 }}>{t(draftErrors.capLabel)}</div>}
                         </div>
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 8 }}>
                         <div>
-                          <label style={labelStyle}>Amount ($)</label>
+                          <label style={labelStyle}>{t("newAnalysis.capAddAmount")}</label>
                           <input style={inputStyle} placeholder="e.g. 2,000,000" value={capItemDraft.amount}
                             onChange={e => setCapItemDraft(p => ({ ...p, amount: e.target.value }))} />
                         </div>
                         <div>
-                          <label style={labelStyle}>Rate % (optional)</label>
+                          <label style={labelStyle}>{t("newAnalysis.capAddRate")}</label>
                           <input style={inputStyle} type="number" step="0.1" placeholder="e.g. 8.5" value={capItemDraft.rate}
                             onChange={e => setCapItemDraft(p => ({ ...p, rate: e.target.value }))} />
                         </div>
                         <div>
-                          <label style={labelStyle}>Notes (optional)</label>
+                          <label style={labelStyle}>{t("newAnalysis.capAddNotes")}</label>
                           <input style={inputStyle} placeholder="e.g. 5-year term" value={capItemDraft.notes}
                             onChange={e => setCapItemDraft(p => ({ ...p, notes: e.target.value }))} />
                         </div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                        <button type="button" style={{ ...btnNavy, padding: "8px 18px", fontSize: 13 }} onClick={addCapItemRow}>+ Add instrument</button>
+                        <button type="button" style={{ ...btnNavy, padding: "8px 18px", fontSize: 13 }} onClick={addCapItemRow}>{t("newAnalysis.capAddBtn")}</button>
                       </div>
                     </div>
                   </div>
@@ -1540,8 +1674,8 @@ export default function NewAnalysis() {
                 onClick={() => setCollOpen(o => !o)}
               >
                 <span>
-                  <span style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 15, color: NAVY }}>Collateral </span>
-                  <span style={{ fontSize: 12, color: MUTED, fontFamily: "Inter, sans-serif" }}>(optional)</span>
+                  <span style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 15, color: NAVY }}>{t("newAnalysis.collSectionTitle")} </span>
+                  <span style={{ fontSize: 12, color: MUTED, fontFamily: "Inter, sans-serif" }}>{t("newAnalysis.optional")}</span>
                 </span>
                 <span style={{ color: MUTED, fontSize: 11, transform: collOpen ? "rotate(180deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▼</span>
               </button>
@@ -1550,7 +1684,14 @@ export default function NewAnalysis() {
                   {collRows.length > 0 && (
                     <div style={{ overflowX: "auto" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "140px 2fr 120px 80px 120px 32px", minWidth: 580, padding: "8px 18px", borderBottom: `1px solid ${BORDER}` }}>
-                        {["Asset", "Description", "Market Value", "Advance %", "Lending Value", ""].map((h, i) => (
+                        {[
+                          t("newAnalysis.collColAsset"),
+                          t("newAnalysis.collColDescription"),
+                          t("newAnalysis.collColMarketValue"),
+                          t("newAnalysis.collColAdvance"),
+                          t("newAnalysis.collColLendingValue"),
+                          "",
+                        ].map((h, i) => (
                           <span key={i} style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, padding: "0 4px" }}>{h}</span>
                         ))}
                       </div>
@@ -1568,7 +1709,7 @@ export default function NewAnalysis() {
                                 setCollRows(prev => prev.map((r, j) => j === i ? { ...r, asset_type: type, advance_rate: String(COLLATERAL_DEFAULTS[type] ?? 25) } : r));
                               }}
                             >
-                              {Object.keys(COLLATERAL_DEFAULTS).map(t => <option key={t}>{t}</option>)}
+                              {Object.keys(COLLATERAL_DEFAULTS).map(tp => <option key={tp} value={tp}>{collTypeDisplay(tp)}</option>)}
                             </select>
                             <input
                               style={{ ...inputStyle, fontSize: 12, padding: "5px 8px" }}
@@ -1586,7 +1727,7 @@ export default function NewAnalysis() {
                               value={row.advance_rate}
                               onChange={e => setCollRows(prev => prev.map((r, j) => j === i ? { ...r, advance_rate: e.target.value } : r))}
                             />
-                            <span style={{ fontSize: 13, color: NAVY, fontWeight: 500, padding: "0 4px" }}>${fmtNum(lv)}</span>
+                            <span style={{ fontSize: 13, color: NAVY, fontWeight: 500, padding: "0 4px" }}>{fmtAmt(lv)}</span>
                             <button type="button" onClick={() => setCollRows(prev => prev.filter((_, j) => j !== i))}
                               style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, padding: 0, lineHeight: 1, alignSelf: "center" }}>×</button>
                           </div>
@@ -1604,15 +1745,15 @@ export default function NewAnalysis() {
                         return (
                           <>
                             <div style={{ display: "grid", gridTemplateColumns: "140px 2fr 120px 80px 120px 32px", minWidth: 580, padding: "8px 18px", borderBottom: coverage !== null ? `1px solid ${BORDER}` : "none" }}>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: MUTED, padding: "0 4px", gridColumn: "1 / 3" }}>Total</span>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>${fmtNum(sumMV)}</span>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: MUTED, padding: "0 4px", gridColumn: "1 / 3" }}>{t("newAnalysis.collTotal")}</span>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>{fmtAmt(sumMV)}</span>
                               <span></span>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>${fmtNum(sumLV)}</span>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, padding: "0 4px" }}>{fmtAmt(sumLV)}</span>
                               <span></span>
                             </div>
                             {coverage !== null && (
                               <div style={{ padding: "10px 18px", fontSize: 12, color: MUTED }}>
-                                Lending value ${fmtNum(sumLV)} ÷ total debt ${fmtNum(totalDebt)} (existing ${fmtNum(parseNum(existingDebt) ?? 0)} + requested ${fmtNum(parseNum(amountRequested) ?? 0)}) = <strong style={{ color: NAVY }}>{coverage.toFixed(2)}x</strong>
+                                {t("newAnalysis.collCoveragePre")} {fmtAmt(sumLV)} {t("newAnalysis.collCoverageMid")} {fmtAmt(totalDebt)} ({t("newAnalysis.collCoverageExisting")} {fmtAmt(parseNum(existingDebt) ?? 0)} + {t("newAnalysis.collCoverageRequested")} {fmtAmt(parseNum(amountRequested) ?? 0)}) = <strong style={{ color: NAVY }}>{coverage.toFixed(2)}x</strong>
                               </div>
                             )}
                           </>
@@ -1621,44 +1762,44 @@ export default function NewAnalysis() {
                     </div>
                   )}
                   <div style={{ padding: "16px 18px" }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Add asset</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>{t("newAnalysis.collAddTitle")}</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
                         <div>
-                          <label style={labelStyle}>Asset type</label>
+                          <label style={labelStyle}>{t("newAnalysis.collAddAssetType")}</label>
                           <select style={inputStyle} value={collDraft.asset_type}
                             onChange={e => {
                               const type = e.target.value;
                               setCollDraft(p => ({ ...p, asset_type: type, advance_rate: String(COLLATERAL_DEFAULTS[type] ?? 25) }));
                             }}>
-                            {Object.keys(COLLATERAL_DEFAULTS).map(t => <option key={t}>{t}</option>)}
+                            {Object.keys(COLLATERAL_DEFAULTS).map(tp => <option key={tp} value={tp}>{collTypeDisplay(tp)}</option>)}
                           </select>
                         </div>
                         <div>
-                          <label style={labelStyle}>Description</label>
+                          <label style={labelStyle}>{t("newAnalysis.collAddDescription")}</label>
                           <input style={inputStyle} placeholder="e.g. 2021 CNC machine" value={collDraft.description}
                             onChange={e => setCollDraft(p => ({ ...p, description: e.target.value }))} />
                         </div>
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
                         <div>
-                          <label style={labelStyle}>Market value ($)</label>
+                          <label style={labelStyle}>{t("newAnalysis.collAddMarketValue")}</label>
                           <input
                             style={{ ...inputStyle, ...(draftErrors.collMarketValue ? { borderColor: RED } : {}) }}
                             placeholder="e.g. 250,000"
                             value={collDraft.market_value}
                             onChange={e => { setCollDraft(p => ({ ...p, market_value: e.target.value })); if (e.target.value.trim()) setDraftErrors(p => { const n = { ...p }; delete n.collMarketValue; return n; }); }}
                           />
-                          {draftErrors.collMarketValue && <div style={{ color: RED, fontSize: 11, marginTop: 3 }}>{draftErrors.collMarketValue}</div>}
+                          {draftErrors.collMarketValue && <div style={{ color: RED, fontSize: 11, marginTop: 3 }}>{t(draftErrors.collMarketValue)}</div>}
                         </div>
                         <div>
-                          <label style={labelStyle}>Advance rate (%)</label>
+                          <label style={labelStyle}>{t("newAnalysis.collAddAdvanceRate")}</label>
                           <input style={inputStyle} type="number" min="0" max="100" step="1" value={collDraft.advance_rate}
                             onChange={e => setCollDraft(p => ({ ...p, advance_rate: e.target.value }))} />
                         </div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                        <button type="button" style={{ ...btnNavy, padding: "8px 18px", fontSize: 13 }} onClick={addCollRow}>+ Add asset</button>
+                        <button type="button" style={{ ...btnNavy, padding: "8px 18px", fontSize: 13 }} onClick={addCollRow}>{t("newAnalysis.collAddBtn")}</button>
                       </div>
                     </div>
                   </div>
@@ -1672,7 +1813,7 @@ export default function NewAnalysis() {
                 background: "#FEF2F2", border: `1px solid ${RED}30`,
                 borderRadius: 8, color: RED, fontSize: 13,
               }}>
-                {confirmError}
+                {t(confirmError)}
               </div>
             )}
 
@@ -1682,8 +1823,8 @@ export default function NewAnalysis() {
                 background: "#EEF2FF", border: "1px solid #4F46E530",
                 borderRadius: 10, textAlign: "center",
               }}>
-                <div style={{ fontWeight: 600, color: NAVY, marginBottom: 4 }}>Scoring — about 30 seconds</div>
-                <div style={{ fontSize: 13, color: MUTED }}>Please keep this page open.</div>
+                <div style={{ fontWeight: 600, color: NAVY, marginBottom: 4 }}>{t("newAnalysis.scoringTitle")}</div>
+                <div style={{ fontSize: 13, color: MUTED }}>{t("newAnalysis.scoringKeepOpen")}</div>
               </div>
             )}
 
@@ -1693,14 +1834,14 @@ export default function NewAnalysis() {
                 disabled={confirming}
                 onClick={() => setStep(2)}
               >
-                ← Back
+                {t("newAnalysis.btnBack")}
               </button>
               <button
                 style={(confirming || (sanity.blocks.length > 0 && !sanityOverride)) ? { ...btnGold, opacity: 0.6, cursor: "not-allowed" } : btnGold}
                 disabled={confirming || (sanity.blocks.length > 0 && !sanityOverride)}
                 onClick={handleConfirm}
               >
-                {confirming ? "Scoring…" : "Confirm & Score →"}
+                {confirming ? t("newAnalysis.btnScoring") : t("newAnalysis.btnConfirmScore")}
               </button>
             </div>
           </div>
