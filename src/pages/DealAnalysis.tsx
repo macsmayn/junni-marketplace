@@ -256,7 +256,7 @@ export default function DealAnalysis() {
       if (names.length > 0) {
         const { data: defs } = await supabase
           .from("metric_definitions")
-          .select("metric_name,what_it_is,what_it_measures,high_value_means,low_value_means,why_it_matters,formula_plain,what_it_is_fr,what_it_measures_fr,high_value_means_fr,low_value_means_fr,why_it_matters_fr,formula_plain_fr")
+          .select("metric_name,metric_name_fr,what_it_is,what_it_measures,high_value_means,low_value_means,why_it_matters,formula_plain,what_it_is_fr,what_it_measures_fr,high_value_means_fr,low_value_means_fr,why_it_matters_fr,formula_plain_fr")
           .in("metric_name", names);
         const defMap: Record<string, any> = {};
         for (const def of defs ?? []) defMap[def.metric_name] = def;
@@ -419,6 +419,11 @@ export default function DealAnalysis() {
   const displayRisks = score
     ? ((lang === "fr" && score.risks_fr?.length) ? score.risks_fr : score.risks)
     : null;
+
+  // Display-only: returns the French metric name when available, English otherwise.
+  // Internal lookups (definitions[row.metric_name], sort order, etc.) always use the English key.
+  const mName = (englishName: string) =>
+    (lang === "fr" && definitions[englishName]?.metric_name_fr) || englishName;
 
   const tierLabel = (tier: string) => {
     const map: Record<string, string> = {
@@ -690,7 +695,7 @@ export default function DealAnalysis() {
                           style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr auto auto" : "2fr 1fr 1fr auto", alignItems: "center", gap: isMobile ? 8 : 16, padding: isMobile ? "12px 14px" : "13px 18px", cursor: "pointer" }}
                           onClick={() => setExpandedRow(isExpanded ? null : row.metric_name)}
                         >
-                          <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{row.metric_name}</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{mName(row.metric_name)}</span>
                           <span style={{ fontSize: 13, color: MUTED, textAlign: "right" }}>{fmtValue(row.value, row.metric_name, row.strong_band, lang)}</span>
                           <span>{gradeChip(row.grade, t)}</span>
                           <span
@@ -754,7 +759,7 @@ export default function DealAnalysis() {
                   const sl = statusLabelKey(row.status);
                   return (
                     <div key={row.metric_name} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr 2fr", gap: isMobile ? 2 : 16, padding: isMobile ? "10px 14px" : "11px 18px", borderBottom: i < notScored.length - 1 ? "1px solid #F0EDE8" : "none", alignItems: "start" }}>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: NAVY }}>{row.metric_name}</span>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: NAVY }}>{mName(row.metric_name)}</span>
                       <span style={{ fontSize: 11, fontWeight: 700, color: sl.color, textTransform: "uppercase", letterSpacing: "0.05em" }}>{t(sl.key)}</span>
                       <span style={{ fontSize: 12, color: MUTED }}>{humanizeNotScoredReason(row.compute_detail, row.grade_reason, t)}</span>
                     </div>
@@ -1500,7 +1505,7 @@ export default function DealAnalysis() {
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-            <span style={{ fontWeight: 700, color: NAVY, fontSize: 13, paddingRight: 12 }}>{definitionBubble}</span>
+            <span style={{ fontWeight: 700, color: NAVY, fontSize: 13, paddingRight: 12 }}>{mName(definitionBubble)}</span>
             <button
               onClick={() => setDefinitionBubble(null)}
               style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, padding: 0, lineHeight: 1, flexShrink: 0 }}
@@ -1525,7 +1530,7 @@ export default function DealAnalysis() {
             fontSize: 13, color: MUTED, lineHeight: 1.7,
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-              <span style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 15, color: NAVY, paddingRight: 12 }}>{definitionBubble}</span>
+              <span style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 15, color: NAVY, paddingRight: 12 }}>{mName(definitionBubble)}</span>
               <button
                 onClick={() => setDefinitionBubble(null)}
                 style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 22, padding: 0, lineHeight: 1, flexShrink: 0, fontFamily: "Inter, sans-serif" }}
