@@ -26,3 +26,14 @@ export const supabase = createClient(
   'sb_publishable_DB4ZyrLd-8wYkE0HgBokLg_GN6cU_NB',
   { accessToken: resolveToken }
 )
+
+export async function invokeFunction(
+  name: string,
+  body: unknown
+): Promise<{ data: unknown; error: Error | null }> {
+  const token = await resolveToken();
+  return supabase.functions.invoke(name, {
+    body,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

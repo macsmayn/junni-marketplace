@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase } from "../lib/supabase";
+import { supabase, invokeFunction } from "../lib/supabase";
 import { checkFinancials } from "../lib/financialSanity";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
@@ -387,9 +387,7 @@ export default function NewAnalysis() {
       }
     }
 
-    const { error: invokeErr } = await supabase.functions.invoke("score-deal", {
-      body: { deal_id: dealId, extract_only: true },
-    });
+    const { error: invokeErr } = await invokeFunction("score-deal", { deal_id: dealId, extract_only: true });
     if (invokeErr) {
       console.error("[NewAnalysis] extraction:", invokeErr.message);
       setFileError("newAnalysis.errorExtraction");
@@ -667,9 +665,7 @@ export default function NewAnalysis() {
       }
     }
 
-    const { error: scoreErr } = await supabase.functions.invoke("score-deal", {
-      body: { deal_id: dealId },
-    });
+    const { error: scoreErr } = await invokeFunction("score-deal", { deal_id: dealId });
     if (scoreErr) {
       console.error("[confirm] scoring:", scoreErr.message);
       setConfirmError("newAnalysis.errorScoring");
