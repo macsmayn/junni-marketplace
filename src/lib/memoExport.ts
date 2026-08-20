@@ -932,7 +932,7 @@ function pdfScoreCalcSection(data: MemoData, t: (k: string) => string, lang: str
         { text: t('memo.sumWeights').replace('{w}', twStr), fontSize: 8.5, color: MUTED, width: 110 },
         { text: [
           { text: `${totalWeightedPoints.toLocaleString(lang === 'fr' ? 'fr-CA' : 'en-US')} ÷ ${twStr} = ${rawDisplay}` },
-          { text: ` → `, color: MUTED },
+          { text: ` -> `, color: MUTED },
           { text: String(computedScore), bold: true, fontSize: 10, color: NAVY },
         ], fontSize: 8.5 },
       ],
