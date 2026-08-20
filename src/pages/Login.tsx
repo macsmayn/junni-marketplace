@@ -1,12 +1,14 @@
 ﻿import { useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
+import { useLanguage } from "../contexts/LanguageContext";
 
 const LOGO_BEIGE = "/junni-logo-beige.png";
 
 export default function Login() {
   const { loginWithRedirect, isAuthenticated, isLoading } = useAuth0();
   const [, setLocation] = useLocation();
+  const { t } = useLanguage();
   const redirectCalled = useRef(false);
 
   useEffect(() => {
@@ -29,7 +31,7 @@ export default function Login() {
   if (!isAuthenticated) {
     return (
       <div style={{ minHeight: "100vh", background: "#FAF8F4", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif", color: "#7A7060", fontSize: 14 }}>
-        Redirecting to sign in…
+        {t('login.redirecting')}
       </div>
     );
   }
@@ -354,26 +356,26 @@ export default function Login() {
       <div className="login-wrapper">
         {/* Left Panel */}
         <div className="login-left">
-          <h1>Credit analysis for private lenders.</h1>
-          <p>Log in to score, benchmark, and generate analyst-grade credit memos.</p>
+          <h1>{t('login.headline')}</h1>
+          <p>{t('login.subheading')}</p>
           <ul className="login-features">
-            <li>AI-powered credit scoring from financial statements</li>
-            <li>Analyst-grade credit memos in minutes</li>
-            <li>Industry-benchmarked risk metrics</li>
-            <li>24/7 dashboard access</li>
+            <li>{t('login.feature1')}</li>
+            <li>{t('login.feature2')}</li>
+            <li>{t('login.feature3')}</li>
+            <li>{t('login.feature4')}</li>
           </ul>
         </div>
 
         {/* Right Panel - Form */}
         <div className="login-right">
           <div className="login-form-header">
-            <h2>Sign in</h2>
-            <p>Enter your credentials to continue</p>
+            <h2>{t('login.formHeading')}</h2>
+            <p>{t('login.formSub')}</p>
           </div>
 
           <form onSubmit={handleLogin}>
             <div className="form-group">
-              <label htmlFor="email">Email Address</label>
+              <label htmlFor="email">{t('login.emailLabel')}</label>
               <input
                 type="email"
                 id="email"
@@ -383,7 +385,7 @@ export default function Login() {
             </div>
 
             <div className="form-group">
-              <label htmlFor="password">Password</label>
+              <label htmlFor="password">{t('login.passwordLabel')}</label>
               <input
                 type="password"
                 id="password"
@@ -399,19 +401,19 @@ export default function Login() {
                   id="remember"
                 />
                 <label htmlFor="remember" style={{ marginBottom: 0, fontWeight: 400 }}>
-                  Remember me
+                  {t('login.rememberMe')}
                 </label>
               </div>
-              <a href="#">Forgot password?</a>
+              <a href="#">{t('login.forgotPassword')}</a>
             </div>
 
             <button type="submit" className="btn-sign-in">
-              Sign In
+              {t('login.signInBtn')}
             </button>
           </form>
 
           <div className="signup-link">
-            Don't have an account? <a href="/role-select">Create one</a>
+            {t('login.noAccount')} <a href="/role-select">{t('login.createOne')}</a>
           </div>
         </div>
       </div>

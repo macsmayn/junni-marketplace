@@ -1,9 +1,12 @@
 ﻿import { useLocation } from "wouter";
+import { useLanguage } from "../contexts/LanguageContext";
+import { LanguageToggle } from "../components/LanguageToggle";
 
 const LOGO_BEIGE = "/junni-logo-beige.png";
 
 export default function NotFound() {
   const [, setLocation] = useLocation();
+  const { t } = useLanguage();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#FAF8F4", color: "#1B2B4B", fontFamily: "'Inter', sans-serif" }}>
@@ -253,8 +256,9 @@ export default function NotFound() {
           </a>
         </div>
         <div className="nav-right">
-          <button className="btn btn-ghost" onClick={() => alert("Sign In")}>
-            Sign In
+          <LanguageToggle />
+          <button className="btn btn-ghost" onClick={() => alert(t('notFound.signIn'))}>
+            {t('notFound.signIn')}
           </button>
         </div>
       </nav>
@@ -267,21 +271,19 @@ export default function NotFound() {
             <span className="error-digit gold">0</span>
             <span className="error-digit">4</span>
           </div>
-          <h1 className="error-title">This page doesn't exist.</h1>
-          <p className="error-desc">
-            We couldn't find what you're looking for. The page may have been moved, deleted, or the URL might be incorrect.
-          </p>
+          <h1 className="error-title">{t('notFound.title')}</h1>
+          <p className="error-desc">{t('notFound.desc')}</p>
 
           <div className="error-buttons">
             <button className="btn btn-navy" onClick={() => setLocation("/")}>
-              ← Go Home
+              {t('notFound.goHome')}
             </button>
             <button className="btn btn-ghost" onClick={() => setLocation("/marketplace")}>
-              Browse Marketplace
+              {t('notFound.browsePlatform')}
             </button>
           </div>
 
-          <div className="quick-links-label">Or go to</div>
+          <div className="quick-links-label">{t('notFound.orGoTo')}</div>
           <div className="quick-links">
             <button
               className="quick-link"
@@ -289,8 +291,8 @@ export default function NotFound() {
               style={{ border: "1px solid #E8E2D9", background: "#fff", borderRadius: "10px", padding: "20px", textDecoration: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center" }}
             >
               <div className="quick-link-icon">📊</div>
-              <div className="quick-link-label">Marketplace</div>
-              <div className="quick-link-sub">Browse active deals</div>
+              <div className="quick-link-label">{t('notFound.qlMarketplace')}</div>
+              <div className="quick-link-sub">{t('notFound.qlMarketplaceSub')}</div>
             </button>
             <button
               className="quick-link"
@@ -298,8 +300,8 @@ export default function NotFound() {
               style={{ border: "1px solid #E8E2D9", background: "#fff", borderRadius: "10px", padding: "20px", textDecoration: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center" }}
             >
               <div className="quick-link-icon">📈</div>
-              <div className="quick-link-label">Dashboard</div>
-              <div className="quick-link-sub">Your account overview</div>
+              <div className="quick-link-label">{t('notFound.qlDashboard')}</div>
+              <div className="quick-link-sub">{t('notFound.qlDashboardSub')}</div>
             </button>
             <button
               className="quick-link"
@@ -307,8 +309,8 @@ export default function NotFound() {
               style={{ border: "1px solid #E8E2D9", background: "#fff", borderRadius: "10px", padding: "20px", textDecoration: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center" }}
             >
               <div className="quick-link-icon">📝</div>
-              <div className="quick-link-label">Apply</div>
-              <div className="quick-link-sub">Start your application</div>
+              <div className="quick-link-label">{t('notFound.qlApply')}</div>
+              <div className="quick-link-sub">{t('notFound.qlApplySub')}</div>
             </button>
           </div>
         </div>
@@ -316,7 +318,7 @@ export default function NotFound() {
 
       {/* FOOTER */}
       <footer>
-        <p>&copy; 2025 Junni Marketplace. All rights reserved.</p>
+        <p>{t('notFound.footer')}</p>
       </footer>
     </div>
   );

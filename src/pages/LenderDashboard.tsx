@@ -1,25 +1,26 @@
-﻿import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase } from "../lib/supabase";
+import { useLanguage } from "../contexts/LanguageContext";
+import { LanguageToggle } from "../components/LanguageToggle";
 
 const LOGO_NAVY = "/junni-logo-navy.png";
-const LOGO_BEIGE = "/junni-logo-beige.png";
 
-function timeAgo(dateStr: string): string {
+function timeAgo(dateStr: string, t: (k: string) => string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t('lenderDashboard.timeJustNow');
+  if (mins < 60) return t('lenderDashboard.timeMinAgo').replace('{n}', String(mins));
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
+  if (hrs < 24) return t('lenderDashboard.timeHrAgo').replace('{n}', String(hrs));
   const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  return t('lenderDashboard.timeDayAgo').replace('{n}', String(days));
 }
 
 export default function LenderDashboard() {
   const [, setLocation] = useLocation();
-  const [lang, setLang] = useState("en");
+  const { t } = useLanguage();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [topbarVisible, setTopbarVisible] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
@@ -85,16 +86,10 @@ export default function LenderDashboard() {
     fetchData();
   }, [isAuthenticated, user?.sub, auth0Loading]);
 
-  const formatCurrency = (n: number): string => {
-    if (n == null || isNaN(n)) return "$0";
-    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-    if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
-    return `$${n.toLocaleString()}`;
-  };
-
   const unreadCount = notifications.filter(n => !n.read).length;
   const lenderName = user?.name || dbUser?.full_name || "Lender";
   const lenderInitials = lenderName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
+  const firstName = lenderName.split(" ")[0];
 
   const fetchNotificationsNow = async () => {
     if (!dbUser?.id) return;
@@ -137,16 +132,16 @@ export default function LenderDashboard() {
       fontFamily: "'Inter', sans-serif",
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #E8E2D9', flexShrink: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: '#1B2B4B' }}>Notifications</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: '#1B2B4B' }}>{t('lenderDashboard.notifTitle')}</span>
         {unreadCount > 0 && (
           <button onClick={handleMarkAllRead} style={{ background: 'none', border: 'none', fontSize: 12, color: '#D4940A', fontWeight: 600, cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>
-            Mark all read
+            {t('lenderDashboard.markAllRead')}
           </button>
         )}
       </div>
       <div style={{ overflowY: 'auto' as const, flex: 1 }}>
         {notifications.length === 0 ? (
-          <div style={{ padding: '24px 16px', textAlign: 'center' as const, color: '#7A7060', fontSize: 13 }}>No notifications yet.</div>
+          <div style={{ padding: '24px 16px', textAlign: 'center' as const, color: '#7A7060', fontSize: 13 }}>{t('lenderDashboard.noNotifications')}</div>
         ) : (
           notifications.map(n => (
             <div
@@ -166,7 +161,7 @@ export default function LenderDashboard() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#1B2B4B', marginBottom: 2 }}>{n.title}</div>
                 <div style={{ fontSize: 12, color: '#7A7060', lineHeight: 1.45, marginBottom: 4 }}>{n.message}</div>
-                <div style={{ fontSize: 11, color: '#9CA3AF' }}>{timeAgo(n.created_at)}</div>
+                <div style={{ fontSize: 11, color: '#9CA3AF' }}>{timeAgo(n.created_at, t)}</div>
               </div>
             </div>
           ))
@@ -178,7 +173,7 @@ export default function LenderDashboard() {
   if (auth0Loading || loading) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#FAF8F4", fontFamily: "Inter, sans-serif", color: "#1B2B4B", fontSize: "16px", fontWeight: 600 }}>
-        Loading...
+        {t('lenderDashboard.loading')}
       </div>
     );
   }
@@ -290,17 +285,18 @@ export default function LenderDashboard() {
             <button className="hamburger" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Menu">
               <span></span><span></span><span></span>
             </button>
-            <span className="nav-title">Lender Dashboard</span>
+            <span className="nav-title">{t('lenderDashboard.navTitle')}</span>
           </div>
           <div className="nav-right">
+            <LanguageToggle />
             <div ref={notifRef} style={{ position: 'relative' }}>
-              <button className="bell" aria-label="Notifications" onClick={() => { setNotifOpen(o => !o); fetchNotificationsNow(); }}>
+              <button className="bell" aria-label={t('lenderDashboard.notifTitle')} onClick={() => { setNotifOpen(o => !o); fetchNotificationsNow(); }}>
                 🔔{unreadCount > 0 && <span className="bell-dot"></span>}
               </button>
               {notifOpen && notifPanel}
             </div>
-            <button className="btn btn-ghost-navy nav-new" onClick={() => setLocation('/my-analyses')}>My Analyses</button>
-            <button className="btn btn-gold nav-new" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
+            <button className="btn btn-ghost-navy nav-new" onClick={() => setLocation('/my-analyses')}>{t('lenderDashboard.myAnalyses')}</button>
+            <button className="btn btn-gold nav-new" onClick={() => setLocation('/new-analysis')}>{t('lenderDashboard.newAnalysis')}</button>
           </div>
         </div>
 
@@ -311,23 +307,23 @@ export default function LenderDashboard() {
             <img src={LOGO_NAVY} alt="Junni" className="sb-logo" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} />
             <button className="sb-close" onClick={() => setSidebarOpen(false)}>✕</button>
           </div>
-          <div className="sb-section">LENDER</div>
+          <div className="sb-section">{t('lenderDashboard.sidebarLenderSection')}</div>
           <a className="sb-item active" href="#" onClick={(e) => e.preventDefault()}>
-            <span>◉</span>Dashboard
+            <span>◉</span>{t('lenderDashboard.sidebarDashboard')}
           </a>
-          <div className="sb-section">ACCOUNT</div>
+          <div className="sb-section">{t('lenderDashboard.sidebarAccountSection')}</div>
           <button
             onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
             style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
           >
-            <span>⏻</span>Sign Out
+            <span>⏻</span>{t('lenderDashboard.signOut')}
           </button>
           <div className="sb-bottom">
             <div className="sb-user">
               <div className="sb-avatar">{lenderInitials}</div>
               <div>
                 <div className="sb-name">{lenderName}</div>
-                <div className="sb-role">Lender</div>
+                <div className="sb-role">{t('lenderDashboard.roleLabel')}</div>
               </div>
             </div>
           </div>
@@ -335,13 +331,12 @@ export default function LenderDashboard() {
 
         <div className="content">
           <div className="welcome">
-            <h2>Welcome back, {lenderName.split(" ")[0]}.</h2>
-            <p>Score borrowers, benchmark risk, and generate analyst-grade credit memos — all from uploaded financials.</p>
+            <h2>{t('lenderDashboard.welcomeBack')} {firstName}.</h2>
+            <p>{t('lenderDashboard.welcomeSub')}</p>
             <div className="welcome-actions">
-              <button className="btn btn-gold" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
+              <button className="btn btn-gold" onClick={() => setLocation('/new-analysis')}>{t('lenderDashboard.newAnalysis')}</button>
             </div>
           </div>
-
         </div>
       </div>
     );
@@ -378,9 +373,6 @@ export default function LenderDashboard() {
         .d-topbar.hidden { transform: translateY(-100%); }
         .d-topbar-title { font-size: 16px; font-weight: 700; color: var(--navy); }
         .d-topbar-right { display: flex; align-items: center; gap: 14px; }
-        .d-lang-pill { display: flex; background: #f0f0f0; border-radius: 20px; padding: 3px; }
-        .d-lang-pill button { background: none; border: none; padding: 5px 12px; font-size: 11px; font-weight: 600; cursor: pointer; border-radius: 16px; font-family: 'Inter', sans-serif; color: var(--text-muted); }
-        .d-lang-pill button.active { background: #fff; color: var(--navy); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .d-bell { background: none; border: none; font-size: 18px; cursor: pointer; position: relative; padding: 2px; }
         .d-bell-dot { position: absolute; top: 0; right: 0; width: 7px; height: 7px; background: var(--gold); border-radius: 50%; border: 1.5px solid #fff; }
         .d-btn { border: none; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; cursor: pointer; transition: opacity 0.12s; }
@@ -444,23 +436,23 @@ export default function LenderDashboard() {
         <div className="d-sb-head">
           <img src={LOGO_NAVY} alt="Junni" className="d-sb-logo" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} />
         </div>
-        <div className="d-sb-section">LENDER</div>
+        <div className="d-sb-section">{t('lenderDashboard.sidebarLenderSection')}</div>
         <button className="d-sb-item active">
-          <span>◉</span>Dashboard
+          <span>◉</span>{t('lenderDashboard.sidebarDashboard')}
         </button>
-        <div className="d-sb-section">ACCOUNT</div>
+        <div className="d-sb-section">{t('lenderDashboard.sidebarAccountSection')}</div>
         <button
           onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
           style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
         >
-          <span>⏻</span>Sign Out
+          <span>⏻</span>{t('lenderDashboard.signOut')}
         </button>
         <div className="d-sb-bottom">
           <div className="d-sb-user">
             <div className="d-sb-avatar">{lenderInitials}</div>
             <div>
               <div className="d-sb-name">{lenderName}</div>
-              <div className="d-sb-role">Lender</div>
+              <div className="d-sb-role">{t('lenderDashboard.roleLabel')}</div>
             </div>
           </div>
         </div>
@@ -468,20 +460,17 @@ export default function LenderDashboard() {
 
       {/* TOPBAR */}
       <div className={`d-topbar ${!topbarVisible ? 'hidden' : ''}`}>
-        <div className="d-topbar-title">Lender Dashboard</div>
+        <div className="d-topbar-title">{t('lenderDashboard.navTitle')}</div>
         <div className="d-topbar-right">
-          <div className="d-lang-pill">
-            <button className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>EN</button>
-            <button className={lang === 'fr' ? 'active' : ''} onClick={() => setLang('fr')}>FR</button>
-          </div>
+          <LanguageToggle />
           <div ref={notifRef} style={{ position: 'relative' }}>
-            <button className="d-bell" aria-label="Notifications" onClick={() => { setNotifOpen(o => !o); fetchNotificationsNow(); }}>
+            <button className="d-bell" aria-label={t('lenderDashboard.notifTitle')} onClick={() => { setNotifOpen(o => !o); fetchNotificationsNow(); }}>
               🔔{unreadCount > 0 && <span className="d-bell-dot"></span>}
             </button>
             {notifOpen && notifPanel}
           </div>
-          <button className="d-btn d-btn-ghost" onClick={() => setLocation('/my-analyses')}>My Analyses</button>
-          <button className="d-btn d-btn-gold" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
+          <button className="d-btn d-btn-ghost" onClick={() => setLocation('/my-analyses')}>{t('lenderDashboard.myAnalyses')}</button>
+          <button className="d-btn d-btn-gold" onClick={() => setLocation('/new-analysis')}>{t('lenderDashboard.newAnalysis')}</button>
         </div>
       </div>
 
@@ -491,14 +480,13 @@ export default function LenderDashboard() {
         {/* WELCOME */}
         <div className="d-welcome">
           <div>
-            <h2>Welcome back, {lenderName.split(" ")[0]}.</h2>
-            <p>Score borrowers, benchmark risk, and generate analyst-grade credit memos — all from uploaded financials.</p>
+            <h2>{t('lenderDashboard.welcomeBack')} {firstName}.</h2>
+            <p>{t('lenderDashboard.welcomeSub')}</p>
           </div>
           <div className="d-welcome-actions">
-            <button className="d-btn d-btn-gold" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
+            <button className="d-btn d-btn-gold" onClick={() => setLocation('/new-analysis')}>{t('lenderDashboard.newAnalysis')}</button>
           </div>
         </div>
-
 
       </div>
     </div>
