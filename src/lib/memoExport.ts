@@ -4,6 +4,7 @@
 import frauncesWoffUrl from '@fontsource/fraunces/files/fraunces-latin-700-normal.woff?url';
 import { translateBandUnits } from './bandUnits';
 import { tRiskLabel } from './riskLabel';
+import { fmtValue } from './metricFormat';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,11 +115,10 @@ function fmtMoney(n: number | null | undefined, lang = 'en'): string {
   return n < 0 ? `(${s})` : s;
 }
 
-function fmtVal(v: number | null | undefined, name: string): string {
-  if (v == null) return '—';
-  if (/dscr|ratio|coverage|multiple|leverage|ltv|ltr/i.test(name)) return `${v.toFixed(2)}x`;
-  if (/margin|return|growth|yield/i.test(name)) return `${(v * 100).toFixed(1)}%`;
-  return v.toFixed(2);
+// frFmt: locale-aware decimal formatting. toFixed() always uses '.' but French needs ','.
+function frFmt(n: number, fractionDigits: number, lang: string): string {
+  if (lang === 'fr') return n.toLocaleString('fr-CA', { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
+  return n.toFixed(fractionDigits);
 }
 
 function gradeColor(g: string): string {
@@ -184,18 +184,20 @@ function sbaBand(n: number): string {
   return '5M+';
 }
 
-function sbaTermBand(months: number): string {
-  if (months <=  60) return '≤60 mo.';
-  if (months <= 120) return '61–120 mo.';
-  if (months <= 240) return '121–240 mo.';
-  return '>240 mo.';
+function sbaTermBand(months: number, lang = 'en'): string {
+  const u = lang === 'fr' ? 'mois' : 'mo.';
+  if (months <=  60) return `≤60 ${u}`;
+  if (months <= 120) return `61–120 ${u}`;
+  if (months <= 240) return `121–240 ${u}`;
+  return `>240 ${u}`;
 }
 
 function splitIntoParagraphs(text: string, target = 3): string[] {
   if (text.includes('\n\n')) return text.split('\n\n').map(p => p.trim()).filter(Boolean);
   if (text.includes('\n'))   return text.split('\n').map(p => p.trim()).filter(Boolean);
   const sentences: string[] = [];
-  const re = /[^.!?]+[.!?]+["']?\s*/g;
+  // Negative lookbehind/lookahead prevent splitting on decimal points (e.g. "1.28x").
+  const re = /[^.!?]+(?<![0-9])[.!?]+(?![0-9])["']?\s*/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) sentences.push(m[0].trim());
   if (!sentences.length) return [text];
@@ -279,7 +281,7 @@ function pdfScoredMetricsTable(rows: MemoMetric[], t: (k: string) => string, lan
     return [
       cell(displayName, {}, bg),
       cell(tTier(r.tier, t), { fontSize: 7.5, color: MUTED }, bg),
-      cell(fmtVal(r.value, r.metric_name), {}, bg),
+      cell(fmtValue(r.value, r.metric_name, r.strong_band, lang), {}, bg),
       cell(tGrade(r.grade, t), { bold: true, color: gradeColor(r.grade) }, bg),
       cell(translateBandUnits(r.strong_band, lang),   { fontSize: 7.5, color: STRONG }, bg),
       cell(translateBandUnits(r.adequate_band, lang), { fontSize: 7.5, color: AMBER  }, bg),
@@ -428,9 +430,9 @@ function pdfBenchmark(data: MemoData, t: (k: string) => string, lang: string, fm
   const fmtDollarsK = (v: number) => {
     const d = v * 1000;
     if (lang === 'fr') {
-      if (d >= 1e9) return `${(d / 1e9).toFixed(2)} G$`;
-      if (d >= 1e6) return `${(d / 1e6).toFixed(1)} M$`;
-      return `${Math.round(d).toLocaleString('fr-CA')} $`;
+      if (d >= 1e9) return frFmt(d / 1e9, 2, lang) + ' G$';
+      if (d >= 1e6) return frFmt(d / 1e6, 1, lang) + ' M$';
+      return Math.round(d).toLocaleString('fr-CA') + ' $';
     }
     if (d >= 1e9) return `$${(d / 1e9).toFixed(2)}B`;
     if (d >= 1e6) return `$${(d / 1e6).toFixed(1)}M`;
@@ -507,7 +509,7 @@ function pdfBenchmark(data: MemoData, t: (k: string) => string, lang: string, fm
     const { base, stress, totalN } = bm!;
     const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
     const dealSB    = sbaBand(data.deal.amount_requested ?? 0);
-    const dealTB    = sbaTermBand(data.deal.term_months ?? 0);
+    const dealTB    = sbaTermBand(data.deal.term_months ?? 0, lang);
     const baseLGD   = Math.round(base!.sector!.lgd  * 100);
     const stressLGD = Math.round(stress!.sector!.lgd * 100);
     const hasSegment = !!(base?.segment && stress?.segment);
@@ -829,14 +831,17 @@ function pdfScoreCalcSection(data: MemoData, t: (k: string) => string, lang: str
   // Lead-in
   items.push({ text: t('memo.scoreLeadIn'), fontSize: 9, lineHeight: 1.5, margin: [0, 0, 0, 10] });
 
-  // Reference tables — grade points and tier weights side by side
-  const gradeHdr  = [hdrCell(t('memo.gradePoints').split(' → ')[0]), hdrCell('Points')];
+  // Reference tables — grade points and tier weights side by side.
+  // Use colon labels: → is absent from the embedded Fraunces subset and renders as a glyph error.
+  const gradeLabel = t('memo.gradePoints').replace(' → ', ': ');
+  const tierLabel  = t('memo.tierWeight').replace(' → ', ': ');
+  const gradeHdr  = [hdrCell(gradeLabel.split(': ')[0] || 'Grade'), hdrCell('Points')];
   const gradeRows = [
     [cell(t('memo.gradeStrong'),   { color: STRONG }), cell('100', { alignment: 'right' })],
     [cell(t('memo.gradeAdequate'), { color: AMBER  }), cell('60',  { alignment: 'right' })],
     [cell(t('memo.gradeWeak'),     { color: RED    }), cell('20',  { alignment: 'right' })],
   ];
-  const tierHdr  = [hdrCell(t('memo.tierWeight').split(' → ')[0]), hdrCell('Weight')];
+  const tierHdr  = [hdrCell(tierLabel.split(': ')[0] || 'Tier'), hdrCell(t('memo.colWeight'))];
   const tierRows = [
     [cell(t('memo.tierCritical')),      cell('3.0', { alignment: 'right' })],
     [cell(t('memo.tierImportant')),     cell('2.0', { alignment: 'right' })],
@@ -846,11 +851,11 @@ function pdfScoreCalcSection(data: MemoData, t: (k: string) => string, lang: str
   items.push({
     columns: [
       { width: '*', stack: [
-        { text: t('memo.gradePoints'), bold: true, fontSize: 8.5, color: NAVY, margin: [0, 0, 0, 4] },
+        { text: gradeLabel, bold: true, fontSize: 8.5, color: NAVY, margin: [0, 0, 0, 4] },
         { table: { widths: ['*', 50], headerRows: 1, body: [gradeHdr, ...gradeRows] }, layout: thinLayout },
       ], margin: [0, 0, 10, 0] },
       { width: '*', stack: [
-        { text: t('memo.tierWeight'), bold: true, fontSize: 8.5, color: NAVY, margin: [0, 0, 0, 4] },
+        { text: tierLabel, bold: true, fontSize: 8.5, color: NAVY, margin: [0, 0, 0, 4] },
         { table: { widths: ['*', 50], headerRows: 1, body: [tierHdr, ...tierRows] }, layout: thinLayout },
       ] },
     ],
@@ -866,7 +871,7 @@ function pdfScoreCalcSection(data: MemoData, t: (k: string) => string, lang: str
     const totalCount = tiers.reduce((s, tt) => s + tt.strong + tt.adequate + tt.weak, 0);
     items.push({ text: t('memo.scoreCalcDeal').replace('{n}', String(totalCount)), bold: true, fontSize: 8.5, color: NAVY, margin: [0, 0, 0, 6] });
 
-    const calcHdr = [t('memo.colTier'), 'Weight', t('memo.colCount'), t('memo.gradeStrong'), t('memo.gradeAdequate'), t('memo.gradeWeak'), t('memo.colWtdPoints')].map(h => hdrCell(h));
+    const calcHdr = [t('memo.colTier'), t('memo.colWeight'), t('memo.colCount'), t('memo.gradeStrong'), t('memo.gradeAdequate'), t('memo.gradeWeak'), t('memo.colWtdPoints')].map(h => hdrCell(h));
     const calcRows = tiers.map((tt, i) => {
       const bg    = i % 2 === 1 ? '#F8F6F3' : undefined;
       const count = tt.strong + tt.adequate + tt.weak;
@@ -877,7 +882,7 @@ function pdfScoreCalcSection(data: MemoData, t: (k: string) => string, lang: str
         cell(String(tt.strong),   { alignment: 'right', color: tt.strong   > 0 ? STRONG : MUTED }, bg),
         cell(String(tt.adequate), { alignment: 'right', color: tt.adequate > 0 ? AMBER  : MUTED }, bg),
         cell(String(tt.weak),     { alignment: 'right', color: tt.weak     > 0 ? RED    : MUTED }, bg),
-        cell(totalWeightedPoints.toLocaleString(lang === 'fr' ? 'fr-CA' : 'en-US'), { alignment: 'right', bold: true }, bg),
+        cell(tt.weightedPoints.toLocaleString(lang === 'fr' ? 'fr-CA' : 'en-US'), { alignment: 'right', bold: true }, bg),
       ];
     });
     // Totals row
@@ -980,7 +985,7 @@ function buildPdfDef(data: MemoData, questions: MemoQuestion[], t: (k: string) =
       return {
         columns: [
           { text: displayDate(lang), fontSize: 7, color: MUTED, margin: [40, 0, 0, 14] },
-          { text: `Page ${currentPage} of ${pageCount}`, alignment: 'right', fontSize: 7, color: MUTED, margin: [0, 0, 40, 14] },
+          { text: `Page ${currentPage} ${lang === 'fr' ? 'de' : 'of'} ${pageCount}`, alignment: 'right', fontSize: 7, color: MUTED, margin: [0, 0, 40, 14] },
         ],
       };
     },
@@ -1119,9 +1124,9 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
   const fmtDollarsKW = (v: number) => {
     const d = v * 1000;
     if (lang === 'fr') {
-      if (d >= 1e9) return `${(d / 1e9).toFixed(2)} G$`;
-      if (d >= 1e6) return `${(d / 1e6).toFixed(1)} M$`;
-      return `${Math.round(d).toLocaleString('fr-CA')} $`;
+      if (d >= 1e9) return frFmt(d / 1e9, 2, lang) + ' G$';
+      if (d >= 1e6) return frFmt(d / 1e6, 1, lang) + ' M$';
+      return Math.round(d).toLocaleString('fr-CA') + ' $';
     }
     if (d >= 1e9) return `$${(d / 1e9).toFixed(2)}B`;
     if (d >= 1e6) return `$${(d / 1e6).toFixed(1)}M`;
@@ -1178,7 +1183,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
           return wDataRow([
             displayName,
             tTier(r.tier, t),
-            fmtVal(r.value, r.metric_name),
+            fmtValue(r.value, r.metric_name, r.strong_band, lang),
             tGrade(r.grade, t),
             translateBandUnits(r.strong_band, lang) ?? '—',
             translateBandUnits(r.adequate_band, lang) ?? '—',
@@ -1301,7 +1306,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
         const baseLGD   = Math.round(base!.sector!.lgd  * 100);
         const stressLGD = Math.round(stress!.sector!.lgd * 100);
         const dealSB    = sbaBand(data.deal.amount_requested ?? 0);
-        const dealTB    = sbaTermBand(data.deal.term_months ?? 0);
+        const dealTB    = sbaTermBand(data.deal.term_months ?? 0, lang);
         const hasSegment = !!(base?.segment && stress?.segment);
 
         children.push(wHead2(t('memo.usSba')));
@@ -1492,7 +1497,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
     children.push(
       wPara(t('memo.gradePoints'), { bold: true, spaceAfter: 60, keepNext: true }),
       new Table({ width: { size: 5000, type: WidthType.DXA }, rows: [
-        wHdrRow([t('memo.gradePoints').split(' → ')[0], 'Points'], gCols),
+        wHdrRow([t('memo.gradePoints').split(' → ')[0] || 'Grade', 'Points'], gCols),
         wDataRow([t('memo.gradeStrong'),   '100'], gCols),
         wDataRow([t('memo.gradeAdequate'),  '60'], gCols, true),
         wDataRow([t('memo.gradeWeak'),      '20'], gCols),
@@ -1500,7 +1505,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
       wSpacer(100),
       wPara(t('memo.tierWeight'), { bold: true, spaceAfter: 60, keepNext: true }),
       new Table({ width: { size: 5000, type: WidthType.DXA }, rows: [
-        wHdrRow([t('memo.tierWeight').split(' → ')[0], 'Weight'], gCols),
+        wHdrRow([t('memo.tierWeight').split(' → ')[0] || 'Tier', t('memo.colWeight')], gCols),
         wDataRow([t('memo.tierCritical'),      '3.0'], gCols),
         wDataRow([t('memo.tierImportant'),     '2.0'], gCols, true),
         wDataRow([t('memo.tierSupplementary'), '1.0'], gCols),
@@ -1518,7 +1523,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
       const wTotalCount = wTiers.reduce((s, tt) => s + tt.strong + tt.adequate + tt.weak, 0);
       children.push(wPara(t('memo.scoreCalcDeal').replace('{n}', String(wTotalCount)), { bold: true, spaceAfter: 80, keepNext: true }));
       const cCols = [2200, 860, 760, 900, 1060, 760, 3540]; // sum = 10080
-      const calcTableRows: any[] = [wHdrRow([t('memo.colTier'), 'Weight', t('memo.colCount'), t('memo.gradeStrong'), t('memo.gradeAdequate'), t('memo.gradeWeak'), t('memo.colWtdPoints')], cCols)];
+      const calcTableRows: any[] = [wHdrRow([t('memo.colTier'), t('memo.colWeight'), t('memo.colCount'), t('memo.gradeStrong'), t('memo.gradeAdequate'), t('memo.gradeWeak'), t('memo.colWtdPoints')], cCols)];
       wTiers.forEach((tt, i) => {
         calcTableRows.push(wDataRow([
           tTier(tt.tier, t), tt.weight.toFixed(1), String(tt.strong + tt.adequate + tt.weak),
@@ -1567,7 +1572,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
         default: new Header({ children: [new Paragraph({ children: [new TextRun({ text: `${borrower}     ${t('memo.confidentialHeader')}`, size: 16, color: '888888', font: 'Calibri' })], spacing: { after: 0 } })] }),
       },
       footers: {
-        default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Page ', size: 16, color: '888888' }), new TextRun({ children: [PageNumber.CURRENT], size: 16, color: '888888' }), new TextRun({ text: ' of ', size: 16, color: '888888' }), new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 16, color: '888888' })], spacing: { before: 0, after: 0 } })] }),
+        default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'Page ', size: 16, color: '888888' }), new TextRun({ children: [PageNumber.CURRENT], size: 16, color: '888888' }), new TextRun({ text: lang === 'fr' ? ' de ' : ' of ', size: 16, color: '888888' }), new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 16, color: '888888' })], spacing: { before: 0, after: 0 } })] }),
       },
       children,
     }],

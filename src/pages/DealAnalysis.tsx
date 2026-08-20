@@ -6,6 +6,7 @@ import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { tRiskLabel } from "../lib/riskLabel";
 import { translateBandUnits } from "../lib/bandUnits";
+import { fmtValue } from "../lib/metricFormat";
 
 const NAVY = "#1B2B4B";
 const GOLD = "#D4940A";
@@ -16,33 +17,6 @@ const MUTED = "#7A7060";
 
 const TIER_ORDER = ["Critical", "Important", "Supplementary", "Optional"];
 
-function fmtValue(v: number | null, name: string, strongBand?: string | null, lang?: string): string {
-  if (v === null || v === undefined) return "—";
-  if (strongBand) {
-    const b = strongBand.toLowerCase();
-    if (b.includes("%")) return `${v.toFixed(1)}%`;
-    if (b.includes("x")) return `${v.toFixed(2)}x`;
-    if (b.includes("day")) return `${v.toFixed(1)} ${lang === "fr" ? "jours" : "days"}`;
-  }
-  const n = name.toLowerCase();
-  const isRatio = n.includes("ratio") || n.includes("coverage") || n.includes("dscr") ||
-    n.includes("leverage") || n.includes("debt /") || n.includes("/ ebitda") || n.includes("/ debt");
-  const isPct = n.includes("margin") || n.includes("growth") || n.includes("return on") ||
-    n.includes("roa") || n.includes("roe") || n.includes("intensity") || n.includes("yield");
-  const isDays = n.includes("days") || n.includes("dso") || n.includes("dpo") || n.includes("dio") ||
-    n.includes("ccc") || n.includes("cycle");
-  const isMonths = n.includes("payback") || n.includes("duration");
-  const isYears = n.includes("walt") || n.includes("lease term") || n.includes("reserve life") ||
-    n.includes("mine life") || n.includes("amortization");
-  if (isDays) return `${v.toFixed(1)} ${lang === "fr" ? "jours" : "days"}`;
-  if (isMonths) return `${v.toFixed(1)} ${lang === "fr" ? "mois" : "months"}`;
-  if (isYears) return `${v.toFixed(1)} ${lang === "fr" ? "ans" : "years"}`;
-  if (isPct) return `${v.toFixed(1)}%`;
-  if (isRatio) return `${v.toFixed(2)}x`;
-  if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(v) >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
-  return v.toFixed(2);
-}
 
 function gradeChip(grade: string, t: (k: string) => string) {
   const color = grade === "Strong" ? GREEN : grade === "Adequate" ? GOLD : RED;
