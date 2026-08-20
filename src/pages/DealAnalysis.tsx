@@ -469,9 +469,13 @@ export default function DealAnalysis() {
       const filteredQ = memoIncludeQ
         ? (memoQFilter === 'answered' ? questions.filter((q: any) => q.answer?.trim()) : questions)
         : [];
-      const memoData = { deal, score, metrics, confirmedCash, suEntries: sourcesUses, capItems, collateral, benchmarks };
-      if (format === 'pdf') await downloadPDF(memoData, filteredQ);
-      else await downloadDocx(memoData, filteredQ);
+      const metricsWithFr = metrics.map((m: any) => ({
+        ...m,
+        metric_name_fr: definitions[m.metric_name]?.metric_name_fr ?? null,
+      }));
+      const memoData = { deal, score, metrics: metricsWithFr, confirmedCash, suEntries: sourcesUses, capItems, collateral, benchmarks, lang };
+      if (format === 'pdf') await downloadPDF(memoData, filteredQ, t);
+      else await downloadDocx(memoData, filteredQ, t);
       setMemoOpen(false);
     } catch (err) {
       console.error('[memo export]', err);
