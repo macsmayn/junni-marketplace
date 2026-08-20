@@ -195,11 +195,39 @@ function sbaTermBand(months: number, lang = 'en'): string {
 function splitIntoParagraphs(text: string, target = 3): string[] {
   if (text.includes('\n\n')) return text.split('\n\n').map(p => p.trim()).filter(Boolean);
   if (text.includes('\n'))   return text.split('\n').map(p => p.trim()).filter(Boolean);
+
+  // Character-by-character sentence builder: every character is accumulated in `cur`
+  // so no text can ever be lost. A ./!/? is treated as a sentence-end ONLY when the
+  // character before it is not a digit OR the character after it is not a digit.
+  // This prevents splitting on decimal points like "1.28x" or "11.7%" while still
+  // correctly ending sentences that close with digits (e.g. "…at threshold 3.").
   const sentences: string[] = [];
-  // Negative lookbehind/lookahead prevent splitting on decimal points (e.g. "1.28x").
-  const re = /[^.!?]+(?<![0-9])[.!?]+(?![0-9])["']?\s*/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) sentences.push(m[0].trim());
+  let cur = '';
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    cur += ch;
+    if (ch === '.' || ch === '!' || ch === '?') {
+      const prev = i > 0 ? text[i - 1] : '';
+      let j = i + 1;
+      while (j < text.length && text[j] === ' ') j++;
+      const next = j < text.length ? text[j] : '';
+      const prevIsDigit = prev >= '0' && prev <= '9';
+      const nextIsDigit = next >= '0' && next <= '9';
+      if (!(prevIsDigit && nextIsDigit)) {
+        // Consume any closing quote characters
+        while (i + 1 < text.length && (text[i + 1] === '"' || text[i + 1] === "'")) {
+          i++;
+          cur += text[i];
+        }
+        sentences.push(cur.trim());
+        cur = '';
+        // Skip inter-sentence whitespace so the next sentence starts clean
+        while (i + 1 < text.length && text[i + 1] === ' ') i++;
+      }
+    }
+  }
+  if (cur.trim()) sentences.push(cur.trim());
+
   if (!sentences.length) return [text];
   if (sentences.length <= target) return sentences;
   const sz = Math.ceil(sentences.length / target);
@@ -1040,7 +1068,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
 
   function wPara(text: string, opts: Record<string, any> = {}): any {
     return new Paragraph({
-      children: [new TextRun({ text, size: opts.size ?? 20, bold: opts.bold, color: (opts.color ?? '222222').replace('#', ''), italics: opts.italics, font: opts.font })],
+      children: [new TextRun({ text, size: opts.size ?? 20, bold: opts.bold, color: (opts.color ?? '222222').replace('#', ''), italics: opts.italics, font: opts.font ?? 'Calibri' })],
       alignment: opts.align ?? AlignmentType.LEFT,
       spacing: { after: opts.spaceAfter ?? 120, before: opts.spaceBefore ?? 0 },
       keepNext: opts.keepNext ?? false,
@@ -1495,7 +1523,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
     // Grade points reference table
     const gCols = [3500, 1500];
     children.push(
-      wPara(t('memo.gradePoints'), { bold: true, spaceAfter: 60, keepNext: true }),
+      wPara(t('memo.gradePoints').replace(' → ', ': '), { bold: true, spaceAfter: 60, keepNext: true }),
       new Table({ width: { size: 5000, type: WidthType.DXA }, rows: [
         wHdrRow([t('memo.gradePoints').split(' → ')[0] || 'Grade', 'Points'], gCols),
         wDataRow([t('memo.gradeStrong'),   '100'], gCols),
@@ -1503,7 +1531,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
         wDataRow([t('memo.gradeWeak'),      '20'], gCols),
       ]}),
       wSpacer(100),
-      wPara(t('memo.tierWeight'), { bold: true, spaceAfter: 60, keepNext: true }),
+      wPara(t('memo.tierWeight').replace(' → ', ': '), { bold: true, spaceAfter: 60, keepNext: true }),
       new Table({ width: { size: 5000, type: WidthType.DXA }, rows: [
         wHdrRow([t('memo.tierWeight').split(' → ')[0] || 'Tier', t('memo.colWeight')], gCols),
         wDataRow([t('memo.tierCritical'),      '3.0'], gCols),
