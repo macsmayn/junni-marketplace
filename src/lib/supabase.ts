@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
-const SUPABASE_URL = 'https://sypqecydiqdpruarkrvy.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_DB4ZyrLd-8wYkE0HgBokLg_GN6cU_NB';
+const SUPABASE_URL = 'https://cnuankrdyxfaczsfmimm.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_mjsQt-QC5F9kYKufdQfF2w_cSKRetkT';
 
 // ── ID-token track (used by Supabase client for DB / RLS queries) ─────────────
 let currentToken: string | null = null;
