@@ -1180,22 +1180,40 @@ export default function NewAnalysis() {
                     {t("newAnalysis.unitsConfirmLabel")}
                   </div>
                   {([
-                    { value: "units" as const, labelKey: "newAnalysis.unitsActual" },
-                    { value: "thousands" as const, labelKey: "newAnalysis.unitsThousands" },
-                    { value: "millions" as const, labelKey: "newAnalysis.unitsMillions" },
-                  ]).map(opt => (
-                    <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, cursor: "pointer", fontSize: 13 }}>
-                      <input
-                        type="radio"
-                        name="units-gate"
-                        value={opt.value}
-                        checked={pendingUnits === opt.value}
-                        onChange={() => setPendingUnits(opt.value)}
-                        style={{ flexShrink: 0 }}
-                      />
-                      <span style={{ color: NAVY }}>{t(opt.labelKey)}</span>
-                    </label>
-                  ))}
+                    { value: "units" as const,     labelKey: "newAnalysis.unitsActual",     factor: 1 },
+                    { value: "thousands" as const, labelKey: "newAnalysis.unitsThousands",  factor: 1_000 },
+                    { value: "millions" as const,  labelKey: "newAnalysis.unitsMillions",   factor: 1_000_000 },
+                  ]).map(opt => {
+                    const rev    = pendingRows[0]?.revenue;
+                    const assets = pendingRows[0]?.total_assets;
+                    const ebitda = pendingRows[0]?.ebitda;
+                    const previewParts = [
+                      rev    != null ? `Revenue: ${fmtAmt(Math.round(rev    * opt.factor))}` : null,
+                      assets != null ? `Total Assets: ${fmtAmt(Math.round(assets * opt.factor))}` : null,
+                      ebitda != null ? `EBITDA: ${fmtAmt(Math.round(ebitda  * opt.factor))}` : null,
+                    ].filter(Boolean) as string[];
+                    const isSelected = pendingUnits === opt.value;
+                    return (
+                      <label key={opt.value} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14, cursor: "pointer", fontSize: 13 }}>
+                        <input
+                          type="radio"
+                          name="units-gate"
+                          value={opt.value}
+                          checked={isSelected}
+                          onChange={() => setPendingUnits(opt.value)}
+                          style={{ flexShrink: 0, marginTop: 2 }}
+                        />
+                        <div>
+                          <span style={{ color: NAVY, fontWeight: isSelected ? 700 : 400 }}>{t(opt.labelKey)}</span>
+                          {previewParts.length > 0 && (
+                            <div style={{ fontSize: 11, color: isSelected ? NAVY : MUTED, marginTop: 3, lineHeight: 1.5 }}>
+                              {previewParts.join(" · ")}
+                            </div>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
 
                 {unitsGateError && (
