@@ -638,7 +638,6 @@ export default function AdminPanel() {
               <tbody>
                 {dealsList.map((deal, idx) => {
                   const isRescoring = rescoringDealId === deal.id;
-                  const rescoreFailed = rescoreFailedDealId === deal.id;
                   const borrowerName = deal.users?.full_name ?? deal.users?.email ?? "—";
                   return (
                     <tr key={deal.id} style={{ borderBottom: idx < dealsList.length - 1 ? "1px solid #E8E2D9" : "none", background: selectedDealIds.has(deal.id) ? "rgba(212,148,10,0.04)" : undefined, opacity: isRescoring ? 0.7 : 1 }}>
