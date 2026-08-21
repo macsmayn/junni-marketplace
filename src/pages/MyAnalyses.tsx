@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase } from "../lib/supabase";
+import { supabase, invokeFunction } from "../lib/supabase";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { tRiskLabel } from "../lib/riskLabel";
@@ -94,6 +94,27 @@ export default function MyAnalyses() {
   const [viewMode, setViewMode] = useState<"list" | "cards">("list");
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [recalcDealId, setRecalcDealId] = useState<string | null>(null);
+
+  const handleRecalculate = async (dealId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRecalcDealId(dealId);
+    try {
+      await invokeFunction("score-deal", { deal_id: dealId });
+      const { data: s } = await supabase
+        .from("credit_scores")
+        .select("overall_score,risk_label,coverage_pct")
+        .eq("deal_id", dealId)
+        .maybeSingle();
+      if (s) {
+        setAnalyses(prev => prev.map(a => a.id === dealId
+          ? { ...a, overall_score: s.overall_score ?? null, risk_label: s.risk_label ?? null, coverage_pct: s.coverage_pct ?? null }
+          : a));
+      }
+    } finally {
+      setRecalcDealId(null);
+    }
+  };
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900);
@@ -322,6 +343,7 @@ export default function MyAnalyses() {
                     >
                       {t("myAnalyses.colDate")}{sortIcon("created_at")}
                     </th>
+                    <th style={thStyle}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -379,6 +401,20 @@ export default function MyAnalyses() {
                       </td>
                       <td style={{ ...tdStyle, color: MUTED, whiteSpace: "nowrap" }}>
                         {fmtDate(a.created_at, dateLocale)}
+                      </td>
+                      <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
+                        <button
+                          onClick={e => handleRecalculate(a.id, e)}
+                          disabled={recalcDealId === a.id}
+                          style={{
+                            fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 6,
+                            border: `1px solid ${BORDER}`, background: "transparent", color: MUTED,
+                            cursor: recalcDealId === a.id ? "wait" : "pointer", fontFamily: "Inter, sans-serif",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {recalcDealId === a.id ? t("myAnalyses.recalculating") : t("myAnalyses.recalculate")}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -471,9 +507,20 @@ export default function MyAnalyses() {
                   {a.term_months != null && <span>{a.term_months} {t("myAnalyses.monthsShort")}</span>}
                 </div>
 
-                {/* Date */}
-                <div style={{ fontSize: 11, color: MUTED, marginTop: 14, paddingTop: 12, borderTop: `1px solid ${BORDER}` }}>
-                  {fmtDate(a.created_at, dateLocale)}
+                {/* Date + recalculate */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${BORDER}` }}>
+                  <span style={{ fontSize: 11, color: MUTED }}>{fmtDate(a.created_at, dateLocale)}</span>
+                  <button
+                    onClick={e => handleRecalculate(a.id, e)}
+                    disabled={recalcDealId === a.id}
+                    style={{
+                      fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 5,
+                      border: `1px solid ${BORDER}`, background: "transparent", color: MUTED,
+                      cursor: recalcDealId === a.id ? "wait" : "pointer", fontFamily: "Inter, sans-serif",
+                    }}
+                  >
+                    {recalcDealId === a.id ? t("myAnalyses.recalculating") : t("myAnalyses.recalculate")}
+                  </button>
                 </div>
               </div>
             ))}

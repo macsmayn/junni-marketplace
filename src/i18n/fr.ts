@@ -644,6 +644,22 @@ const fr: Record<string, string> = {
   "notFound.qlApply":                  "Postuler",
   "notFound.qlApplySub":               "Commencer votre demande",
   "notFound.footer":                   "© 2025 Junni. Tous droits réservés.",
+
+  // FinancialReview
+  "financialReview.backToAnalysis":       "← Retour à l'analyse",
+  "financialReview.instructionFirstTime": "Nous avons extrait ces données des états financiers téléchargés. Veuillez vérifier, corriger les erreurs et ajouter du contexte si nécessaire.",
+  "financialReview.instructionCorrection":"Voici les données confirmées pour cette analyse. Corrigez les valeurs et cliquez sur Confirmer et réévaluer pour mettre à jour le score.",
+  "financialReview.saving":               "Enregistrement…",
+  "financialReview.confirmRescore":       "Confirmer et réévaluer",
+  "financialReview.rescoring":            "Réévaluation…",
+  "financialReview.rescoreError":         "Données enregistrées. La réévaluation a échoué — les nouvelles valeurs s'appliqueront lors de la prochaine exécution du score.",
+
+  // DealAnalysis — edit financials
+  "analysis.editFinancials":              "Modifier les données →",
+
+  // MyAnalyses — recalculate
+  "myAnalyses.recalculate":              "Recalculer le score",
+  "myAnalyses.recalculating":            "Recalcul…",
 };
 
 export default fr;

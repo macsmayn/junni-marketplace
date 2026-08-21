@@ -51,7 +51,9 @@ function Router() {
         <Redirect to="/lender-dashboard" />
       </Route>
       <Route path={"/deals/:id/review-financials"}>
-        <Redirect to="/lender-dashboard" />
+        <ProtectedRoute>
+          <FinancialReview />
+        </ProtectedRoute>
       </Route>
       <Route path={"/privacy"} component={PrivacyPolicy} />
       <Route path={"/terms"} component={TermsOfService} />

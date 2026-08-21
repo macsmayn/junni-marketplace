@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase } from "../lib/supabase";
+import { supabase, invokeFunction } from "../lib/supabase";
 import { useParams, useLocation } from "wouter";
+import { useLanguage } from "../contexts/LanguageContext";
 
 const LOGO_BEIGE = "/junni-logo-beige.png";
 
@@ -29,6 +30,7 @@ export default function FinancialReview() {
   const [, setLocation] = useLocation();
   const { user, logout } = useAuth0();
 
+  const { t } = useLanguage();
   const [deal, setDeal] = useState<any>(null);
   const [financials, setFinancials] = useState<any[]>([]);
   const [edits, setEdits] = useState<Edits>({});
@@ -36,6 +38,9 @@ export default function FinancialReview() {
   const [dbUser, setDbUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [wasAlreadyConfirmed, setWasAlreadyConfirmed] = useState(false);
+  const [isRescoring, setIsRescoring] = useState(false);
+  const [rescoreError, setRescoreError] = useState<string | null>(null);
   const [newNoteYear, setNewNoteYear] = useState("general");
   const [newNoteText, setNewNoteText] = useState("");
   const [addingNote, setAddingNote] = useState(false);
@@ -68,6 +73,7 @@ export default function FinancialReview() {
           }
         }
         setEdits(initial);
+        if (financialsRes.data.some((r: any) => r.borrower_confirmed)) setWasAlreadyConfirmed(true);
       }
 
       if (annotationsRes.data) setAnnotations(annotationsRes.data);
@@ -96,6 +102,8 @@ export default function FinancialReview() {
 
   const saveEdits = async (confirm: boolean) => {
     setIsSaving(true);
+    setRescoreError(null);
+    let saveOk = false;
     try {
       for (const row of financials) {
         const rowEdits = edits[row.id] ?? {};
@@ -113,10 +121,24 @@ export default function FinancialReview() {
           .update({ financials_status: "confirmed" })
           .eq("id", dealId);
         if (error) console.error("deals financials_status update error:", error);
-        setLocation("/borrower-dashboard");
       }
+      saveOk = true;
     } finally {
       setIsSaving(false);
+    }
+    if (confirm && saveOk) {
+      setIsRescoring(true);
+      try {
+        const { error: scoreErr } = await invokeFunction("score-deal", { deal_id: dealId });
+        if (scoreErr) {
+          console.error("[FinancialReview] rescore failed:", scoreErr);
+          setRescoreError(t("financialReview.rescoreError"));
+        } else {
+          setLocation(`/analysis/${dealId}`);
+        }
+      } finally {
+        setIsRescoring(false);
+      }
     }
   };
 
@@ -544,7 +566,7 @@ export default function FinancialReview() {
       <nav>
         <div className="nav-left">
           <div className="logo"><img src={LOGO_BEIGE} alt="Junni" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} /></div>
-          <span className="nav-back" onClick={() => setLocation("/borrower-dashboard")}>← Back to Dashboard</span>
+          <span className="nav-back" onClick={() => setLocation(`/analysis/${dealId}`)}>{t("financialReview.backToAnalysis")}</span>
         </div>
         <button onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })} style={{ background: 'none', border: 'none', color: 'rgba(239,68,68,0.8)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'Inter', sans-serif", display: 'flex', alignItems: 'center', gap: 6 }}>⏻ Sign Out</button>
       </nav>
@@ -553,7 +575,11 @@ export default function FinancialReview() {
         <div className="page-header">
           <h1>Review Extracted Financials</h1>
           {deal?.title && <p className="deal-subtitle">{deal.title}</p>}
-          <p className="page-instruction">We extracted these figures from your uploaded statements. Please review, correct any errors, and add context where needed before we finalize your credit analysis.</p>
+          <p className="page-instruction">
+            {wasAlreadyConfirmed
+              ? t("financialReview.instructionCorrection")
+              : t("financialReview.instructionFirstTime")}
+          </p>
         </div>
 
         {hasLowConfidence && (
@@ -664,12 +690,21 @@ export default function FinancialReview() {
           </div>
         </div>
 
+        {rescoreError && (
+          <div style={{ background: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#B71C1C" }}>
+            {rescoreError}
+          </div>
+        )}
         <div className="actions-bar">
-          <button className="btn-secondary" onClick={() => saveEdits(false)} disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save Draft"}
+          <button className="btn-secondary" onClick={() => saveEdits(false)} disabled={isSaving || isRescoring}>
+            {isSaving ? t("financialReview.saving") : "Save Draft"}
           </button>
-          <button className="btn-primary" onClick={() => saveEdits(true)} disabled={isSaving}>
-            {isSaving ? "Saving..." : "Confirm Financials"}
+          <button className="btn-primary" onClick={() => saveEdits(true)} disabled={isSaving || isRescoring}>
+            {isRescoring
+              ? t("financialReview.rescoring")
+              : isSaving
+              ? t("financialReview.saving")
+              : t("financialReview.confirmRescore")}
           </button>
         </div>
       </div>

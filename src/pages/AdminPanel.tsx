@@ -46,7 +46,6 @@ export default function AdminPanel() {
   const [editingDeal, setEditingDeal] = useState<any | null>(null);
   const [editDealForm, setEditDealForm] = useState<Record<string, any>>({});
   const [rescoringDealId, setRescoringDealId] = useState<string | null>(null);
-  const [rescoreFailedDealId, setRescoreFailedDealId] = useState<string | null>(null);
 
   // Users state
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -211,29 +210,6 @@ export default function AdminPanel() {
 
     setDealsList(prev => prev.map(d => d.id === orig.id ? { ...d, ...updates } : d));
     setEditingDeal(null);
-
-    const financialChanged =
-      updates.amount_requested !== orig.amount_requested ||
-      updates.annual_revenue !== orig.annual_revenue ||
-      updates.ebitda !== orig.ebitda;
-
-    if (financialChanged) {
-      setRescoringDealId(orig.id);
-      setRescoreFailedDealId(null);
-      try {
-        await invokeFunction("score-deal", { deal_id: orig.id });
-        const { data: refreshed } = await supabase
-          .from("deals")
-          .select("*, users!deals_borrower_id_fkey(full_name, email)")
-          .eq("id", orig.id)
-          .single();
-        if (refreshed) setDealsList(prev => prev.map(d => d.id === orig.id ? refreshed : d));
-      } catch (_e) {
-        setRescoreFailedDealId(orig.id);
-      } finally {
-        setRescoringDealId(null);
-      }
-    }
   };
 
   const toggleDealSelect = (id: string) => {
@@ -468,7 +444,7 @@ export default function AdminPanel() {
           <button className="a-btn a-btn-ghost" onClick={() => setEditingDeal(null)}>Cancel</button>
         </div>
         <div style={{ fontSize: "11px", color: "#7A7060", marginTop: "10px" }}>
-          Changes to Amount Requested, Annual Revenue, or EBITDA will trigger automatic re-scoring.
+          To update the score after editing financial figures, use the Financials link → Confirm & Rescore, or the Recalculate score button.
         </div>
       </div>
     </div>
@@ -674,8 +650,8 @@ export default function AdminPanel() {
                       <td style={{ padding: tdPad, color: "#7A7060" }}>{deal.industry ?? "—"}</td>
                       <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B" }}>{fmtAmount(deal.amount_requested)}</td>
                       <td style={{ padding: tdPad }}>
-                        {isRescoring ? <span style={{ fontSize: "11px", color: "#D4940A", fontStyle: "italic" }}>Re-scoring…</span>
-                          : rescoreFailed ? <span style={{ fontSize: "11px", color: "#DC2626" }}>{deal.ai_score ?? "—"} ⚠</span>
+                        {isRescoring
+                          ? <span style={{ fontSize: "11px", color: "#D4940A", fontStyle: "italic" }}>Recalculating…</span>
                           : <span style={{ fontWeight: 700, color: "#1B2B4B" }}>{deal.ai_score ?? "—"}</span>}
                       </td>
                       <td style={{ padding: tdPad }}>
@@ -689,9 +665,30 @@ export default function AdminPanel() {
                       </td>
                       <td style={{ padding: tdPad, color: "#7A7060", whiteSpace: "nowrap" }}>{fmtDate(deal.created_at)}</td>
                       <td style={{ padding: tdPad }}>
-                        <div style={{ display: "flex", gap: "6px" }}>
+                        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                           <button className="a-btn a-btn-ghost" onClick={() => handleDealEditStart(deal)}>Edit</button>
                           <button className="a-btn a-btn-ghost" onClick={() => setLocation(`/analysis/${deal.id}`)}>Analysis</button>
+                          <button className="a-btn a-btn-ghost" onClick={() => setLocation(`/deals/${deal.id}/review-financials`)}>Financials</button>
+                          <button
+                            className="a-btn a-btn-ghost"
+                            disabled={rescoringDealId === deal.id}
+                            onClick={async () => {
+                              setRescoringDealId(deal.id);
+                              try {
+                                await invokeFunction("score-deal", { deal_id: deal.id });
+                                const { data: refreshed } = await supabase
+                                  .from("deals")
+                                  .select("*, users!deals_borrower_id_fkey(full_name, email)")
+                                  .eq("id", deal.id)
+                                  .single();
+                                if (refreshed) setDealsList(prev => prev.map(d => d.id === deal.id ? refreshed : d));
+                              } finally {
+                                setRescoringDealId(null);
+                              }
+                            }}
+                          >
+                            {rescoringDealId === deal.id ? "Recalculating…" : "Recalculate score"}
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -700,11 +697,6 @@ export default function AdminPanel() {
               </tbody>
             </table>
           </div>
-          {rescoreFailedDealId && (
-            <div style={{ marginTop: "10px", fontSize: "12px", color: "#DC2626" }}>
-              ⚠ Re-scoring failed for one deal — financial fields were saved. Score will update on next manual re-score.
-            </div>
-          )}
         </>
       );
     }

@@ -499,6 +499,18 @@ export default function DealAnalysis() {
         <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{t("analysis.pageTitle")}</span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
           {deal && (
+            <button
+              onClick={() => setLocation(`/deals/${dealId}/review-financials`)}
+              style={{
+                padding: "4px 12px", borderRadius: 8, border: `1px solid ${NAVY}`,
+                fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
+                background: "transparent", color: NAVY, letterSpacing: "0.03em",
+              }}
+            >
+              {t("analysis.editFinancials")}
+            </button>
+          )}
+          {deal && (
             <div ref={memoRef} style={{ position: "relative" }}>
               <button
                 onClick={() => setMemoOpen(o => !o)}

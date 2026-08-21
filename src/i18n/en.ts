@@ -644,6 +644,22 @@ const en: Record<string, string> = {
   "notFound.qlApply":                  "Apply",
   "notFound.qlApplySub":               "Start your application",
   "notFound.footer":                   "© 2025 Junni. All rights reserved.",
+
+  // FinancialReview
+  "financialReview.backToAnalysis":       "← Back to analysis",
+  "financialReview.instructionFirstTime": "We extracted these figures from the uploaded financial statements. Please review, correct any errors, and add context where needed.",
+  "financialReview.instructionCorrection":"These are the confirmed figures for this analysis. Correct any values and click Confirm & Rescore to update the score with the new numbers.",
+  "financialReview.saving":               "Saving…",
+  "financialReview.confirmRescore":       "Confirm & Rescore",
+  "financialReview.rescoring":            "Rescoring…",
+  "financialReview.rescoreError":         "Figures saved. Re-scoring failed — the updated values will apply on the next score run.",
+
+  // DealAnalysis — edit financials
+  "analysis.editFinancials":              "Edit Financials →",
+
+  // MyAnalyses — recalculate
+  "myAnalyses.recalculate":              "Recalculate score",
+  "myAnalyses.recalculating":            "Recalculating…",
 };
 
 export default en;
