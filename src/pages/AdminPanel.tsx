@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase } from '../lib/supabase';
+import { supabase, invokeFunction } from '../lib/supabase';
 
 const LOGO_NAVY = "/junni-logo-navy.png";
-const SCORE_DEAL_URL = "https://sypqecydiqdpruarkrvy.supabase.co/functions/v1/score-deal";
 
 const ADMIN_NAV_ITEMS = [
   { icon: "◉", text: "Overview", tab: null },
@@ -222,11 +221,7 @@ export default function AdminPanel() {
       setRescoringDealId(orig.id);
       setRescoreFailedDealId(null);
       try {
-        await fetch(SCORE_DEAL_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deal_id: orig.id }),
-        });
+        await invokeFunction("score-deal", { deal_id: orig.id });
         const { data: refreshed } = await supabase
           .from("deals")
           .select("*, users!deals_borrower_id_fkey(full_name, email)")

@@ -1,6 +1,6 @@
 ﻿import { useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase } from '../lib/supabase';
+import { supabase, invokeFunction } from '../lib/supabase';
 import { useLocation } from "wouter";
 
 const LOGO_BEIGE = "/junni-logo-beige.png";
@@ -155,11 +155,8 @@ export default function BorrowerOnboarding() {
       }
 
       // Trigger AI scoring — fires after uploads so extraction finds the documents
-      fetch("https://sypqecydiqdpruarkrvy.supabase.co/functions/v1/score-deal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deal_id: newDealId }),
-      }).catch(err => console.error("Scoring trigger failed:", err));
+      invokeFunction("score-deal", { deal_id: newDealId })
+        .catch((err: unknown) => console.error("Scoring trigger failed:", err));
 
       setLocation("/borrower-dashboard");
     } catch (err) {

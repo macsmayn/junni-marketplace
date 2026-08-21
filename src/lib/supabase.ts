@@ -30,17 +30,20 @@ export const supabase = createClient(
   { accessToken: resolveToken }
 )
 
-// Edge functions verify JWTs against Supabase's own JWT secret. Auth0 tokens
-// are signed with Auth0's key, which Supabase doesn't know, so they always
-// fail verify_jwt. The anon key is a valid Supabase-signed JWT and passes.
-// Per-user identity is not currently available inside edge functions; they use
-// the service role key internally for all DB access.
+// Edge functions verify_jwt checks against Supabase's own JWT secret, so the
+// anon key stays in Authorization to pass that gate. The caller's Auth0 ID
+// token travels separately in X-Auth0-Token, where the function verifies it
+// against Auth0's /userinfo endpoint to establish caller identity.
 export async function invokeFunction(
   name: string,
   body: unknown
 ): Promise<{ data: unknown; error: Error | null }> {
+  const idToken = await resolveToken();
   return supabase.functions.invoke(name, {
     body,
-    headers: { Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    headers: {
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      'X-Auth0-Token': idToken,
+    },
   });
 }

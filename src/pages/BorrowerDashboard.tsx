@@ -1,7 +1,7 @@
 ﻿import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase } from "../lib/supabase";
+import { supabase, invokeFunction } from "../lib/supabase";
 
 const LOGO_NAVY = "/junni-logo-navy.png";
 
@@ -398,11 +398,7 @@ export default function BorrowerDashboard() {
       )
     );
     try {
-      await fetch('https://sypqecydiqdpruarkrvy.supabase.co/functions/v1/score-deal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deal_id: dealId }),
-      });
+      await invokeFunction('score-deal', { deal_id: dealId });
     } catch (rescoreErr) {
       console.error('[handleSubmitAnswers] Re-score failed (answers still saved):', rescoreErr);
     }
