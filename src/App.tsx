@@ -27,7 +27,7 @@ import NewAnalysis from "./pages/NewAnalysis";
 import MyAnalyses from "./pages/MyAnalyses";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
-import { setSupabaseAuthToken, setTokenProvider } from './lib/supabase'
+import { setSupabaseAuthToken, setTokenProvider, setAccessTokenProvider } from './lib/supabase'
 
 
 function Redirect({ to }: { to: string }) {
@@ -105,12 +105,18 @@ function Router() {
 // - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
 
 function App() {
-  const { isAuthenticated, getIdTokenClaims } = useAuth0();
+  const { isAuthenticated, getIdTokenClaims, getAccessTokenSilently } = useAuth0();
 
-  // Register the provider immediately (synchronous, before any effects run)
-  // so the accessToken callback can resolve the JWT on demand even before
-  // the effect below has had a chance to populate currentToken.
+  // Register both providers synchronously on every render so the callbacks
+  // capture the current Auth0 hook references before any effects run.
   setTokenProvider(async () => (await getIdTokenClaims())?.__raw ?? null);
+  setAccessTokenProvider(async () => {
+    try {
+      return await getAccessTokenSilently();
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
     if (isAuthenticated) {

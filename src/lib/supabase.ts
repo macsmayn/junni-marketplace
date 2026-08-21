@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 const SUPABASE_URL = 'https://sypqecydiqdpruarkrvy.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_DB4ZyrLd-8wYkE0HgBokLg_GN6cU_NB';
 
+// ── ID-token track (used by Supabase client for DB / RLS queries) ─────────────
 let currentToken: string | null = null;
 let tokenProvider: (() => Promise<string | null>) | null = null;
 
@@ -24,26 +25,46 @@ async function resolveToken(): Promise<string> {
   return '';
 }
 
+// ── Access-token track (used by edge functions via X-Auth0-Token) ─────────────
+// Auth0's /userinfo endpoint requires an access token, not an ID token.
+// getAccessTokenSilently() returns the correct token when an audience is set
+// in Auth0Provider (confirmed: audience "https://junni-market-2.manus.space").
+let accessTokenProvider: (() => Promise<string | null>) | null = null;
+
+export function setAccessTokenProvider(fn: () => Promise<string | null>) {
+  accessTokenProvider = fn;
+}
+
+async function resolveAccessToken(): Promise<string> {
+  if (accessTokenProvider) {
+    try {
+      return (await accessTokenProvider()) ?? '';
+    } catch {
+      return '';
+    }
+  }
+  return '';
+}
+
 export const supabase = createClient(
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
   { accessToken: resolveToken }
 )
 
-// Edge functions verify_jwt checks against Supabase's own JWT secret, so the
-// anon key stays in Authorization to pass that gate. The caller's Auth0 ID
-// token travels separately in X-Auth0-Token, where the function verifies it
-// against Auth0's /userinfo endpoint to establish caller identity.
+// Edge functions: anon key stays in Authorization (for Supabase's verify_jwt
+// gate); the Auth0 access token goes in X-Auth0-Token so the function can
+// verify caller identity via Auth0's /userinfo endpoint.
 export async function invokeFunction(
   name: string,
   body: unknown
 ): Promise<{ data: unknown; error: Error | null }> {
-  const idToken = await resolveToken();
+  const accessToken = await resolveAccessToken();
   return supabase.functions.invoke(name, {
     body,
     headers: {
       Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      'X-Auth0-Token': idToken,
+      'X-Auth0-Token': accessToken,
     },
   });
 }
