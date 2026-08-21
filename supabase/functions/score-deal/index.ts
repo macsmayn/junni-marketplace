@@ -4,9 +4,58 @@ import { runDeterministicScore, persistEngineResult } from "./scoreDealIntegrati
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-auth0-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+/**
+ * Calls the Anthropic Messages API and parses the response as JSON.
+ * Retries up to maxAttempts total on JSON parse failures (API-level errors
+ * are also retried so a transient 529 doesn't burn a parse retry slot).
+ * Returns the parsed object on success, or null when all attempts are
+ * exhausted — callers decide whether to skip or fail.
+ */
+async function callJsonApi(
+  apiKey: string,
+  requestBody: { model: string; max_tokens: number; messages: any[] },
+  label: string,
+  maxAttempts = 3,
+): Promise<any | null> {
+  let lastRaw = "";
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error(`[score-deal] ${label} API error (attempt ${attempt}/${maxAttempts}):`, errText);
+        if (attempt === maxAttempts) return null;
+        continue;
+      }
+      const data = await res.json();
+      lastRaw = data.content[0].text as string;
+      const cleaned = lastRaw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+      return JSON.parse(cleaned);
+    } catch (_e) {
+      if (attempt === maxAttempts) {
+        console.error(
+          `[score-deal] ${label} JSON parse failed after ${maxAttempts} attempt(s). Raw response:`,
+          lastRaw.slice(0, 500),
+        );
+        return null;
+      }
+      console.warn(`[score-deal] ${label} JSON parse failed (attempt ${attempt}/${maxAttempts}), retrying…`);
+    }
+  }
+  return null;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -25,8 +74,64 @@ Deno.serve(async (req: Request) => {
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const AUTH0_DOMAIN = Deno.env.get("AUTH0_DOMAIN")!;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // ── Caller ownership check ─────────────────────────────────────────────────
+    // The anon key travels in Authorization (for Supabase's verify_jwt gate).
+    // The caller's Auth0 ID token travels in X-Auth0-Token, verified here via
+    // Auth0's /userinfo endpoint to establish caller identity before any DB work.
+    const auth0Token = req.headers.get("X-Auth0-Token");
+    if (!auth0Token) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      });
+    }
+
+    const userInfoRes = await fetch(`https://${AUTH0_DOMAIN}/userinfo`, {
+      headers: { Authorization: `Bearer ${auth0Token}` },
+    });
+    if (!userInfoRes.ok) {
+      console.error("[score-deal] /userinfo rejected token — status:", userInfoRes.status);
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      });
+    }
+    const { sub: callerSub } = await userInfoRes.json();
+
+    const { data: callerUser } = await supabase
+      .from("users")
+      .select("id, role")
+      .eq("auth0_id", callerSub)
+      .maybeSingle();
+
+    if (!callerUser) {
+      console.error("[score-deal] No users row for sub:", callerSub);
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      });
+    }
+
+    if (callerUser.role !== "admin") {
+      const { data: ownerCheck } = await supabase
+        .from("deals")
+        .select("id")
+        .eq("id", deal_id)
+        .eq("borrower_id", callerUser.id)
+        .maybeSingle();
+      if (!ownerCheck) {
+        console.error("[score-deal] Ownership check failed — deal_id:", deal_id, "caller:", callerUser.id);
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+    }
+    // ── End ownership check ────────────────────────────────────────────────────
 
     // Fetch the deal
     const { data: deal, error: dealError } = await supabase
@@ -193,38 +298,21 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
         }
       };
 
-      // Shared Claude call + parse helper
+      // Shared Claude call + parse helper — retries handled by callJsonApi
       const callExtractionApi = async (messages: any[], label: string): Promise<{ stmts: any[]; mda_digest: string | null }> => {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 8000, messages }),
+        const parsed = await callJsonApi(
+          ANTHROPIC_API_KEY,
+          { model: "claude-opus-4-8", max_tokens: 8000, messages },
+          `extraction (${label})`,
+        );
+        if (!parsed) return { stmts: [], mda_digest: null };
+        const stmts = parsed.statements ?? [];
+        const mda_digest: string | null = parsed.mda_digest ?? null;
+        stmts.forEach((s: any) => {
+          console.log(`[score-deal] ${label} FY${s.fiscal_year} — units_detected: ${s.units_detected ?? "n/a"}, units_evidence: ${s.units_evidence ?? "n/a"}`);
         });
-        if (!res.ok) {
-          const errText = await res.text();
-          console.error(`[score-deal] Anthropic extraction error (${label}):`, errText);
-          return { stmts: [], mda_digest: null };
-        }
-        const data = await res.json();
-        const raw: string = data.content[0].text;
-        const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-        try {
-          const parsed = JSON.parse(cleaned);
-          const stmts = parsed.statements ?? [];
-          const mda_digest: string | null = parsed.mda_digest ?? null;
-          stmts.forEach((s: any) => {
-            console.log(`[score-deal] ${label} FY${s.fiscal_year} — units_detected: ${s.units_detected ?? "n/a"}, units_evidence: ${s.units_evidence ?? "n/a"}`);
-          });
-          console.log(`[score-deal] ${label} mda_digest: ${mda_digest ? mda_digest.slice(0, 80) + "…" : "null"}`);
-          return { stmts, mda_digest };
-        } catch (_e) {
-          console.error(`[score-deal] JSON parse failed (${label}). Raw:`, raw.slice(0, 300));
-          return { stmts: [], mda_digest: null };
-        }
+        console.log(`[score-deal] ${label} mda_digest: ${mda_digest ? mda_digest.slice(0, 80) + "…" : "null"}`);
+        return { stmts, mda_digest };
       };
 
       // STEP 1 — Download and prepare all documents into memory
@@ -854,42 +942,25 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
 QUESTIONS:
 ${translationQueue.map((q, i) => `${i + 1}. ${q.text}`).join("\n")}`;
 
-            const trRes = await fetch("https://api.anthropic.com/v1/messages", {
-              method: "POST",
-              headers: {
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "claude-sonnet-4-6",
-                max_tokens: 2000,
-                messages: [{ role: "user", content: trPrompt }],
-              }),
-            });
-
-            if (!trRes.ok) {
-              console.error("[score-deal] Phase 2d Part 2 FR translation API error:", await trRes.text());
+            const trParsed = await callJsonApi(
+              ANTHROPIC_API_KEY,
+              { model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: trPrompt }] },
+              "Phase 2d FR translation",
+            );
+            if (!trParsed) {
+              console.error("[score-deal] Phase 2d Part 2 FR translation failed after all retries — skipping.");
             } else {
-              const trData = await trRes.json();
-              const trRaw: string = trData.content[0].text;
-              const trCleaned = trRaw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-              try {
-                const trParsed: { translations: string[] } = JSON.parse(trCleaned);
-                const translations = trParsed.translations ?? [];
-                for (let ti = 0; ti < translationQueue.length; ti++) {
-                  const frText = translations[ti];
-                  if (!frText) continue;
-                  const { error: trUpdErr } = await supabase
-                    .from("credit_questions")
-                    .update({ question_text_fr: frText })
-                    .eq("id", translationQueue[ti].id);
-                  if (trUpdErr) console.error(`[score-deal] question_text_fr update error (${translationQueue[ti].id}):`, trUpdErr);
-                }
-                console.log(`[score-deal] Phase 2d Part 2 FR translations saved (${translations.length}).`);
-              } catch (_trParseErr) {
-                console.error("[score-deal] Phase 2d Part 2 FR translation JSON parse error. Raw:", trRaw.slice(0, 200));
+              const translations: string[] = trParsed.translations ?? [];
+              for (let ti = 0; ti < translationQueue.length; ti++) {
+                const frText = translations[ti];
+                if (!frText) continue;
+                const { error: trUpdErr } = await supabase
+                  .from("credit_questions")
+                  .update({ question_text_fr: frText })
+                  .eq("id", translationQueue[ti].id);
+                if (trUpdErr) console.error(`[score-deal] question_text_fr update error (${translationQueue[ti].id}):`, trUpdErr);
               }
+              console.log(`[score-deal] Phase 2d Part 2 FR translations saved (${translations.length}).`);
             }
           } catch (trErr) {
             console.error("[score-deal] Phase 2d Part 2 FR translation unhandled error:", trErr);
@@ -967,38 +1038,13 @@ DEAL CONTEXT:
 
 FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
 
-          const jobBRes = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: {
-              "x-api-key": ANTHROPIC_API_KEY,
-              "anthropic-version": "2023-06-01",
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "claude-opus-4-8",
-              max_tokens: 4000,
-              messages: [{ role: "user", content: jobBPrompt }],
-            }),
-          });
+          const parsedJobB = await callJsonApi(
+            ANTHROPIC_API_KEY,
+            { model: "claude-opus-4-8", max_tokens: 4000, messages: [{ role: "user", content: jobBPrompt }] },
+            "Phase 2d Job B",
+          ) ?? { questions: [] };
 
-          if (!jobBRes.ok) {
-            const errText = await jobBRes.text();
-            console.error("[score-deal] Phase 2d Job B API error:", errText);
-          } else {
-            const jobBData = await jobBRes.json();
-            const rawJobB: string = jobBData.content[0].text;
-            const cleanedJobB = rawJobB
-              .replace(/^```(?:json)?\s*/i, "")
-              .replace(/\s*```\s*$/i, "")
-              .trim();
-
-            let parsedJobB: { questions: any[] } = { questions: [] };
-            try {
-              parsedJobB = JSON.parse(cleanedJobB);
-            } catch (_e) {
-              console.error("[score-deal] Phase 2d Job B JSON parse error. Raw:", rawJobB.slice(0, 300));
-            }
-
+          {
             let jobBCount = 0;
             const aiQuestions = (parsedJobB.questions ?? []).slice(0, 20);
 
@@ -1189,47 +1235,17 @@ ${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBloc
 
 Each metric score is 0-100 where 100 is best.`;
 
-    // Call Claude
-    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-opus-4-8",
-        max_tokens: 4000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
+    // Call Claude — retries on JSON parse failure handled by callJsonApi
+    const scoring = await callJsonApi(
+      ANTHROPIC_API_KEY,
+      { model: "claude-opus-4-8", max_tokens: 4000, messages: [{ role: "user", content: prompt }] },
+      "main scoring prompt",
+    );
 
-    if (!anthropicRes.ok) {
-      const errText = await anthropicRes.text();
-      console.error("[score-deal] Anthropic API error:", errText);
-      return new Response(JSON.stringify({ error: "Anthropic API error", detail: errText }), {
-        status: 500,
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      });
-    }
-
-    const anthropicData = await anthropicRes.json();
-    const rawText: string = anthropicData.content[0].text;
-
-    // Strip markdown fences if present
-    const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-
-    let scoring: any;
-    try {
-      scoring = JSON.parse(cleaned);
-    } catch (parseErr) {
-      console.error("[score-deal] JSON parse failed. Raw text:", rawText);
+    if (!scoring) {
       return new Response(
-        JSON.stringify({ error: "Failed to parse Claude response", raw: rawText }),
-        {
-          status: 500,
-          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-        }
+        JSON.stringify({ error: "Scoring model failed to return valid JSON after 3 attempts" }),
+        { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
       );
     }
 
