@@ -496,6 +496,13 @@ export default function DealAnalysis() {
           {t("analysis.back")}
         </button>
         <span style={{ color: "#E8E2D9" }}>|</span>
+        <button
+          onClick={() => setLocation(currentUser?.role === "admin" ? "/admin" : "/lender-dashboard")}
+          style={{ background: "none", border: "none", color: NAVY, cursor: "pointer", fontSize: 13, fontFamily: "Inter, sans-serif", padding: 0, fontWeight: 600 }}
+        >
+          {t("analysis.backToDashboard")}
+        </button>
+        <span style={{ color: "#E8E2D9" }}>|</span>
         <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{t("analysis.pageTitle")}</span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
           {deal && (
