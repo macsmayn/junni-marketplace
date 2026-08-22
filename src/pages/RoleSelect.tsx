@@ -18,27 +18,7 @@ export default function RoleSelect() {
     (async () => {
       // Set token before read to avoid the race with App.tsx's async getIdTokenClaims
       const claims = await getIdTokenClaims();
-      const rawJwt = claims?.__raw ?? null;
-      setSupabaseAuthToken(rawJwt);
-
-      // --- TEMP DEBUG: decode JWT payload and log auth claims ---
-      if (rawJwt) {
-        try {
-          const payload = JSON.parse(atob(rawJwt.split('.')[1]));
-          console.log('[RoleSelect DEBUG] JWT payload:', {
-            sub: payload.sub,
-            iss: payload.iss,
-            aud: payload.aud,
-            exp: payload.exp ? new Date(payload.exp * 1000).toISOString() : undefined,
-            iat: payload.iat ? new Date(payload.iat * 1000).toISOString() : undefined,
-          });
-        } catch (e) {
-          console.warn('[RoleSelect DEBUG] Failed to decode JWT:', e);
-        }
-      } else {
-        console.warn('[RoleSelect DEBUG] rawJwt is null — no token set');
-      }
-      // --- END TEMP DEBUG ---
+      setSupabaseAuthToken(claims?.__raw ?? null);
 
       const { data: existingUser, error } = await supabase
         .from('users')
