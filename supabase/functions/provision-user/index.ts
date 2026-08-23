@@ -53,11 +53,11 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // ── Caller verification via Auth0 /userinfo ────────────────────────────────
-    // The Authorization bearer token is passed by the browser; we verify it
-    // with Auth0's /userinfo endpoint so sub and email are never caller-supplied.
-    const authHeader = req.headers.get("Authorization");
-    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-    if (!bearerToken) {
+    // The anon key travels in Authorization (for Supabase's verify_jwt gate).
+    // The caller's Auth0 ID token travels in X-Auth0-Token, verified here via
+    // Auth0's /userinfo endpoint to establish caller identity before any DB work.
+    const auth0Token = req.headers.get("X-Auth0-Token");
+    if (!auth0Token) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -65,7 +65,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const userInfoRes = await fetch(`https://${AUTH0_DOMAIN}/userinfo`, {
-      headers: { Authorization: `Bearer ${bearerToken}` },
+      headers: { Authorization: `Bearer ${auth0Token}` },
     });
     if (!userInfoRes.ok) {
       console.error("[provision-user] /userinfo rejected token — status:", userInfoRes.status);
