@@ -1079,23 +1079,7 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      {/* TEMPORARY TEST BUTTON — REMOVE AFTER PROVISIONING IS WIRED */}
-      <div style={{ padding: "12px 24px", background: "#fff3cd", borderBottom: "1px solid #ffc107" }}>
-        <button
-          style={{ padding: "8px 16px", background: "#dc3545", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 13 }}
-          onClick={async () => {
-            console.log("[TEST] Invoking provision-user…");
-            const { data, error } = await invokeFunction("provision-user", {});
-            console.log("[TEST] provision-user response — data:", data, "error:", error);
-            alert(`provision-user result:\n\ndata: ${JSON.stringify(data, null, 2)}\n\nerror: ${error ? String(error) : "null"}`);
-          }}
-        >
-          TEST provision-user
-        </button>
-      </div>
-      {/* END TEMPORARY TEST BUTTON */}
-
-      <div className="d-main">
+<div className="d-main">
         <div className="d-stats" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>
           <div className="d-stat-card"><div className="d-stat-label">Total Users</div><div className="d-stat-num">{usersLoading ? "—" : usersList.length}</div><div className="d-stat-sub">registered</div></div>
           <div className="d-stat-card"><div className="d-stat-label">Total Analyses</div><div className="d-stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="d-stat-sub">on platform</div></div>

@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase, setSupabaseAuthToken } from '../lib/supabase';
+import { supabase, setSupabaseAuthToken, invokeFunction } from '../lib/supabase';
 
 export default function RoleSelect() {
   const [, setLocation] = useLocation();
   const { isLoading, user, getIdTokenClaims } = useAuth0();
   const [checkingAdmin, setCheckingAdmin] = useState(true);
   const [readError, setReadError] = useState(false);
+  const [provisionError, setProvisionError] = useState(false);
 
   useEffect(() => {
     if (isLoading) return;
@@ -16,9 +17,19 @@ export default function RoleSelect() {
       return;
     }
     (async () => {
-      // Set token before read to avoid the race with App.tsx's async getIdTokenClaims
+      // Set token before any network call to avoid the race with App.tsx's async getIdTokenClaims
       const claims = await getIdTokenClaims();
       setSupabaseAuthToken(claims?.__raw ?? null);
+
+      // Provision the user atomically via edge function on every login.
+      // Idempotent: returns already_provisioned:true immediately if org_id is already set.
+      const { data: provisionData, error: provisionErr } = await invokeFunction("provision-user", {});
+      if (provisionErr) {
+        console.error('[RoleSelect] provision-user failed:', provisionErr, 'data:', provisionData);
+        setProvisionError(true);
+        setCheckingAdmin(false);
+        return;
+      }
 
       const { data: existingUser, error } = await supabase
         .from('users')
@@ -37,17 +48,12 @@ export default function RoleSelect() {
         if (existingUser.role === 'admin')    { setLocation('/admin'); return; }
         if (existingUser.role === 'lender')   { setLocation('/lender-dashboard'); return; }
         if (existingUser.role === 'borrower') { setLocation('/borrower-dashboard'); return; }
-        // Unknown role but row exists — do not re-insert, default to lender dashboard
+        // Unknown role but row exists — default to lender dashboard
         setLocation('/lender-dashboard');
         return;
       }
 
-      // No row found — genuine new user; DB default sets role='lender'
-      await supabase.from('users').upsert({
-        auth0_id: user.sub,
-        email: user.email,
-        full_name: user.name,
-      }, { onConflict: 'auth0_id' });
+      // Provision succeeded but user row still not readable — route to lender dashboard
       setLocation('/lender-dashboard');
     })();
   }, [isLoading, user?.email]);
@@ -56,6 +62,14 @@ export default function RoleSelect() {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
         Loading...
+      </div>
+    );
+  }
+
+  if (provisionError) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "Inter, sans-serif", color: "#DC2626", fontSize: 14 }}>
+        We could not set up your account. Please try again or contact support.
       </div>
     );
   }
