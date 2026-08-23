@@ -26,10 +26,9 @@ function deriveOrgName(email: string): string {
     return local.charAt(0).toUpperCase() + local.slice(1);
   }
 
-  const parts = domain.split(".");
-  // Strip the TLD (last segment); join remaining parts without separator
-  const withoutTld = parts.length > 1 ? parts.slice(0, -1).join("") : parts[0];
-  return withoutTld.charAt(0).toUpperCase() + withoutTld.slice(1);
+  // Use only the first domain segment (e.g. "rbc" from "rbc.co.uk", "meridiancapital" from "meridiancapital.com")
+  const firstSegment = domain.split(".")[0];
+  return firstSegment.charAt(0).toUpperCase() + firstSegment.slice(1);
 }
 
 Deno.serve(async (req: Request) => {
@@ -120,37 +119,77 @@ Deno.serve(async (req: Request) => {
     // ── Stripe customer creation ───────────────────────────────────────────────
     // Must succeed before any DB writes. If Stripe fails, abort with 502.
     // Never log the secret key.
-    const stripeParams = new URLSearchParams({
-      email: callerEmail,
-      name: orgName,
-      "metadata[auth0_sub]": callerSub,
-    });
+    //
+    // Search first to avoid creating a duplicate when a previous attempt
+    // succeeded at Stripe but failed at the billing_customers insert and was
+    // compensating-cleaned (org_id reset to null, Stripe customer orphaned).
+    let stripeCustomerId: string | null = null;
 
-    const stripeRes = await fetch("https://api.stripe.com/v1/customers", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${STRIPE_SECRET_KEY}`,
-        "Content-Type": "application/x-www-form-urlencoded",
+    const searchQuery = new URLSearchParams({
+      query: `metadata['auth0_sub']:'${callerSub}'`,
+    });
+    const stripeSearchRes = await fetch(
+      `https://api.stripe.com/v1/customers/search?${searchQuery.toString()}`,
+      {
+        headers: { Authorization: `Bearer ${STRIPE_SECRET_KEY}` },
       },
-      body: stripeParams.toString(),
-    });
+    );
 
-    if (!stripeRes.ok) {
-      const stripeErr = await stripeRes.text();
+    if (!stripeSearchRes.ok) {
+      const searchErr = await stripeSearchRes.text();
       console.error(
-        "[provision-user] Stripe customer creation failed — status:",
-        stripeRes.status,
+        "[provision-user] Stripe customer search failed — status:",
+        stripeSearchRes.status,
         "body:",
-        stripeErr,
+        searchErr,
+        "— falling through to create new customer",
       );
-      return new Response(JSON.stringify({ error: "Failed to create billing customer" }), {
-        status: 502,
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      });
+    } else {
+      const searchData = await stripeSearchRes.json();
+      if (searchData.data && searchData.data.length > 0) {
+        stripeCustomerId = searchData.data[0].id;
+        console.error(
+          "[provision-user] Reusing existing Stripe customer:",
+          stripeCustomerId,
+          "for sub:",
+          callerSub,
+        );
+      }
     }
 
-    const stripeCustomer = await stripeRes.json();
-    const stripeCustomerId: string = stripeCustomer.id;
+    if (!stripeCustomerId) {
+      const stripeParams = new URLSearchParams({
+        email: callerEmail,
+        name: orgName,
+        "metadata[auth0_sub]": callerSub,
+      });
+
+      const stripeRes = await fetch("https://api.stripe.com/v1/customers", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${STRIPE_SECRET_KEY}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: stripeParams.toString(),
+      });
+
+      if (!stripeRes.ok) {
+        const stripeErr = await stripeRes.text();
+        console.error(
+          "[provision-user] Stripe customer creation failed — status:",
+          stripeRes.status,
+          "body:",
+          stripeErr,
+        );
+        return new Response(JSON.stringify({ error: "Failed to create billing customer" }), {
+          status: 502,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      const stripeCustomer = await stripeRes.json();
+      stripeCustomerId = stripeCustomer.id;
+    }
     // ── End Stripe ─────────────────────────────────────────────────────────────
 
     // ── DB writes (in order; compensating cleanup on failure) ─────────────────
@@ -227,6 +266,7 @@ Deno.serve(async (req: Request) => {
       if (userCleanupErr) {
         console.error("[provision-user] user org_id reset after billing failure:", userCleanupErr);
       }
+      console.error("[provision-user] ORPHANED STRIPE CUSTOMER — no billing_customers row was written for:", stripeCustomerId);
       return new Response(JSON.stringify({ error: "Failed to create billing record" }), {
         status: 500,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
