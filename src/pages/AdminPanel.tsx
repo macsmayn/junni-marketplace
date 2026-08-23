@@ -178,6 +178,7 @@ export default function AdminPanel() {
     setEditingDeal(deal);
     setEditDealForm({
       title: deal.title ?? "",
+      deal_label: deal.deal_label ?? "",
       industry: deal.industry ?? "",
       amount_requested: deal.amount_requested ?? "",
       annual_revenue: deal.annual_revenue ?? "",
@@ -196,6 +197,7 @@ export default function AdminPanel() {
 
     const updates = {
       title: editDealForm.title,
+      deal_label: (editDealForm.deal_label ?? "").trim() || null,
       industry: editDealForm.industry,
       amount_requested: toNum(editDealForm.amount_requested),
       annual_revenue: toNum(editDealForm.annual_revenue),
@@ -406,7 +408,7 @@ export default function AdminPanel() {
         </div>
         <div style={{ display: "grid", gap: "12px" }}>
           {([
-            { label: "Title", key: "title", type: "text" },
+            { label: "Company Name", key: "title", type: "text" },
             { label: "Industry", key: "industry", type: "text" },
             { label: "Amount Requested ($)", key: "amount_requested", type: "number" },
             { label: "Annual Revenue ($)", key: "annual_revenue", type: "number" },
@@ -424,6 +426,16 @@ export default function AdminPanel() {
               />
             </div>
           ))}
+          <div>
+            <div style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", marginBottom: "5px" }}>Deal label (optional)</div>
+            <input
+              type="text"
+              value={editDealForm.deal_label ?? ""}
+              onChange={e => setEditDealForm(prev => ({ ...prev, deal_label: e.target.value }))}
+              placeholder="e.g. Refinancing 2026, Project Alpha…"
+              style={{ width: "100%", padding: "8px 10px", border: "1px solid #E8E2D9", borderRadius: "6px", fontFamily: "Inter, sans-serif", fontSize: "14px", color: "#1B2B4B", outline: "none", boxSizing: "border-box" }}
+            />
+          </div>
           <div>
             <div style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", marginBottom: "5px" }}>Status</div>
             <select
