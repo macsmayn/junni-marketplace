@@ -30,6 +30,13 @@ export default function RoleSelect() {
         setCheckingAdmin(false);
         return;
       }
+      const pd = provisionData as any;
+      if (!pd?.org_id) {
+        console.error('[RoleSelect] provision-user returned no org_id — full response:', provisionData);
+        setProvisionError(true);
+        setCheckingAdmin(false);
+        return;
+      }
 
       const { data: existingUser, error } = await supabase
         .from('users')
@@ -53,8 +60,10 @@ export default function RoleSelect() {
         return;
       }
 
-      // Provision succeeded but user row still not readable — route to lender dashboard
-      setLocation('/lender-dashboard');
+      // Provision succeeded but no users row is readable — should not occur
+      console.error('[RoleSelect] provision-user succeeded but users row not readable — provisionData:', provisionData);
+      setProvisionError(true);
+      setCheckingAdmin(false);
     })();
   }, [isLoading, user?.email]);
 
