@@ -15,7 +15,7 @@ interface DbUser {
 
 interface Deal {
   id: string;
-  borrower_id: string;
+  created_by: string;
   title: string;
   company_name: string;
   sector: string;
@@ -231,7 +231,7 @@ export default function BorrowerDashboard() {
         const { data: dealsData } = await supabase
           .from("deals")
           .select("*")
-          .eq("borrower_id", userData.id)
+          .eq("created_by", userData.id)
           .order("created_at", { ascending: false });
 
         const fetchedDeals: Deal[] = dealsData || [];
@@ -316,7 +316,7 @@ export default function BorrowerDashboard() {
     const { data: dealsData } = await supabase
       .from("deals")
       .select("*")
-      .eq("borrower_id", dbUser.id)
+      .eq("created_by", dbUser.id)
       .order("created_at", { ascending: false });
     const fetchedDeals: Deal[] = dealsData || [];
     setDeals(fetchedDeals);

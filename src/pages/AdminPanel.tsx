@@ -89,7 +89,7 @@ export default function AdminPanel() {
       setUsersLoading(true);
       const [{ data: qData }, { data: dlData }, { data: ulData }, { data: alData }] = await Promise.all([
         supabase.from("credit_questions").select("*").eq("status", "pending_review").order("deal_id"),
-        supabase.from("deals").select("*, users!deals_borrower_id_fkey(full_name, email)").eq("deal_source", "lender_analysis").order("created_at", { ascending: false }),
+        supabase.from("deals").select("*, users!deals_created_by_fkey(full_name, email)").eq("deal_source", "lender_analysis").order("created_at", { ascending: false }),
         supabase.from("users").select("*").order("created_at", { ascending: false }),
         supabase.from("admin_allowlist").select("email"),
       ]);
@@ -110,10 +110,10 @@ export default function AdminPanel() {
       setDealsList(dlData ?? []);
       setDealsLoading(false);
 
-      // Deal count by borrower_id
+      // Deal count by created_by
       const countMap: Record<string, number> = {};
       for (const d of (dlData ?? [])) {
-        if (d.borrower_id) countMap[d.borrower_id] = (countMap[d.borrower_id] ?? 0) + 1;
+        if (d.created_by) countMap[d.created_by] = (countMap[d.created_by] ?? 0) + 1;
       }
       setDealCountByUser(countMap);
 
@@ -320,7 +320,7 @@ export default function AdminPanel() {
     });
     setUserModalDeals([]);
     setUserModalLoading(true);
-    const { data: uDeals } = await supabase.from("deals").select("id, title, status, amount_requested").eq("borrower_id", u.id);
+    const { data: uDeals } = await supabase.from("deals").select("id, title, status, amount_requested").eq("created_by", u.id);
     setUserModalDeals(uDeals ?? []);
     setUserModalLoading(false);
   };
@@ -677,7 +677,7 @@ export default function AdminPanel() {
                                 await invokeFunction("score-deal", { deal_id: deal.id });
                                 const { data: refreshed } = await supabase
                                   .from("deals")
-                                  .select("*, users!deals_borrower_id_fkey(full_name, email)")
+                                  .select("*, users!deals_created_by_fkey(full_name, email)")
                                   .eq("id", deal.id)
                                   .single();
                                 if (refreshed) setDealsList(prev => prev.map(d => d.id === deal.id ? refreshed : d));

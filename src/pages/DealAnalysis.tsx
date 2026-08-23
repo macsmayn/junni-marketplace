@@ -199,7 +199,7 @@ export default function DealAnalysis() {
     (async () => {
       setLoading(true);
       const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }, { data: qsData }] = await Promise.all([
-        supabase.from("deals").select("title,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,borrower_id,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr").eq("id", dealId).single(),
+        supabase.from("deals").select("title,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,created_by,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source,summary_fr,strengths_fr,risks_fr").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
         supabase.from("users").select("id,role").eq("auth0_id", user?.sub ?? "").maybeSingle(),
@@ -360,7 +360,7 @@ export default function DealAnalysis() {
     </div>
   );
 
-  if (currentUser && currentUser.role !== "admin" && deal.borrower_id && deal.borrower_id !== currentUser.id) return (
+  if (currentUser && currentUser.role !== "admin" && deal.created_by && deal.created_by !== currentUser.id) return (
     <div style={{ minHeight: "100vh", background: CREAM, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif" }}>
       <div style={{ textAlign: "center", padding: 40 }}>
         <div style={{ fontSize: 32, marginBottom: 16 }}>🔒</div>

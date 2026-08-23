@@ -273,7 +273,7 @@ export default function NewAnalysis() {
     setStep1Loading(true);
     const { data: userData, error: userErr } = await supabase
       .from("users")
-      .select("id")
+      .select("id, org_id")
       .eq("auth0_id", user?.sub ?? "")
       .maybeSingle();
 
@@ -287,7 +287,8 @@ export default function NewAnalysis() {
     const { data: dealData, error: dealErr } = await supabase
       .from("deals")
       .insert({
-        borrower_id: userData.id,
+        created_by: userData.id,
+        org_id: userData.org_id,
         title: companyName.trim(),
         industry,
         amount_requested: amount,
