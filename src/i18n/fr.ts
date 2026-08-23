@@ -52,6 +52,7 @@ const fr: Record<string, string> = {
 
   // DealAnalysis — page header
   "analysis.untitled":             "Analyse sans titre",
+  "analysis.dealLabel":            "Libellé du dossier",
   "analysis.requested":            "demandés",
   "analysis.monthsWord":           "mois",
 
@@ -435,6 +436,11 @@ const fr: Record<string, string> = {
   "newAnalysis.errorScoring":           "La notation a échoué. Veuillez réessayer.",
   "newAnalysis.btnScoring":             "Notation…",
   "newAnalysis.btnConfirmScore":        "Confirmer et noter →",
+  "newAnalysis.dealLabel":              "Libellé du dossier (facultatif)",
+  "newAnalysis.dealLabelPlaceholder":   "p. ex. Refinancement 2026, Projet Alpha…",
+
+  // AdminPanel
+  "adminPanel.dealLabelCol":            "Libellé",
 
   // LenderDashboard
   "lenderDashboard.loading":            "Chargement…",

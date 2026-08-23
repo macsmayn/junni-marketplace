@@ -52,6 +52,7 @@ const en: Record<string, string> = {
 
   // DealAnalysis — page header
   "analysis.untitled":             "Untitled Deal",
+  "analysis.dealLabel":            "Deal label",
   "analysis.requested":            "requested",
   "analysis.monthsWord":           "months",
 
@@ -435,6 +436,11 @@ const en: Record<string, string> = {
   "newAnalysis.errorScoring":           "Scoring failed. Please try again.",
   "newAnalysis.btnScoring":             "Scoring…",
   "newAnalysis.btnConfirmScore":        "Confirm & Score →",
+  "newAnalysis.dealLabel":              "Deal label (optional)",
+  "newAnalysis.dealLabelPlaceholder":   "e.g. Refinancing 2026, Project Alpha…",
+
+  // AdminPanel
+  "adminPanel.dealLabelCol":            "Deal label",
 
   // LenderDashboard
   "lenderDashboard.loading":            "Loading…",

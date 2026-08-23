@@ -630,7 +630,7 @@ export default function AdminPanel() {
                   <th style={{ padding: thPad, borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)", width: "32px" }}>
                     <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: "pointer" }} />
                   </th>
-                  {["Title", "Borrower", "Industry", "Amount", "AI Score", "Status", "Created", "Actions"].map(h => (
+                  {["Company Name", "Deal label", "Created by", "Industry", "Amount", "AI Score", "Status", "Created", "Actions"].map(h => (
                     <th key={h} style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", padding: thPad, textAlign: "left", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)" }}>{h}</th>
                   ))}
                 </tr>
@@ -645,6 +645,7 @@ export default function AdminPanel() {
                         <input type="checkbox" checked={selectedDealIds.has(deal.id)} onChange={() => toggleDealSelect(deal.id)} style={{ cursor: "pointer" }} />
                       </td>
                       <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B", maxWidth: mobile ? "140px" : "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.title ?? "Untitled"}</td>
+                      <td style={{ padding: tdPad, color: "#7A7060" }}>{deal.deal_label ?? "—"}</td>
                       <td style={{ padding: tdPad, color: "#7A7060" }}>{borrowerName}</td>
                       <td style={{ padding: tdPad, color: "#7A7060" }}>{deal.industry ?? "—"}</td>
                       <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B" }}>{fmtAmount(deal.amount_requested)}</td>

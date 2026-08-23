@@ -191,6 +191,7 @@ export default function NewAnalysis() {
 
   // Step 1
   const [companyName, setCompanyName] = useState("");
+  const [dealLabel, setDealLabel] = useState("");
   const [industry, setIndustry] = useState("");
   const [amountRequested, setAmountRequested] = useState("");
   const [termMonths, setTermMonths] = useState("60");
@@ -290,6 +291,7 @@ export default function NewAnalysis() {
         created_by: userData.id,
         org_id: userData.org_id,
         title: companyName.trim(),
+        deal_label: dealLabel.trim() || null,
         industry,
         amount_requested: amount,
         term_months: parseInt(termMonths) || 60,
@@ -844,6 +846,16 @@ export default function NewAnalysis() {
                   onChange={e => { setCompanyName(e.target.value); if (e.target.value.trim()) setStep1FieldErrors(p => { const n = new Set(p); n.delete("companyName"); return n; }); }}
                 />
                 {step1FieldErrors.has("companyName") && <div style={{ color: RED, fontSize: 11, marginTop: 4 }}>{t("newAnalysis.required")}</div>}
+              </div>
+
+              <div>
+                <label style={labelStyle}>{t("newAnalysis.dealLabel")}</label>
+                <input
+                  style={inputStyle}
+                  placeholder={t("newAnalysis.dealLabelPlaceholder")}
+                  value={dealLabel}
+                  onChange={e => setDealLabel(e.target.value)}
+                />
               </div>
 
               <div>
