@@ -32,7 +32,10 @@ export default function LenderRoute({ children }: LenderRouteProps) {
 
   useEffect(() => {
     if (authLoading || roleLoading) return;
-    if (!isAuthenticated || (role !== "lender" && role !== "admin")) {
+    if (!isAuthenticated) {
+      sessionStorage.setItem("junni_return_to", window.location.pathname + window.location.search);
+      setLocation("/");
+    } else if (role !== "lender" && role !== "admin") {
       setLocation("/");
     }
   }, [authLoading, roleLoading, isAuthenticated, role]);

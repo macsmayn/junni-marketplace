@@ -12,6 +12,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
+      sessionStorage.setItem("junni_return_to", window.location.pathname + window.location.search);
       setLocation("/login");
     }
   }, [isAuthenticated, isLoading, setLocation]);

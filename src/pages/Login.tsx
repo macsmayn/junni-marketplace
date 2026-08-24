@@ -20,12 +20,24 @@ export default function Login() {
   useEffect(() => {
     if (isLoading || isAuthenticated || redirectCalled.current) return;
     redirectCalled.current = true;
-    loginWithRedirect();
+    const returnTo = sessionStorage.getItem("junni_return_to");
+    if (returnTo) {
+      sessionStorage.removeItem("junni_return_to");
+      loginWithRedirect({ appState: { returnTo } });
+    } else {
+      loginWithRedirect();
+    }
   }, [isLoading, isAuthenticated, loginWithRedirect]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    loginWithRedirect();
+    const returnTo = sessionStorage.getItem("junni_return_to");
+    if (returnTo) {
+      sessionStorage.removeItem("junni_return_to");
+      loginWithRedirect({ appState: { returnTo } });
+    } else {
+      loginWithRedirect();
+    }
   };
 
   if (!isAuthenticated) {

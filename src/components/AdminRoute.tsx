@@ -33,6 +33,7 @@ export default function AdminRoute({ children }: AdminRouteProps) {
   useEffect(() => {
     if (authLoading || roleLoading) return;
     if (!isAuthenticated) {
+      sessionStorage.setItem("junni_return_to", window.location.pathname + window.location.search);
       setLocation("/login");
     } else if (role !== "admin") {
       setLocation("/marketplace");
