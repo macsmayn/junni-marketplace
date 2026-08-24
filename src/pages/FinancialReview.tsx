@@ -131,8 +131,13 @@ export default function FinancialReview() {
       try {
         const { error: scoreErr } = await invokeFunction("score-deal", { deal_id: dealId });
         if (scoreErr) {
-          console.error("[FinancialReview] rescore failed:", scoreErr);
-          setRescoreError(t("financialReview.rescoreError"));
+          const body402 = await (scoreErr as any).context?.json().catch(() => null);
+          if (body402?.error === "no_subscription") {
+            setRescoreError(t("financialReview.rescoreErrorNoSub"));
+          } else {
+            console.error("[FinancialReview] rescore failed:", scoreErr);
+            setRescoreError(t("financialReview.rescoreError"));
+          }
         } else {
           setLocation(`/analysis/${dealId}`);
         }

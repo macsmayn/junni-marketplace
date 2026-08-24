@@ -242,6 +242,13 @@ const en: Record<string, string> = {
   "risk.moderate": "Moderate",
   "risk.high":     "High",
 
+  // NewAnalysis — subscription gate
+  "newAnalysis.checkingSubscription": "Checking subscription…",
+  "newAnalysis.noSubscriptionTitle":  "No active subscription",
+  "newAnalysis.noSubscriptionBody":   "Your organization doesn't have an active subscription. Subscribe to run credit analyses.",
+  "newAnalysis.subscribeBtn":         "View subscription options →",
+  "newAnalysis.errorNoSubscription":  "No active subscription. Go to Billing to subscribe.",
+
   // NewAnalysis — nav / layout
   "newAnalysis.navTitle":             "New Analysis",
 
@@ -652,6 +659,7 @@ const en: Record<string, string> = {
   "notFound.footer":                   "© 2025 Junni. All rights reserved.",
 
   // FinancialReview
+  "financialReview.rescoreErrorNoSub":    "No active subscription. Go to Billing to subscribe.",
   "financialReview.backToAnalysis":       "← Back to analysis",
   "financialReview.instructionFirstTime": "We extracted these figures from the uploaded financial statements. Please review, correct any errors, and add context where needed.",
   "financialReview.instructionCorrection":"These are the confirmed figures for this analysis. Correct any values and click Confirm & Rescore to update the score with the new numbers.",
@@ -666,6 +674,7 @@ const en: Record<string, string> = {
   // MyAnalyses — recalculate
   "myAnalyses.recalculate":              "Recalculate score",
   "myAnalyses.recalculating":            "Recalculating…",
+  "myAnalyses.recalcErrorNoSub":         "No active subscription. Go to Billing to subscribe.",
 };
 
 export default en;

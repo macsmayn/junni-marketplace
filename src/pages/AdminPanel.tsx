@@ -687,7 +687,8 @@ export default function AdminPanel() {
                             onClick={async () => {
                               setRescoringDealId(deal.id);
                               try {
-                                await invokeFunction("score-deal", { deal_id: deal.id });
+                                const { error: scoreErr } = await invokeFunction("score-deal", { deal_id: deal.id });
+                                if (scoreErr) console.error("[AdminPanel] rescore failed:", scoreErr.message);
                                 const { data: refreshed } = await supabase
                                   .from("deals")
                                   .select("*, users!deals_created_by_fkey(full_name, email)")

@@ -398,9 +398,10 @@ export default function BorrowerDashboard() {
       )
     );
     try {
-      await invokeFunction('score-deal', { deal_id: dealId });
+      const { error: rescoreErr } = await invokeFunction('score-deal', { deal_id: dealId });
+      if (rescoreErr) console.error('[handleSubmitAnswers] Re-score failed (answers still saved):', rescoreErr.message);
     } catch (rescoreErr) {
-      console.error('[handleSubmitAnswers] Re-score failed (answers still saved):', rescoreErr);
+      console.error('[handleSubmitAnswers] Unhandled re-score error:', rescoreErr);
     }
     setSubmittingAnswers(prev => ({ ...prev, [dealId]: false }));
     setAnsweredDeals(prev => new Set([...prev, dealId]));

@@ -242,6 +242,13 @@ const fr: Record<string, string> = {
   "risk.moderate": "Modéré",
   "risk.high":     "Élevé",
 
+  // NewAnalysis — subscription gate
+  "newAnalysis.checkingSubscription": "Vérification de l'abonnement…",
+  "newAnalysis.noSubscriptionTitle":  "Aucun abonnement actif",
+  "newAnalysis.noSubscriptionBody":   "Votre organisation n'a pas d'abonnement actif. Abonnez-vous pour lancer des analyses de crédit.",
+  "newAnalysis.subscribeBtn":         "Voir les options d'abonnement →",
+  "newAnalysis.errorNoSubscription":  "Aucun abonnement actif. Accédez à Facturation pour vous abonner.",
+
   // NewAnalysis — nav / layout
   "newAnalysis.navTitle":             "Nouvelle analyse",
 
@@ -652,6 +659,7 @@ const fr: Record<string, string> = {
   "notFound.footer":                   "© 2025 Junni. Tous droits réservés.",
 
   // FinancialReview
+  "financialReview.rescoreErrorNoSub":    "Aucun abonnement actif. Accédez à Facturation pour vous abonner.",
   "financialReview.backToAnalysis":       "← Retour à l'analyse",
   "financialReview.instructionFirstTime": "Nous avons extrait ces données des états financiers téléchargés. Veuillez vérifier, corriger les erreurs et ajouter du contexte si nécessaire.",
   "financialReview.instructionCorrection":"Voici les données confirmées pour cette analyse. Corrigez les valeurs et cliquez sur Confirmer et réévaluer pour mettre à jour le score.",
@@ -666,6 +674,7 @@ const fr: Record<string, string> = {
   // MyAnalyses — recalculate
   "myAnalyses.recalculate":              "Recalculer le score",
   "myAnalyses.recalculating":            "Recalcul…",
+  "myAnalyses.recalcErrorNoSub":         "Aucun abonnement actif. Accédez à Facturation pour vous abonner.",
 };
 
 export default fr;

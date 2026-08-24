@@ -187,6 +187,35 @@ export default function NewAnalysis() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  useEffect(() => {
+    if (!user?.sub) return;
+    (async () => {
+      const { data: userRow } = await supabase
+        .from("users")
+        .select("org_id, role")
+        .eq("auth0_id", user.sub)
+        .maybeSingle();
+      if (userRow?.role === "admin") {
+        setHasSubscription(true);
+        setSubChecked(true);
+        return;
+      }
+      if (!userRow?.org_id) {
+        setHasSubscription(false);
+        setSubChecked(true);
+        return;
+      }
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("status")
+        .eq("org_id", userRow.org_id)
+        .in("status", ["trialing", "active", "past_due"])
+        .maybeSingle();
+      setHasSubscription(!!sub);
+      setSubChecked(true);
+    })();
+  }, [user?.sub]);
+
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   // Step 1
@@ -256,6 +285,10 @@ export default function NewAnalysis() {
   const [collOpen, setCollOpen] = useState(false);
   const [collRows, setCollRows] = useState<CollRow[]>([]);
   const [collDraft, setCollDraft] = useState<CollRow>({ asset_type: "Accounts Receivable", description: "", market_value: "", advance_rate: "75" });
+
+  // Subscription gate — checked on mount, skipped for admins
+  const [subChecked, setSubChecked] = useState(false);
+  const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
 
   // ── Step 1 ──────────────────────────────────────────────────────────
   async function handleStep1() {
@@ -392,6 +425,13 @@ export default function NewAnalysis() {
 
     const { error: invokeErr } = await invokeFunction("score-deal", { deal_id: dealId, extract_only: true });
     if (invokeErr) {
+      const body402 = await (invokeErr as any).context?.json().catch(() => null);
+      if (body402?.error === "no_subscription") {
+        setFileError("newAnalysis.errorNoSubscription");
+        setFileErrorDetail("");
+        setExtracting(false);
+        return;
+      }
       console.error("[NewAnalysis] extraction:", invokeErr.message);
       setFileError("newAnalysis.errorExtraction");
       setFileErrorDetail("");
@@ -670,6 +710,12 @@ export default function NewAnalysis() {
 
     const { error: scoreErr } = await invokeFunction("score-deal", { deal_id: dealId });
     if (scoreErr) {
+      const body402 = await (scoreErr as any).context?.json().catch(() => null);
+      if (body402?.error === "no_subscription") {
+        setConfirmError("newAnalysis.errorNoSubscription");
+        setConfirming(false);
+        return;
+      }
       console.error("[confirm] scoring:", scoreErr.message);
       setConfirmError("newAnalysis.errorScoring");
       setConfirming(false);
@@ -776,8 +822,30 @@ export default function NewAnalysis() {
         </div>
       </div>
 
+      {!subChecked && (
+        <div style={{ textAlign: "center", padding: "80px 0", color: MUTED, fontSize: 14, fontFamily: "Inter, sans-serif" }}>
+          {t("newAnalysis.checkingSubscription")}
+        </div>
+      )}
+      {subChecked && !hasSubscription && (
+        <div style={{ maxWidth: 480, margin: "60px auto", padding: "0 24px", textAlign: "center" }}>
+          <h2 style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 26, color: NAVY, margin: "0 0 16px" }}>
+            {t("newAnalysis.noSubscriptionTitle")}
+          </h2>
+          <p style={{ color: MUTED, fontSize: 15, lineHeight: 1.6, margin: "0 0 28px" }}>
+            {t("newAnalysis.noSubscriptionBody")}
+          </p>
+          <button
+            style={{ background: GOLD, color: "#fff", border: "none", borderRadius: 8, padding: "12px 28px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
+            onClick={() => setLocation("/billing")}
+          >
+            {t("newAnalysis.subscribeBtn")}
+          </button>
+        </div>
+      )}
+
       {/* STEP INDICATOR */}
-      <div style={{
+      {subChecked && !!hasSubscription && <div style={{
         display: "flex", alignItems: "flex-start", justifyContent: "center",
         padding: isMobile ? "24px 20px 4px" : "32px 40px 4px",
       }}>
@@ -818,10 +886,9 @@ export default function NewAnalysis() {
             </div>
           );
         })}
-      </div>
+      </div>}
 
-      {/* PAGE CONTENT */}
-      <div style={{ maxWidth: 660, margin: "0 auto", padding: isMobile ? "24px 20px 80px" : "36px 40px 80px" }}>
+      {subChecked && !!hasSubscription && <div style={{ maxWidth: 660, margin: "0 auto", padding: isMobile ? "24px 20px 80px" : "36px 40px 80px" }}>
 
         {/* ═══ STEP 1: Company & Terms ═══ */}
         {step === 1 && (
@@ -1873,7 +1940,7 @@ export default function NewAnalysis() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

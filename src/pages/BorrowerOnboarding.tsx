@@ -157,6 +157,7 @@ export default function BorrowerOnboarding() {
 
       // Trigger AI scoring — fires after uploads so extraction finds the documents
       invokeFunction("score-deal", { deal_id: newDealId })
+        .then(({ error }) => { if (error) console.error("Scoring trigger failed:", error.message); })
         .catch((err: unknown) => console.error("Scoring trigger failed:", err));
 
       setLocation("/borrower-dashboard");

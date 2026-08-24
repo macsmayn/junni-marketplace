@@ -95,12 +95,23 @@ export default function MyAnalyses() {
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [recalcDealId, setRecalcDealId] = useState<string | null>(null);
+  const [recalcError, setRecalcError] = useState<string | null>(null);
 
   const handleRecalculate = async (dealId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    setRecalcError(null);
     setRecalcDealId(dealId);
     try {
-      await invokeFunction("score-deal", { deal_id: dealId });
+      const { error: scoreErr } = await invokeFunction("score-deal", { deal_id: dealId });
+      if (scoreErr) {
+        const body402 = await (scoreErr as any).context?.json().catch(() => null);
+        if (body402?.error === "no_subscription") {
+          setRecalcError("myAnalyses.recalcErrorNoSub");
+        } else {
+          console.error("[MyAnalyses] recalculate failed:", scoreErr.message);
+        }
+        return;
+      }
       const { data: s } = await supabase
         .from("credit_scores")
         .select("overall_score,risk_label,coverage_pct")
@@ -292,6 +303,11 @@ export default function MyAnalyses() {
         {!loading && error && (
           <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: "20px 24px", color: RED, fontSize: 13 }}>
             {t(error!)}
+          </div>
+        )}
+        {recalcError && (
+          <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: "14px 20px", color: RED, fontSize: 13, marginBottom: 16 }}>
+            {t(recalcError)}
           </div>
         )}
 
