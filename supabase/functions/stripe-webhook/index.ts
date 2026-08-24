@@ -147,9 +147,22 @@ async function handleSubscription(sub: Stripe.Subscription, supabase: ReturnType
   const firstItem = sub.items?.data?.[0];
   const stripePriceId: string | null = firstItem?.price?.id ?? null;
 
-  const trialEnd = sub.trial_end
-    ? new Date(sub.trial_end * 1000).toISOString()
-    : null;
+  // unix seconds → ISO string, or null if undefined. Defensive against API version differences
+  // where period fields may live on the item rather than the subscription root.
+  function unixToIso(seconds: number | null | undefined): string | null {
+    if (seconds == null || isNaN(seconds)) return null;
+    return new Date(seconds * 1000).toISOString();
+  }
+
+  const periodStart = sub.current_period_start ?? firstItem?.current_period_start;
+  const periodEnd   = sub.current_period_end   ?? firstItem?.current_period_end;
+
+  if (periodStart == null) {
+    console.error("[stripe-webhook] subscription", sub.id, "has no current_period_start on sub or first item");
+  }
+  if (periodEnd == null) {
+    console.error("[stripe-webhook] subscription", sub.id, "has no current_period_end on sub or first item");
+  }
 
   const upsertPayload: Record<string, unknown> = {
     stripe_subscription_id: sub.id,
@@ -158,10 +171,10 @@ async function handleSubscription(sub: Stripe.Subscription, supabase: ReturnType
     plan_key: planKey ?? null,
     stripe_price_id: stripePriceId,
     included_deals: includedDeals,
-    current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
-    current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+    current_period_start: unixToIso(periodStart),
+    current_period_end: unixToIso(periodEnd),
     cancel_at_period_end: sub.cancel_at_period_end,
-    trial_end: trialEnd,
+    trial_end: unixToIso(sub.trial_end),
     updated_at: new Date().toISOString(),
   };
 
