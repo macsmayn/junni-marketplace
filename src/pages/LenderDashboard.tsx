@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase } from "../lib/supabase";
+import { supabase, invokeFunction } from "../lib/supabase";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
 
@@ -487,6 +487,32 @@ export default function LenderDashboard() {
             <button className="d-btn d-btn-gold" onClick={() => setLocation('/new-analysis')}>{t('lenderDashboard.newAnalysis')}</button>
           </div>
         </div>
+
+        {/* TEMPORARY TEST BUTTON — REMOVE AFTER CHECKOUT UI IS BUILT */}
+        <div style={{ marginTop: 24 }}>
+          <button
+            style={{ padding: "10px 20px", background: "#dc3545", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 13 }}
+            onClick={async () => {
+              console.log("[TEST] Invoking create-checkout-session…");
+              const { data, error } = await invokeFunction("create-checkout-session", { plan_key: "solo_monthly", org_name: "Test Lender Co" });
+              console.log("[TEST] create-checkout-session response — data:", data, "error:", error);
+              if (error) {
+                alert(`create-checkout-session error:\n\n${String(error)}`);
+                return;
+              }
+              const url = (data as any)?.url;
+              if (url) {
+                console.log("[TEST] Redirecting to Stripe Checkout:", url);
+                window.location.href = url;
+              } else {
+                alert(`create-checkout-session returned no URL:\n\n${JSON.stringify(data, null, 2)}`);
+              }
+            }}
+          >
+            TEST checkout
+          </button>
+        </div>
+        {/* END TEMPORARY TEST BUTTON */}
 
       </div>
     </div>
