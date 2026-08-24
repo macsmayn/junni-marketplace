@@ -25,6 +25,7 @@ import AdminPanel from "./pages/AdminPanel";
 import DealAnalysis from "./pages/DealAnalysis";
 import NewAnalysis from "./pages/NewAnalysis";
 import MyAnalyses from "./pages/MyAnalyses";
+import Billing from "./pages/Billing";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import { setSupabaseAuthToken, setTokenProvider, setAccessTokenProvider } from './lib/supabase'
@@ -88,6 +89,11 @@ function Router() {
         <LenderRoute>
           <MyAnalyses />
         </LenderRoute>
+      </Route>
+      <Route path={"/billing"}>
+        <ProtectedRoute>
+          <Billing />
+        </ProtectedRoute>
       </Route>
       <Route path={"/analysis/:dealId"}>
         <LenderRoute>
