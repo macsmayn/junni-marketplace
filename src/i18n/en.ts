@@ -709,6 +709,9 @@ const en: Record<string, string> = {
   "billing.manageBtn":         "Manage billing →",
   "billing.managing":          "Opening billing portal…",
   "billing.manageError":       "Could not open billing portal. Please try again.",
+  "billing.toggleMonthly":     "Monthly",
+  "billing.toggleAnnual":      "Annual",
+  "billing.monthlyEquiv":      "~{price}/month",
 };
 
 export default en;

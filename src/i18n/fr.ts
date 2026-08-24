@@ -709,6 +709,9 @@ const fr: Record<string, string> = {
   "billing.manageBtn":         "Gérer la facturation →",
   "billing.managing":          "Ouverture du portail de facturation…",
   "billing.manageError":       "Impossible d'ouvrir le portail de facturation. Veuillez réessayer.",
+  "billing.toggleMonthly":     "Mensuel",
+  "billing.toggleAnnual":      "Annuel",
+  "billing.monthlyEquiv":      "~{price}/mois",
 };
 
 export default fr;

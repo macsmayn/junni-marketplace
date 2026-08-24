@@ -28,7 +28,26 @@ const PLAN_PRICE_FR: Record<string, string> = {
   growth_annual:  "7 500 $ CAD/an",
 };
 
-const ANNUAL_PLANS = new Set(["solo_annual", "growth_annual"]);
+// Annual price expressed as a monthly equivalent (for the "saving" line)
+const MONTHLY_EQUIV_EN: Record<string, string> = {
+  solo_annual:   "$417 CAD",
+  growth_annual: "$625 CAD",
+};
+
+const MONTHLY_EQUIV_FR: Record<string, string> = {
+  solo_annual:   "417 $ CAD",
+  growth_annual: "625 $ CAD",
+};
+
+const PLAN_GROUPS = [
+  { key: "solo",   monthly: "solo_monthly",   annual: "solo_annual"   },
+  { key: "growth", monthly: "growth_monthly", annual: "growth_annual" },
+] as const;
+
+const PLAN_BASE_NAMES: Record<string, string> = {
+  solo:   "Solo",
+  growth: "Growth",
+};
 
 function fmtDate(s: string | null, locale = "en-CA"): string {
   if (!s) return "—";
@@ -78,6 +97,7 @@ export default function Billing() {
   const [subscribeError, setSubscribeError] = useState<string | null>(null);
   const [managing, setManaging] = useState(false);
   const [manageError, setManageError] = useState<string | null>(null);
+  const [billingInterval, setBillingInterval] = useState<"monthly" | "annual">("monthly");
 
   const checkoutResult = new URLSearchParams(
     typeof window !== "undefined" ? window.location.search : ""
@@ -379,16 +399,55 @@ export default function Billing() {
         )}
 
         {/* ═══════════════════════════════════════════════════════════════ */}
-        {/* STATE A — no subscription: show plan cards                       */}
+        {/* STATE A — no subscription: toggle + two plan cards               */}
         {/* ═══════════════════════════════════════════════════════════════ */}
         {!subscription && (
           <div>
             <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 700, fontSize: 22, color: NAVY, margin: "0 0 8px" }}>
               {t("billing.plansTitle")}
             </h2>
-            <p style={{ color: MUTED, fontSize: 14, lineHeight: 1.6, margin: "0 0 28px" }}>
+            <p style={{ color: MUTED, fontSize: 14, lineHeight: 1.6, margin: "0 0 24px" }}>
               {t("billing.plansSub")}
             </p>
+
+            {/* ── Monthly / Annual segmented toggle ── */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
+              <div style={{ display: "inline-flex", background: "#F3F4F6", borderRadius: 10, padding: 4 }}>
+                <button
+                  onClick={() => setBillingInterval("monthly")}
+                  style={{
+                    background: billingInterval === "monthly" ? "#fff" : "transparent",
+                    border:     billingInterval === "monthly" ? `1px solid ${BORDER}` : "1px solid transparent",
+                    borderRadius: 7, padding: "7px 22px",
+                    fontSize: 13, fontWeight: 600,
+                    color: billingInterval === "monthly" ? NAVY : MUTED,
+                    cursor: "pointer", fontFamily: "Inter, sans-serif",
+                    boxShadow: billingInterval === "monthly" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                  }}
+                >
+                  {t("billing.toggleMonthly")}
+                </button>
+                <button
+                  onClick={() => setBillingInterval("annual")}
+                  style={{
+                    background: billingInterval === "annual" ? "#fff" : "transparent",
+                    border:     billingInterval === "annual" ? `1px solid ${BORDER}` : "1px solid transparent",
+                    borderRadius: 7, padding: "7px 22px",
+                    fontSize: 13, fontWeight: 600,
+                    color: billingInterval === "annual" ? NAVY : MUTED,
+                    cursor: "pointer", fontFamily: "Inter, sans-serif",
+                    boxShadow: billingInterval === "annual" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                  }}
+                >
+                  {t("billing.toggleAnnual")}
+                </button>
+              </div>
+              {billingInterval === "annual" && (
+                <span style={{ background: "#ECFDF5", color: GREEN, fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20 }}>
+                  {t("billing.priceMonthsFree")}
+                </span>
+              )}
+            </div>
 
             {/* Org name input — only for owners */}
             {isOwner && (
@@ -414,45 +473,50 @@ export default function Billing() {
               </div>
             )}
 
+            {/* Two plan cards (Solo and Growth) */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}>
-              {plans.map(plan => {
-                const isSubscribing = subscribingPlan === plan.plan_key;
-                const price         = planPrices[plan.plan_key];
-                const isAnnual      = ANNUAL_PLANS.has(plan.plan_key);
-                const overageDisplay = plan.overage_cents != null
+              {PLAN_GROUPS.map(group => {
+                const activePlanKey  = billingInterval === "annual" ? group.annual : group.monthly;
+                const planRow        = plans.find(p => p.plan_key === activePlanKey);
+                const price          = planPrices[activePlanKey];
+                const isSubscribing  = subscribingPlan === activePlanKey;
+                const monthlyEquiv   = billingInterval === "annual"
+                  ? (lang === "fr" ? MONTHLY_EQUIV_FR : MONTHLY_EQUIV_EN)[activePlanKey]
+                  : null;
+                const overageDisplay = planRow?.overage_cents != null
                   ? (lang === "fr"
-                      ? `${(plan.overage_cents / 100).toFixed(0)} $ CAD`
-                      : `$${(plan.overage_cents / 100).toFixed(0)} CAD`)
+                      ? `${(planRow.overage_cents / 100).toFixed(0)} $ CAD`
+                      : `$${(planRow.overage_cents / 100).toFixed(0)} CAD`)
                   : null;
 
                 return (
                   <div
-                    key={plan.plan_key}
+                    key={group.key}
                     style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 14, padding: 24, display: "flex", flexDirection: "column", gap: 12 }}
                   >
-                    {/* Name + annual badge */}
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                      <div style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 700, fontSize: 18, color: NAVY }}>
-                        {plan.display_name}
-                      </div>
-                      {isAnnual && (
-                        <span style={{ background: "#ECFDF5", color: GREEN, fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20, whiteSpace: "nowrap", flexShrink: 0 }}>
-                          {t("billing.priceMonthsFree")}
-                        </span>
+                    {/* Plan name */}
+                    <div style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 700, fontSize: 22, color: NAVY }}>
+                      {PLAN_BASE_NAMES[group.key]}
+                    </div>
+
+                    {/* Price + monthly equivalent */}
+                    <div>
+                      {price && (
+                        <div style={{ fontSize: 22, fontWeight: 700, color: GOLD, lineHeight: 1.2 }}>
+                          {price}
+                        </div>
+                      )}
+                      {monthlyEquiv && (
+                        <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>
+                          {t("billing.monthlyEquiv").replace("{price}", monthlyEquiv)}
+                        </div>
                       )}
                     </div>
 
-                    {/* Price */}
-                    {price && (
-                      <div style={{ fontSize: 20, fontWeight: 700, color: GOLD }}>
-                        {price}
-                      </div>
-                    )}
-
                     {/* Included analyses */}
-                    {plan.included_deals != null && (
+                    {planRow?.included_deals != null && (
                       <div style={{ fontSize: 13, color: MUTED }}>
-                        {t("billing.includedDeals").replace("{n}", String(plan.included_deals))}
+                        {t("billing.includedDeals").replace("{n}", String(planRow.included_deals))}
                       </div>
                     )}
 
@@ -466,7 +530,7 @@ export default function Billing() {
                     {/* Subscribe button (owner only) */}
                     {isOwner && (
                       <button
-                        onClick={() => handleSubscribe(plan.plan_key)}
+                        onClick={() => handleSubscribe(activePlanKey)}
                         disabled={!!subscribingPlan}
                         style={{
                           marginTop: "auto",
