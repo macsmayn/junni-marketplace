@@ -122,7 +122,7 @@ Deno.serve(async (req: Request) => {
     // c. Look up the plan
     const { data: plan, error: planErr } = await supabase
       .from("billing_plans")
-      .select("id, plan_key, base_price_id, metered_price_id")
+      .select("plan_key, base_price_id, metered_price_id")
       .eq("plan_key", plan_key)
       .eq("active", true)
       .maybeSingle();
@@ -167,7 +167,7 @@ Deno.serve(async (req: Request) => {
     // e. Check for an existing active subscription
     const { data: existingSub, error: subErr } = await supabase
       .from("subscriptions")
-      .select("id")
+      .select("stripe_subscription_id")
       .eq("org_id", orgId)
       .in("status", ["trialing", "active", "past_due"])
       .maybeSingle();
