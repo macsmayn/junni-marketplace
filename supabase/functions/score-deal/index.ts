@@ -75,10 +75,11 @@ Deno.serve(async (req: Request) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const AUTH0_DOMAIN = Deno.env.get("AUTH0_DOMAIN")!;
+    const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY")!;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // ── Caller ownership check ─────────────────────────────────────────────────
+    // ── Caller verification and org-level ownership check ─────────────────────
     // The anon key travels in Authorization (for Supabase's verify_jwt gate).
     // The caller's Auth0 ID token travels in X-Auth0-Token, verified here via
     // Auth0's /userinfo endpoint to establish caller identity before any DB work.
@@ -104,7 +105,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerUser } = await supabase
       .from("users")
-      .select("id, role")
+      .select("id, role, org_id")
       .eq("auth0_id", callerSub)
       .maybeSingle();
 
@@ -117,14 +118,22 @@ Deno.serve(async (req: Request) => {
     }
 
     if (callerUser.role !== "admin") {
+      if (!callerUser.org_id) {
+        return new Response(JSON.stringify({ error: "Account not provisioned. Please log out and log back in." }), {
+          status: 403,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+      // Ownership is org-level: the deal must belong to the caller's organisation.
+      // deals.created_by is the individual who created it; deals.org_id is the security boundary.
       const { data: ownerCheck } = await supabase
         .from("deals")
         .select("id")
         .eq("id", deal_id)
-        .eq("borrower_id", callerUser.id)
+        .eq("org_id", callerUser.org_id)
         .maybeSingle();
       if (!ownerCheck) {
-        console.error("[score-deal] Ownership check failed — deal_id:", deal_id, "caller:", callerUser.id);
+        console.error("[score-deal] Org ownership check failed — deal_id:", deal_id, "org_id:", callerUser.org_id);
         return new Response(JSON.stringify({ error: "Forbidden" }), {
           status: 403,
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -132,6 +141,86 @@ Deno.serve(async (req: Request) => {
       }
     }
     // ── End ownership check ────────────────────────────────────────────────────
+
+    // ── Subscription and quota enforcement ────────────────────────────────────
+    // Skipped for admins and for extract_only (extraction produces no scored analysis
+    // and must not consume quota or require a subscription).
+    let isOverage = false;
+    let isRescore = false;
+    let usedCount = 0;
+
+    if (callerUser.role !== "admin" && !extract_only) {
+      // a. Check for an active subscription
+      const { data: subscription, error: subLookupErr } = await supabase
+        .from("subscriptions")
+        .select("status, plan_key, included_deals, current_period_start, current_period_end")
+        .eq("org_id", callerUser.org_id)
+        .in("status", ["trialing", "active", "past_due"])
+        .maybeSingle();
+
+      if (subLookupErr) {
+        console.error("[score-deal] subscriptions lookup failed:", subLookupErr);
+        return new Response(JSON.stringify({ error: "Internal error checking subscription" }), {
+          status: 500,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!subscription) {
+        return new Response(JSON.stringify({
+          error: "no_subscription",
+          message: "This organization does not have an active subscription.",
+        }), {
+          status: 402,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      // d. Defensive guard — should not appear given the IN filter above
+      if (subscription.status === "canceled" || subscription.status === "unpaid") {
+        return new Response(JSON.stringify({ error: "subscription_inactive" }), {
+          status: 402,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      // f. Check whether this deal already has a credit_scores row (re-score = no quota consumed)
+      const { data: existingScore } = await supabase
+        .from("credit_scores")
+        .select("deal_id")
+        .eq("deal_id", deal_id)
+        .maybeSingle();
+
+      isRescore = existingScore != null;
+
+      if (!isRescore) {
+        // e. Count deals already analysed in the current billing period for this org
+        const { data: orgDeals } = await supabase
+          .from("deals")
+          .select("id")
+          .eq("org_id", callerUser.org_id);
+
+        const orgDealIds = (orgDeals ?? []).map((d: any) => d.id as string);
+
+        if (orgDealIds.length > 0) {
+          const { count } = await supabase
+            .from("credit_scores")
+            .select("deal_id", { count: "exact", head: true })
+            .in("deal_id", orgDealIds)
+            .gte("generated_at", subscription.current_period_start)
+            .lt("generated_at", subscription.current_period_end);
+          usedCount = count ?? 0;
+        }
+
+        // g. Check overage — do NOT block; log and proceed (billed via Stripe meter)
+        const included = subscription.included_deals ?? 0;
+        if (usedCount >= included) {
+          isOverage = true;
+          console.log(`[score-deal] Overage: org ${callerUser.org_id} has used ${usedCount}/${included} included deals this period — deal_id: ${deal_id} will be billed as overage.`);
+        }
+      }
+    }
+    // ── End subscription and quota enforcement ─────────────────────────────────
 
     // Fetch the deal
     const { data: deal, error: dealError } = await supabase
@@ -1320,6 +1409,47 @@ Each metric score is 0-100 where 100 is best.`;
       );
       if (upsertError) console.error("[score-deal] credit_scores upsert error:", upsertError);
     }
+
+    // ── Stripe meter event ────────────────────────────────────────────────────
+    // Report a deal_analysis event for first-time scoring only.
+    // Not sent for re-scores, extract_only runs, or admin calls.
+    // A failed meter report must NOT fail the scoring run — log and continue.
+    if (callerUser.role !== "admin" && !extract_only && !isRescore) {
+      try {
+        const { data: billingRow } = await supabase
+          .from("billing_customers")
+          .select("stripe_customer_id")
+          .eq("org_id", callerUser.org_id)
+          .maybeSingle();
+
+        if (!billingRow?.stripe_customer_id) {
+          console.error("[score-deal] Meter event skipped — no billing_customers row for org_id:", callerUser.org_id, "deal_id:", deal_id);
+        } else {
+          const meterParams = new URLSearchParams({
+            event_name: "deal_analysis",
+            "payload[stripe_customer_id]": billingRow.stripe_customer_id,
+            identifier: deal_id,
+          });
+          const meterRes = await fetch("https://api.stripe.com/v1/billing/meter_events", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${STRIPE_SECRET_KEY}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: meterParams.toString(),
+          });
+          if (!meterRes.ok) {
+            const meterErr = await meterRes.text();
+            console.error("[score-deal] Stripe meter event failed — deal_id:", deal_id, "status:", meterRes.status, "body:", meterErr);
+          } else {
+            console.log("[score-deal] Stripe meter event reported — deal_id:", deal_id, "org_id:", callerUser.org_id, "overage:", isOverage);
+          }
+        }
+      } catch (meterErr: any) {
+        console.error("[score-deal] Stripe meter event unhandled error — deal_id:", deal_id, ":", meterErr.message);
+      }
+    }
+    // ── End Stripe meter event ────────────────────────────────────────────────
 
     // Update deals: write AI score + summary back to the deal row
     const { error: dealUpdateError } = await supabase
