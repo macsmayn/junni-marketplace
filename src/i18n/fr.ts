@@ -685,7 +685,7 @@ const fr: Record<string, string> = {
   "billing.checkoutCancelled": "Le paiement n'a pas été complété. Vous pouvez vous abonner à tout moment.",
   "billing.ownerOnly":         "Seul le propriétaire de votre organisation peut gérer la facturation. Contactez le propriétaire du compte pour vous abonner ou apporter des modifications.",
   "billing.plansTitle":        "Choisir un abonnement",
-  "billing.plansSub":          "Tous les abonnements incluent un essai gratuit de 14 jours. Aucune carte de crédit requise pour commencer.",
+  "billing.plansSub":          "Tous les abonnements incluent un essai gratuit de 14 jours.",
   "billing.priceMonthsFree":   "2 mois offerts",
   "billing.includedDeals":     "{n} analyses / mois",
   "billing.overageRate":       "Analyses supplémentaires : {rate} chacune",

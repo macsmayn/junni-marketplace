@@ -685,7 +685,7 @@ const en: Record<string, string> = {
   "billing.checkoutCancelled": "Checkout was not completed. You can subscribe any time.",
   "billing.ownerOnly":         "Only your organization's owner can manage billing. Contact your account owner to subscribe or make changes.",
   "billing.plansTitle":        "Choose a plan",
-  "billing.plansSub":          "All plans include a 14-day free trial. No credit card required to start.",
+  "billing.plansSub":          "All plans include a 14-day free trial.",
   "billing.priceMonthsFree":   "2 months free",
   "billing.includedDeals":     "{n} analyses / month",
   "billing.overageRate":       "Additional analyses: {rate} each",
