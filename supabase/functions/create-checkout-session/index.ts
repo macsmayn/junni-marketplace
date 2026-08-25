@@ -230,8 +230,7 @@ Deno.serve(async (req: Request) => {
       customer: stripeCustomerId,
       "line_items[0][price]": plan.base_price_id,
       "line_items[0][quantity]": "1",
-      // TEMPORARY 5-MINUTE TRIAL FOR DUNNING TEST — REVERT TO trial_period_days=14
-      "subscription_data[trial_end]": String(Math.floor(Date.now() / 1000) + 300),
+      // TEMPORARY: TRIAL REMOVED FOR DUNNING TEST — REVERT TO trial_period_days=14
       "success_url": "https://app.junni.ca/billing?checkout=success",
       "cancel_url": "https://app.junni.ca/billing?checkout=cancelled",
       "client_reference_id": orgId,
