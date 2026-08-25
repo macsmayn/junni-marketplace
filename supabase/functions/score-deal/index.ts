@@ -20,7 +20,7 @@ async function callJsonApi(
   requestBody: { model: string; max_tokens: number; messages: any[] },
   label: string,
   maxAttempts = 3,
-  tokenAcc?: { input: number; output: number },
+  tokenAcc?: Record<string, { input: number; output: number }>,
 ): Promise<any | null> {
   let lastRaw = "";
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -42,8 +42,10 @@ async function callJsonApi(
       }
       const data = await res.json();
       if (tokenAcc && data.usage) {
-        tokenAcc.input += data.usage.input_tokens ?? 0;
-        tokenAcc.output += data.usage.output_tokens ?? 0;
+        const m = requestBody.model;
+        if (!tokenAcc[m]) tokenAcc[m] = { input: 0, output: 0 };
+        tokenAcc[m].input += data.usage.input_tokens ?? 0;
+        tokenAcc[m].output += data.usage.output_tokens ?? 0;
       }
       lastRaw = data.content[0].text as string;
       const cleaned = lastRaw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
@@ -69,7 +71,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { deal_id, extract_only } = await req.json();
-    const tokenAcc = { input: 0, output: 0 };
+    const tokenAcc: Record<string, { input: number; output: number }> = {};
     if (!deal_id) {
       return new Response(JSON.stringify({ error: "deal_id is required" }), {
         status: 400,
@@ -1583,8 +1585,9 @@ ${execParts.join("\n\n")}`;
       } else {
         const execData = await execRes.json();
         if (execData.usage) {
-          tokenAcc.input += execData.usage.input_tokens ?? 0;
-          tokenAcc.output += execData.usage.output_tokens ?? 0;
+          if (!tokenAcc["claude-sonnet-4-6"]) tokenAcc["claude-sonnet-4-6"] = { input: 0, output: 0 };
+          tokenAcc["claude-sonnet-4-6"].input += execData.usage.input_tokens ?? 0;
+          tokenAcc["claude-sonnet-4-6"].output += execData.usage.output_tokens ?? 0;
         }
         const execText: string = (execData.content[0]?.text ?? "").trim();
         if (execText) {
@@ -1638,8 +1641,9 @@ ${execParts.join("\n\n")}`;
         } else {
           const execFrData = await execFrRes.json();
           if (execFrData.usage) {
-            tokenAcc.input += execFrData.usage.input_tokens ?? 0;
-            tokenAcc.output += execFrData.usage.output_tokens ?? 0;
+            if (!tokenAcc["claude-sonnet-4-6"]) tokenAcc["claude-sonnet-4-6"] = { input: 0, output: 0 };
+            tokenAcc["claude-sonnet-4-6"].input += execFrData.usage.input_tokens ?? 0;
+            tokenAcc["claude-sonnet-4-6"].output += execFrData.usage.output_tokens ?? 0;
           }
           const execFrText: string = (execFrData.content[0]?.text ?? "").trim();
           if (execFrText) {
@@ -1663,31 +1667,42 @@ ${execParts.join("\n\n")}`;
 
     // ── Token usage and API cost tracking ────────────────────────────────────
     try {
-      const modelUsed = engineResult ? "junni-engine-v1" : "claude-opus-4-8";
-      const { data: pricingRow } = await supabase
-        .from("model_pricing")
-        .select("input_usd_per_mtok, output_usd_per_mtok, usd_to_cad")
-        .eq("model", modelUsed)
-        .lte("effective_from", new Date().toISOString().slice(0, 10))
-        .order("effective_from", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const today = new Date().toISOString().slice(0, 10);
+      let totalInput = 0;
+      let totalOutput = 0;
+      let totalCostUsd = 0;
+      let usdToCad: number | null = null;
+      let anyPricingFound = false;
 
-      let apiCostCad: number | null = null;
-      if (!pricingRow) {
-        console.error(`[score-deal] No model_pricing row for model "${modelUsed}" — tokens recorded, cost omitted.`);
-      } else {
-        const costUsd =
-          (tokenAcc.input  / 1_000_000) * pricingRow.input_usd_per_mtok +
-          (tokenAcc.output / 1_000_000) * pricingRow.output_usd_per_mtok;
-        apiCostCad = costUsd * pricingRow.usd_to_cad;
+      for (const [modelName, counts] of Object.entries(tokenAcc)) {
+        totalInput  += counts.input;
+        totalOutput += counts.output;
+        const { data: pricingRow } = await supabase
+          .from("model_pricing")
+          .select("input_usd_per_mtok, output_usd_per_mtok, usd_to_cad")
+          .eq("model", modelName)
+          .lte("effective_from", today)
+          .order("effective_from", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!pricingRow) {
+          console.error(`[score-deal] No model_pricing row for model "${modelName}" — cost for this model omitted.`);
+        } else {
+          anyPricingFound = true;
+          if (usdToCad === null) usdToCad = pricingRow.usd_to_cad;
+          totalCostUsd +=
+            (counts.input  / 1_000_000) * pricingRow.input_usd_per_mtok +
+            (counts.output / 1_000_000) * pricingRow.output_usd_per_mtok;
+        }
       }
+
+      const apiCostCad: number | null = anyPricingFound ? totalCostUsd * (usdToCad ?? 1) : null;
 
       const { error: tokenUpdateErr } = await supabase
         .from("credit_scores")
         .update({
-          input_tokens: tokenAcc.input,
-          output_tokens: tokenAcc.output,
+          input_tokens: totalInput,
+          output_tokens: totalOutput,
           api_cost_cad: apiCostCad,
         })
         .eq("deal_id", deal_id);
@@ -1695,7 +1710,7 @@ ${execParts.join("\n\n")}`;
       if (tokenUpdateErr) {
         console.error("[score-deal] Token/cost UPDATE failed:", tokenUpdateErr);
       } else {
-        console.log(`[score-deal] Token usage recorded — input: ${tokenAcc.input}, output: ${tokenAcc.output}, cost_cad: ${apiCostCad?.toFixed(4) ?? "null"}`);
+        console.log(`[score-deal] Token usage recorded — input: ${totalInput}, output: ${totalOutput}, cost_cad: ${apiCostCad?.toFixed(4) ?? "null"}`);
       }
     } catch (tokenErr: any) {
       console.error("[score-deal] Token/cost tracking failed (non-fatal):", tokenErr.message);
