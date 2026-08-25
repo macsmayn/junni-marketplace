@@ -103,13 +103,165 @@ async function handleEvent(event: Stripe.Event, supabase: ReturnType<typeof crea
       break;
     }
 
-    case "invoice.paid":
-      console.log("[stripe-webhook] invoice.paid received — invoice id:", (event.data.object as Stripe.Invoice).id, "— no action taken");
-      break;
+    case "invoice.paid": {
+      const invoice = event.data.object as Stripe.Invoice;
+      console.log("[stripe-webhook] invoice.paid — invoice id:", invoice.id);
 
-    case "invoice.payment_failed":
-      console.log("[stripe-webhook] invoice.payment_failed received — invoice id:", (event.data.object as Stripe.Invoice).id, "— no action taken");
+      const paidSubId = typeof invoice.subscription === "string"
+        ? invoice.subscription
+        : (invoice.subscription as Stripe.Subscription | null)?.id ?? null;
+
+      if (!paidSubId) {
+        console.log("[stripe-webhook] invoice.paid: no subscription id — skipping");
+        break;
+      }
+
+      // Only email if recovering from past_due — check DB status before this event updates it
+      const { data: paidSubRow, error: paidSubErr } = await supabase
+        .from("subscriptions")
+        .select("org_id, status")
+        .eq("stripe_subscription_id", paidSubId)
+        .maybeSingle();
+
+      if (paidSubErr || !paidSubRow) {
+        console.error("[stripe-webhook] invoice.paid: subscriptions lookup failed for", paidSubId, paidSubErr);
+        break;
+      }
+
+      if (paidSubRow.status !== "past_due") {
+        console.log("[stripe-webhook] invoice.paid: status is", paidSubRow.status, "— no recovery email needed");
+        break;
+      }
+
+      const { data: paidOwner, error: paidOwnerErr } = await supabase
+        .from("users")
+        .select("email, full_name, language")
+        .eq("org_id", paidSubRow.org_id)
+        .eq("org_role", "owner")
+        .maybeSingle();
+
+      if (paidOwnerErr || !paidOwner?.email) {
+        console.error("[stripe-webhook] invoice.paid: owner lookup failed for org", paidSubRow.org_id, paidOwnerErr);
+        break;
+      }
+
+      try {
+        const isFr = paidOwner.language === "fr";
+        const firstName = (paidOwner.full_name ?? "").split(" ")[0] || null;
+        const greeting  = isFr
+          ? (firstName ? `Bonjour ${firstName},` : "Bonjour,")
+          : (firstName ? `Hi ${firstName},`      : "Hi,");
+
+        const subject = isFr
+          ? "Votre paiement Junni a été traité avec succès"
+          : "Your Junni payment went through";
+
+        const html = isFr
+          ? `<p>${greeting}</p>
+<p>Bonne nouvelle : votre paiement a été traité avec succès et votre abonnement Junni est maintenant actif.</p>
+<p>Vous pouvez consulter les détails de votre abonnement à tout moment :</p>
+<p><a href="https://app.junni.ca/billing">Voir la facturation →</a></p>
+<p>L'équipe Junni</p>`
+          : `<p>${greeting}</p>
+<p>Good news — your payment went through and your Junni subscription is now active.</p>
+<p>You can view your subscription details at any time:</p>
+<p><a href="https://app.junni.ca/billing">View billing →</a></p>
+<p>The Junni team</p>`;
+
+        const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
+        const resendRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ from: "Junni <notifications@junni.ca>", to: [paidOwner.email], subject, html }),
+        });
+        if (!resendRes.ok) {
+          console.error("[stripe-webhook] invoice.paid: recovery email failed for org", paidSubRow.org_id, ":", await resendRes.text());
+        } else {
+          console.log("[stripe-webhook] invoice.paid: recovery email sent to", paidOwner.email);
+        }
+      } catch (emailErr: any) {
+        console.error("[stripe-webhook] invoice.paid: recovery email threw:", emailErr.message);
+      }
       break;
+    }
+
+    case "invoice.payment_failed": {
+      const invoice = event.data.object as Stripe.Invoice;
+      console.log("[stripe-webhook] invoice.payment_failed — invoice id:", invoice.id);
+
+      const failedSubId = typeof invoice.subscription === "string"
+        ? invoice.subscription
+        : (invoice.subscription as Stripe.Subscription | null)?.id ?? null;
+
+      if (!failedSubId) {
+        console.error("[stripe-webhook] invoice.payment_failed: no subscription id on invoice", invoice.id);
+        break;
+      }
+
+      const { data: failedSubRow, error: failedSubErr } = await supabase
+        .from("subscriptions")
+        .select("org_id")
+        .eq("stripe_subscription_id", failedSubId)
+        .maybeSingle();
+
+      if (failedSubErr || !failedSubRow?.org_id) {
+        console.error("[stripe-webhook] invoice.payment_failed: subscriptions lookup failed for", failedSubId, failedSubErr);
+        break;
+      }
+
+      const { data: failedOwner, error: failedOwnerErr } = await supabase
+        .from("users")
+        .select("email, full_name, language")
+        .eq("org_id", failedSubRow.org_id)
+        .eq("org_role", "owner")
+        .maybeSingle();
+
+      if (failedOwnerErr || !failedOwner?.email) {
+        console.error("[stripe-webhook] invoice.payment_failed: owner lookup failed for org", failedSubRow.org_id, failedOwnerErr);
+        break;
+      }
+
+      try {
+        const isFr = failedOwner.language === "fr";
+        const firstName = (failedOwner.full_name ?? "").split(" ")[0] || null;
+        const greeting  = isFr
+          ? (firstName ? `Bonjour ${firstName},` : "Bonjour,")
+          : (firstName ? `Hi ${firstName},`      : "Hi,");
+
+        const subject = isFr
+          ? "Problème de paiement pour votre abonnement Junni"
+          : "Payment issue with your Junni subscription";
+
+        const html = isFr
+          ? `<p>${greeting}</p>
+<p>Nous n'avons pas pu traiter votre dernier paiement pour votre abonnement Junni. Pas d'inquiétude — nous réessaierons automatiquement au cours des prochains jours.</p>
+<p>Si vous souhaitez mettre à jour votre mode de paiement dès maintenant, vous pouvez le faire à tout moment depuis votre page de facturation :</p>
+<p><a href="https://app.junni.ca/billing">Gérer la facturation →</a></p>
+<p>N'hésitez pas à nous contacter si vous avez des questions.</p>
+<p>L'équipe Junni</p>`
+          : `<p>${greeting}</p>
+<p>We were unable to process your most recent payment for your Junni subscription. No need to worry — we will retry automatically over the next few days.</p>
+<p>If you'd like to update your payment method right away, you can do so at any time from your billing page:</p>
+<p><a href="https://app.junni.ca/billing">Manage billing →</a></p>
+<p>Feel free to reach out if you have any questions.</p>
+<p>The Junni team</p>`;
+
+        const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
+        const resendRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ from: "Junni <notifications@junni.ca>", to: [failedOwner.email], subject, html }),
+        });
+        if (!resendRes.ok) {
+          console.error("[stripe-webhook] invoice.payment_failed: email failed for org", failedSubRow.org_id, ":", await resendRes.text());
+        } else {
+          console.log("[stripe-webhook] invoice.payment_failed: email sent to", failedOwner.email);
+        }
+      } catch (emailErr: any) {
+        console.error("[stripe-webhook] invoice.payment_failed: email threw:", emailErr.message);
+      }
+      break;
+    }
 
     case "checkout.session.completed":
       console.log("[stripe-webhook] checkout.session.completed received — session id:", (event.data.object as Stripe.Checkout.Session).id, "— no action taken");
