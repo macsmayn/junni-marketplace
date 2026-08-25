@@ -20,6 +20,7 @@ async function callJsonApi(
   requestBody: { model: string; max_tokens: number; messages: any[] },
   label: string,
   maxAttempts = 3,
+  tokenAcc?: { input: number; output: number },
 ): Promise<any | null> {
   let lastRaw = "";
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -40,6 +41,10 @@ async function callJsonApi(
         continue;
       }
       const data = await res.json();
+      if (tokenAcc && data.usage) {
+        tokenAcc.input += data.usage.input_tokens ?? 0;
+        tokenAcc.output += data.usage.output_tokens ?? 0;
+      }
       lastRaw = data.content[0].text as string;
       const cleaned = lastRaw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
       return JSON.parse(cleaned);
@@ -64,6 +69,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { deal_id, extract_only } = await req.json();
+    const tokenAcc = { input: 0, output: 0 };
     if (!deal_id) {
       return new Response(JSON.stringify({ error: "deal_id is required" }), {
         status: 400,
@@ -393,6 +399,8 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
           ANTHROPIC_API_KEY,
           { model: "claude-opus-4-8", max_tokens: 8000, messages },
           `extraction (${label})`,
+          3,
+          tokenAcc,
         );
         if (!parsed) return { stmts: [], mda_digest: null };
         const stmts = parsed.statements ?? [];
@@ -1035,6 +1043,8 @@ ${translationQueue.map((q, i) => `${i + 1}. ${q.text}`).join("\n")}`;
               ANTHROPIC_API_KEY,
               { model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: trPrompt }] },
               "Phase 2d FR translation",
+              3,
+              tokenAcc,
             );
             if (!trParsed) {
               console.error("[score-deal] Phase 2d Part 2 FR translation failed after all retries — skipping.");
@@ -1131,6 +1141,8 @@ FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
             ANTHROPIC_API_KEY,
             { model: "claude-opus-4-8", max_tokens: 4000, messages: [{ role: "user", content: jobBPrompt }] },
             "Phase 2d Job B",
+            3,
+            tokenAcc,
           ) ?? { questions: [] };
 
           {
@@ -1329,6 +1341,8 @@ Each metric score is 0-100 where 100 is best.`;
       ANTHROPIC_API_KEY,
       { model: "claude-opus-4-8", max_tokens: 4000, messages: [{ role: "user", content: prompt }] },
       "main scoring prompt",
+      3,
+      tokenAcc,
     );
 
     if (!scoring) {
@@ -1568,6 +1582,10 @@ ${execParts.join("\n\n")}`;
         console.error("[score-deal] Executive summary API error:", errText);
       } else {
         const execData = await execRes.json();
+        if (execData.usage) {
+          tokenAcc.input += execData.usage.input_tokens ?? 0;
+          tokenAcc.output += execData.usage.output_tokens ?? 0;
+        }
         const execText: string = (execData.content[0]?.text ?? "").trim();
         if (execText) {
           const { error: execUpdateErr } = await supabase
@@ -1619,6 +1637,10 @@ ${execParts.join("\n\n")}`;
           console.error("[score-deal] Executive summary FR API error:", errText);
         } else {
           const execFrData = await execFrRes.json();
+          if (execFrData.usage) {
+            tokenAcc.input += execFrData.usage.input_tokens ?? 0;
+            tokenAcc.output += execFrData.usage.output_tokens ?? 0;
+          }
           const execFrText: string = (execFrData.content[0]?.text ?? "").trim();
           if (execFrText) {
             const { error: execFrUpdateErr } = await supabase
@@ -1638,6 +1660,47 @@ ${execParts.join("\n\n")}`;
     } catch (execErr) {
       console.error("[score-deal] Executive summary unhandled error:", execErr);
     }
+
+    // ── Token usage and API cost tracking ────────────────────────────────────
+    try {
+      const modelUsed = engineResult ? "junni-engine-v1" : "claude-opus-4-8";
+      const { data: pricingRow } = await supabase
+        .from("model_pricing")
+        .select("input_usd_per_mtok, output_usd_per_mtok, usd_to_cad")
+        .eq("model", modelUsed)
+        .lte("effective_from", new Date().toISOString().slice(0, 10))
+        .order("effective_from", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let apiCostCad: number | null = null;
+      if (!pricingRow) {
+        console.error(`[score-deal] No model_pricing row for model "${modelUsed}" — tokens recorded, cost omitted.`);
+      } else {
+        const costUsd =
+          (tokenAcc.input  / 1_000_000) * pricingRow.input_usd_per_mtok +
+          (tokenAcc.output / 1_000_000) * pricingRow.output_usd_per_mtok;
+        apiCostCad = costUsd * pricingRow.usd_to_cad;
+      }
+
+      const { error: tokenUpdateErr } = await supabase
+        .from("credit_scores")
+        .update({
+          input_tokens: tokenAcc.input,
+          output_tokens: tokenAcc.output,
+          api_cost_cad: apiCostCad,
+        })
+        .eq("deal_id", deal_id);
+
+      if (tokenUpdateErr) {
+        console.error("[score-deal] Token/cost UPDATE failed:", tokenUpdateErr);
+      } else {
+        console.log(`[score-deal] Token usage recorded — input: ${tokenAcc.input}, output: ${tokenAcc.output}, cost_cad: ${apiCostCad?.toFixed(4) ?? "null"}`);
+      }
+    } catch (tokenErr: any) {
+      console.error("[score-deal] Token/cost tracking failed (non-fatal):", tokenErr.message);
+    }
+    // ── End token usage and API cost tracking ─────────────────────────────────
 
     return new Response(
       JSON.stringify({
