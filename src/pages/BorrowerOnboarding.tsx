@@ -87,7 +87,7 @@ export default function BorrowerOnboarding() {
     try {
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('id, org_id')
+        .select('id, active_org_id')
         .eq('auth0_id', user.sub)
         .single();
 
@@ -101,7 +101,7 @@ export default function BorrowerOnboarding() {
 
       const { data: dealData, error: dealError } = await supabase.from('deals').insert({
         created_by: userData.id,
-        org_id: userData.org_id,
+        org_id: userData.active_org_id,
         title: formData.companyName + ' — ' + formData.industry + ' Financing',
         industry: formData.industry,
         amount_requested: parseFloat(formData.loanAmount) || 0,

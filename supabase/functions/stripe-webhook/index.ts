@@ -133,12 +133,13 @@ async function handleEvent(event: Stripe.Event, supabase: ReturnType<typeof crea
         break;
       }
 
-      const { data: paidOwner, error: paidOwnerErr } = await supabase
-        .from("users")
-        .select("email, full_name, language")
+      const { data: paidOwnerMembership, error: paidOwnerErr } = await supabase
+        .from("organization_members")
+        .select("users(email, full_name, language)")
         .eq("org_id", paidSubRow.org_id)
         .eq("org_role", "owner")
         .maybeSingle();
+      const paidOwner = paidOwnerMembership?.users as { email: string; full_name: string | null; language: string | null } | null;
 
       if (paidOwnerErr || !paidOwner?.email) {
         console.error("[stripe-webhook] invoice.paid: owner lookup failed for org", paidSubRow.org_id, paidOwnerErr);
@@ -209,12 +210,13 @@ async function handleEvent(event: Stripe.Event, supabase: ReturnType<typeof crea
         break;
       }
 
-      const { data: failedOwner, error: failedOwnerErr } = await supabase
-        .from("users")
-        .select("email, full_name, language")
+      const { data: failedOwnerMembership, error: failedOwnerErr } = await supabase
+        .from("organization_members")
+        .select("users(email, full_name, language)")
         .eq("org_id", failedSubRow.org_id)
         .eq("org_role", "owner")
         .maybeSingle();
+      const failedOwner = failedOwnerMembership?.users as { email: string; full_name: string | null; language: string | null } | null;
 
       if (failedOwnerErr || !failedOwner?.email) {
         console.error("[stripe-webhook] invoice.payment_failed: owner lookup failed for org", failedSubRow.org_id, failedOwnerErr);

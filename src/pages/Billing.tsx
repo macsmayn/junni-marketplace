@@ -56,8 +56,7 @@ function fmtDate(s: string | null, locale = "en-CA"): string {
 
 interface UserRow {
   id: string;
-  org_id: string | null;
-  org_role: string | null;
+  active_org_id: string | null;
   role: string;
 }
 
@@ -98,6 +97,7 @@ export default function Billing() {
   const [managing, setManaging] = useState(false);
   const [manageError, setManageError] = useState<string | null>(null);
   const [billingInterval, setBillingInterval] = useState<"monthly" | "annual">("monthly");
+  const [isOwner, setIsOwner] = useState(false);
 
   const checkoutResult = new URLSearchParams(
     typeof window !== "undefined" ? window.location.search : ""
@@ -112,7 +112,7 @@ export default function Billing() {
         // 1. User row
         const { data: uRow, error: uErr } = await supabase
           .from("users")
-          .select("id, org_id, org_role, role")
+          .select("id, active_org_id, role")
           .eq("auth0_id", user.sub)
           .maybeSingle();
         if (uErr || !uRow) {
@@ -122,23 +122,34 @@ export default function Billing() {
         }
         setUserRow(uRow);
 
+        // 1b. Owner check via organization_members
+        if (uRow.active_org_id) {
+          const { data: membership } = await supabase
+            .from("organization_members")
+            .select("org_role")
+            .eq("org_id", uRow.active_org_id)
+            .eq("user_id", uRow.id)
+            .maybeSingle();
+          setIsOwner(membership?.org_role === "owner");
+        }
+
         // 2. Organization name
-        if (uRow.org_id) {
+        if (uRow.active_org_id) {
           const { data: orgRow } = await supabase
             .from("organizations")
             .select("name")
-            .eq("id", uRow.org_id)
+            .eq("id", uRow.active_org_id)
             .maybeSingle();
           setOrgName(orgRow?.name ?? "");
         }
 
         // 3. Active subscription
         let sub: SubRow | null = null;
-        if (uRow.org_id) {
+        if (uRow.active_org_id) {
           const { data: subRow } = await supabase
             .from("subscriptions")
             .select("status, plan_key, included_deals, current_period_start, current_period_end, cancel_at_period_end, trial_end")
-            .eq("org_id", uRow.org_id)
+            .eq("org_id", uRow.active_org_id)
             .in("status", ["trialing", "active", "past_due"])
             .maybeSingle();
           sub = subRow ?? null;
@@ -154,11 +165,11 @@ export default function Billing() {
         setPlans(planRows ?? []);
 
         // 5. Usage this period (only if subscription exists)
-        if (sub && uRow.org_id && sub.current_period_start && sub.current_period_end) {
+        if (sub && uRow.active_org_id && sub.current_period_start && sub.current_period_end) {
           const { data: dealRows } = await supabase
             .from("deals")
             .select("id")
-            .eq("org_id", uRow.org_id);
+            .eq("org_id", uRow.active_org_id);
           const dealIds = (dealRows ?? []).map((d: any) => d.id as string);
           if (dealIds.length > 0) {
             const { count } = await supabase
@@ -242,7 +253,6 @@ export default function Billing() {
     : "—";
 
   const planPrices = lang === "fr" ? PLAN_PRICE_FR : PLAN_PRICE_EN;
-  const isOwner    = userRow?.org_role === "owner";
 
   if (auth0Loading || loading) {
     return (

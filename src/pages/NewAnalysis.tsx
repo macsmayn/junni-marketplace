@@ -192,7 +192,7 @@ export default function NewAnalysis() {
     (async () => {
       const { data: userRow } = await supabase
         .from("users")
-        .select("org_id, role")
+        .select("active_org_id, role")
         .eq("auth0_id", user.sub)
         .maybeSingle();
       if (userRow?.role === "admin") {
@@ -200,7 +200,7 @@ export default function NewAnalysis() {
         setSubChecked(true);
         return;
       }
-      if (!userRow?.org_id) {
+      if (!userRow?.active_org_id) {
         setHasSubscription(false);
         setSubChecked(true);
         return;
@@ -208,7 +208,7 @@ export default function NewAnalysis() {
       const { data: sub } = await supabase
         .from("subscriptions")
         .select("status")
-        .eq("org_id", userRow.org_id)
+        .eq("org_id", userRow.active_org_id)
         .in("status", ["trialing", "active", "past_due"])
         .maybeSingle();
       setHasSubscription(!!sub);
@@ -307,7 +307,7 @@ export default function NewAnalysis() {
     setStep1Loading(true);
     const { data: userData, error: userErr } = await supabase
       .from("users")
-      .select("id, org_id")
+      .select("id, active_org_id")
       .eq("auth0_id", user?.sub ?? "")
       .maybeSingle();
 
@@ -322,7 +322,7 @@ export default function NewAnalysis() {
       .from("deals")
       .insert({
         created_by: userData.id,
-        org_id: userData.org_id,
+        org_id: userData.active_org_id,
         title: companyName.trim(),
         deal_label: dealLabel.trim() || null,
         industry,
