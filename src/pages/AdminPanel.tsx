@@ -1000,8 +1000,8 @@ export default function AdminPanel() {
               <span>{item.icon}</span><span>{item.text}</span>
             </button>
           ))}
-          <button className="sb-item" onClick={() => { setLocation('/billing'); setSidebarOpen(false); }}>
-            <span>💳</span><span>Billing</span>
+          <button className="sb-item" onClick={() => { window.open("https://dashboard.stripe.com", "_blank", "noopener,noreferrer"); setSidebarOpen(false); }}>
+            <span>💳</span><span>Stripe Dashboard</span>
           </button>
           <button
             onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
@@ -1061,8 +1061,8 @@ export default function AdminPanel() {
             <span>{item.icon}</span>{item.text}
           </button>
         ))}
-        <button className="d-sb-item" onClick={() => setLocation('/billing')}>
-          <span>💳</span>Billing
+        <button className="d-sb-item" onClick={() => window.open("https://dashboard.stripe.com", "_blank", "noopener,noreferrer")}>
+          <span>💳</span>Stripe Dashboard
         </button>
         <button
           onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
