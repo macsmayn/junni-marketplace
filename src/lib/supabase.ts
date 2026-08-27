@@ -68,3 +68,24 @@ export async function invokeFunction(
     },
   });
 }
+
+// Like invokeFunction but returns the raw HTTP status so callers can
+// distinguish 402 / 403 / 409-seat_limit / 409-duplicate etc.
+export async function invokeFunctionWithDetails(
+  name: string,
+  body: unknown
+): Promise<{ data: any; httpStatus: number }> {
+  const accessToken = await resolveAccessToken();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      'X-Auth0-Token': accessToken,
+    },
+    body: JSON.stringify(body),
+  });
+  let data: any = null;
+  try { data = await res.json(); } catch {}
+  return { data, httpStatus: res.status };
+}
