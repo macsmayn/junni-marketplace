@@ -1000,6 +1000,9 @@ export default function AdminPanel() {
               <span>{item.icon}</span><span>{item.text}</span>
             </button>
           ))}
+          <button className="sb-item" onClick={() => { setLocation('/billing'); setSidebarOpen(false); }}>
+            <span>💳</span><span>Billing</span>
+          </button>
           <button
             onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
             style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
@@ -1058,6 +1061,9 @@ export default function AdminPanel() {
             <span>{item.icon}</span>{item.text}
           </button>
         ))}
+        <button className="d-sb-item" onClick={() => setLocation('/billing')}>
+          <span>💳</span>Billing
+        </button>
         <button
           onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
           style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}

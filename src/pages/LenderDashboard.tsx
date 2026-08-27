@@ -49,6 +49,7 @@ export default function LenderDashboard() {
   const { user, isAuthenticated, isLoading: auth0Loading, logout } = useAuth0();
   const [dbUser, setDbUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isOwner, setIsOwner] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -81,6 +82,15 @@ export default function LenderDashboard() {
         .from('users').select('*').eq('auth0_id', user.sub).single();
       if (!userData) { setLoading(false); return; }
       setDbUser(userData);
+      if (userData.active_org_id) {
+        const { data: membership } = await supabase
+          .from('organization_members')
+          .select('org_role')
+          .eq('org_id', userData.active_org_id)
+          .eq('user_id', userData.id)
+          .maybeSingle();
+        setIsOwner(membership?.org_role === 'owner');
+      }
       setLoading(false);
     };
     fetchData();
@@ -311,6 +321,11 @@ export default function LenderDashboard() {
           <a className="sb-item active" href="#" onClick={(e) => e.preventDefault()}>
             <span>◉</span>{t('lenderDashboard.sidebarDashboard')}
           </a>
+          {isOwner && (
+            <a className="sb-item" href="#" onClick={(e) => { e.preventDefault(); setSidebarOpen(false); setLocation('/billing'); }}>
+              <span>💳</span>{t('lenderDashboard.sidebarBilling')}
+            </a>
+          )}
           <div className="sb-section">{t('lenderDashboard.sidebarAccountSection')}</div>
           <button
             onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
@@ -440,6 +455,11 @@ export default function LenderDashboard() {
         <button className="d-sb-item active">
           <span>◉</span>{t('lenderDashboard.sidebarDashboard')}
         </button>
+        {isOwner && (
+          <button className="d-sb-item" onClick={() => setLocation('/billing')}>
+            <span>💳</span>{t('lenderDashboard.sidebarBilling')}
+          </button>
+        )}
         <div className="d-sb-section">{t('lenderDashboard.sidebarAccountSection')}</div>
         <button
           onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}

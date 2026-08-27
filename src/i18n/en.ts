@@ -464,6 +464,7 @@ const en: Record<string, string> = {
   "lenderDashboard.notifTitle":         "Notifications",
   "lenderDashboard.markAllRead":        "Mark all read",
   "lenderDashboard.noNotifications":    "No notifications yet.",
+  "lenderDashboard.sidebarBilling":     "Billing",
   "lenderDashboard.timeJustNow":        "just now",
   "lenderDashboard.timeMinAgo":         "{n}m ago",
   "lenderDashboard.timeHrAgo":          "{n}h ago",
