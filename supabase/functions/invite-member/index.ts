@@ -59,7 +59,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerUser, error: callerErr } = await supabase
       .from("users")
-      .select("id, org_id, org_role, full_name, language")
+      .select("id, active_org_id, full_name, language")
       .eq("auth0_id", callerSub)
       .maybeSingle();
 
@@ -76,12 +76,33 @@ Deno.serve(async (req: Request) => {
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
     }
-    if (!callerUser.org_id) {
+    if (!callerUser.active_org_id) {
       return new Response(JSON.stringify({ error: "Account not provisioned. Please log out and log back in." }), {
         status: 409,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
     }
+
+    const orgId: string = callerUser.active_org_id;
+
+    // ── Look up caller's role in their active org ──────────────────────────────
+    const { data: callerMembership, error: membershipErr } = await supabase
+      .from("organization_members")
+      .select("org_role")
+      .eq("org_id", orgId)
+      .eq("user_id", callerUser.id)
+      .maybeSingle();
+
+    if (membershipErr) {
+      console.error("[invite-member] organization_members lookup failed:", membershipErr);
+      return new Response(JSON.stringify({ error: "Internal error" }), {
+        status: 500,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      });
+    }
+
+    const callerOrgRole: string | null = callerMembership?.org_role ?? null;
+    // ── End role lookup ────────────────────────────────────────────────────────
 
     // ── Parse body ─────────────────────────────────────────────────────────────
     let body: Record<string, unknown>;
@@ -107,24 +128,31 @@ Deno.serve(async (req: Request) => {
     // ACTION: list
     // ══════════════════════════════════════════════════════════════════════════
     if (action === "list") {
-      const [{ data: invites, error: invitesErr }, { data: members, error: membersErr }] = await Promise.all([
+      const [{ data: invites, error: invitesErr }, { data: orgMembersRaw, error: membersErr }] = await Promise.all([
         supabase
           .from("org_invites")
           .select("id, email, status, created_at")
-          .eq("org_id", callerUser.org_id)
+          .eq("org_id", orgId)
           .order("created_at", { ascending: false }),
         supabase
-          .from("users")
-          .select("id, email, full_name, org_role")
-          .eq("org_id", callerUser.org_id)
-          .order("full_name", { ascending: true }),
+          .from("organization_members")
+          .select("org_role, users(id, email, full_name)")
+          .eq("org_id", orgId)
+          .order("created_at", { ascending: true }),
       ]);
 
       if (invitesErr) console.error("[invite-member] list: org_invites fetch failed:", invitesErr);
-      if (membersErr) console.error("[invite-member] list: users fetch failed:", membersErr);
+      if (membersErr) console.error("[invite-member] list: organization_members fetch failed:", membersErr);
+
+      const members = (orgMembersRaw ?? []).map((m: any) => ({
+        id: m.users?.id ?? null,
+        email: m.users?.email ?? null,
+        full_name: m.users?.full_name ?? null,
+        org_role: m.org_role,
+      }));
 
       return new Response(
-        JSON.stringify({ invites: invites ?? [], members: members ?? [] }),
+        JSON.stringify({ invites: invites ?? [], members }),
         { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
       );
     }
@@ -133,7 +161,7 @@ Deno.serve(async (req: Request) => {
     // ACTION: invite
     // ══════════════════════════════════════════════════════════════════════════
     if (action === "invite") {
-      if (callerUser.org_role !== "owner") {
+      if (callerOrgRole !== "owner") {
         return new Response(JSON.stringify({ error: "Only the organization owner can invite members." }), {
           status: 403,
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -150,32 +178,11 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      // 2. Reject if email already belongs to a user in any org
-      const { data: existingUser, error: existingUserErr } = await supabase
-        .from("users")
-        .select("id")
-        .eq("email", rawEmail)
-        .maybeSingle();
-
-      if (existingUserErr) {
-        console.error("[invite-member] invite: users email check failed:", existingUserErr);
-        return new Response(JSON.stringify({ error: "Internal error" }), {
-          status: 500,
-          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-        });
-      }
-      if (existingUser) {
-        return new Response(
-          JSON.stringify({ error: "A Junni account already exists for this email address. Ask them to log in directly." }),
-          { status: 409, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
-        );
-      }
-
-      // 3. Reject if a pending invite already exists for this email
+      // 2. Reject if a pending invite already exists for this email in this org
       const { data: existingInvite, error: existingInviteErr } = await supabase
         .from("org_invites")
         .select("id")
-        .eq("org_id", callerUser.org_id)
+        .eq("org_id", orgId)
         .ilike("email", rawEmail)
         .eq("status", "pending")
         .maybeSingle();
@@ -194,11 +201,11 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // 4. Seat limit enforcement
+      // 3. Seat limit enforcement
       const { data: subscription, error: subErr } = await supabase
         .from("subscriptions")
         .select("plan_key")
-        .eq("org_id", callerUser.org_id)
+        .eq("org_id", orgId)
         .in("status", ["trialing", "active", "past_due"])
         .maybeSingle();
 
@@ -235,13 +242,13 @@ Deno.serve(async (req: Request) => {
       if (maxSeats !== null) {
         const [{ count: memberCount }, { count: pendingCount }] = await Promise.all([
           supabase
-            .from("users")
-            .select("id", { count: "exact", head: true })
-            .eq("org_id", callerUser.org_id),
+            .from("organization_members")
+            .select("user_id", { count: "exact", head: true })
+            .eq("org_id", orgId),
           supabase
             .from("org_invites")
             .select("id", { count: "exact", head: true })
-            .eq("org_id", callerUser.org_id)
+            .eq("org_id", orgId)
             .eq("status", "pending"),
         ]);
 
@@ -257,11 +264,11 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // 5. Insert invite row
+      // 4. Insert invite row
       const { data: inviteRow, error: insertErr } = await supabase
         .from("org_invites")
         .insert({
-          org_id: callerUser.org_id,
+          org_id: orgId,
           email: rawEmail,
           invited_by: callerUser.id,
           status: "pending",
@@ -277,17 +284,17 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      // 6. Look up org name for email copy
+      // 5. Look up org name for email copy
       const { data: orgRow } = await supabase
         .from("organizations")
         .select("name")
-        .eq("id", callerUser.org_id)
+        .eq("id", orgId)
         .maybeSingle();
 
       const orgName: string = orgRow?.name ?? "your team";
       const inviterName: string = callerUser.full_name ?? "A colleague";
 
-      // 7. Send invite email via Resend
+      // 6. Send invite email via Resend
       let emailSent = false;
       try {
         const subject = `You've been invited to join ${orgName} on Junni`;
@@ -325,7 +332,7 @@ Deno.serve(async (req: Request) => {
     // ACTION: revoke
     // ══════════════════════════════════════════════════════════════════════════
     if (action === "revoke") {
-      if (callerUser.org_role !== "owner") {
+      if (callerOrgRole !== "owner") {
         return new Response(JSON.stringify({ error: "Only the organization owner can revoke invitations." }), {
           status: 403,
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -344,7 +351,7 @@ Deno.serve(async (req: Request) => {
         .from("org_invites")
         .update({ status: "revoked" })
         .eq("id", inviteId)
-        .eq("org_id", callerUser.org_id)
+        .eq("org_id", orgId)
         .eq("status", "pending")
         .select("id");
 
@@ -363,7 +370,7 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      console.log("[invite-member] revoke: invite", inviteId, "revoked by org", callerUser.org_id);
+      console.log("[invite-member] revoke: invite", inviteId, "revoked by org", orgId);
       return new Response(
         JSON.stringify({ revoked: true }),
         { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },

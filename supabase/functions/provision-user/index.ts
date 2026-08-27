@@ -94,19 +94,19 @@ Deno.serve(async (req: Request) => {
     // ── End caller verification ────────────────────────────────────────────────
 
     // ── Idempotency check ─────────────────────────────────────────────────────
-    // Safe to call on every login: if the user already has a non-null org_id,
+    // Safe to call on every login: if the user already has a non-null active_org_id,
     // the row is fully provisioned — return immediately without touching anything.
     const { data: existingUser } = await supabase
       .from("users")
-      .select("id, org_id")
+      .select("id, active_org_id")
       .eq("auth0_id", callerSub)
       .maybeSingle();
 
-    if (existingUser?.org_id != null) {
+    if (existingUser?.active_org_id != null) {
       return new Response(
         JSON.stringify({
           user_id: existingUser.id,
-          org_id: existingUser.org_id,
+          org_id: existingUser.active_org_id,
           already_provisioned: true,
         }),
         { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
@@ -215,8 +215,7 @@ Deno.serve(async (req: Request) => {
     const userPayload: Record<string, unknown> = {
       auth0_id: callerSub,
       email: callerEmail,
-      org_id: orgId,
-      org_role: "owner",
+      active_org_id: orgId,
     };
     if (callerName) userPayload.full_name = callerName;
 
@@ -243,15 +242,43 @@ Deno.serve(async (req: Request) => {
 
     const userId: string = userData.id;
 
-    // c. Insert billing record
+    // c. Insert organization_members row (caller is owner of their new org)
+    const { error: memberErr } = await supabase
+      .from("organization_members")
+      .insert({ org_id: orgId, user_id: userId, org_role: "owner" });
+
+    if (memberErr) {
+      console.error("[provision-user] organization_members insert failed:", memberErr);
+      const { error: orgCleanupErr } = await supabase
+        .from("organizations")
+        .delete()
+        .eq("id", orgId);
+      if (orgCleanupErr) {
+        console.error("[provision-user] org cleanup after members failure:", orgCleanupErr);
+      }
+      const { error: userCleanupErr } = await supabase
+        .from("users")
+        .update({ active_org_id: null })
+        .eq("auth0_id", callerSub);
+      if (userCleanupErr) {
+        console.error("[provision-user] user active_org_id reset after members failure:", userCleanupErr);
+      }
+      return new Response(JSON.stringify({ error: "Failed to provision organization membership" }), {
+        status: 500,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      });
+    }
+
+    // d. Insert billing record
     const { error: billingErr } = await supabase
       .from("billing_customers")
       .insert({ org_id: orgId, stripe_customer_id: stripeCustomerId });
 
     if (billingErr) {
       console.error("[provision-user] billing_customers insert failed:", billingErr);
-      // Compensating cleanup: delete org row and reset user's org_id so the
-      // function remains retryable (idempotency check uses org_id != null).
+      // Compensating cleanup: delete org, org membership, and reset user's
+      // active_org_id so the function remains retryable (idempotency check
+      // uses active_org_id != null).
       const { error: orgCleanupErr } = await supabase
         .from("organizations")
         .delete()
@@ -259,12 +286,20 @@ Deno.serve(async (req: Request) => {
       if (orgCleanupErr) {
         console.error("[provision-user] org cleanup after billing failure:", orgCleanupErr);
       }
+      const { error: memberCleanupErr } = await supabase
+        .from("organization_members")
+        .delete()
+        .eq("org_id", orgId)
+        .eq("user_id", userId);
+      if (memberCleanupErr) {
+        console.error("[provision-user] org_members cleanup after billing failure:", memberCleanupErr);
+      }
       const { error: userCleanupErr } = await supabase
         .from("users")
-        .update({ org_id: null })
+        .update({ active_org_id: null })
         .eq("auth0_id", callerSub);
       if (userCleanupErr) {
-        console.error("[provision-user] user org_id reset after billing failure:", userCleanupErr);
+        console.error("[provision-user] user active_org_id reset after billing failure:", userCleanupErr);
       }
       console.error("[provision-user] ORPHANED STRIPE CUSTOMER — no billing_customers row was written for:", stripeCustomerId);
       return new Response(JSON.stringify({ error: "Failed to create billing record" }), {

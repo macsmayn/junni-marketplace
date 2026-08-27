@@ -63,7 +63,7 @@ Deno.serve(async (req: Request) => {
     // a. Look up the caller's user row
     const { data: userRow, error: userErr } = await supabase
       .from("users")
-      .select("id, org_id, org_role")
+      .select("id, active_org_id")
       .eq("auth0_id", callerSub)
       .maybeSingle();
 
@@ -74,17 +74,31 @@ Deno.serve(async (req: Request) => {
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
     }
-    if (!userRow || !userRow.org_id) {
+    if (!userRow || !userRow.active_org_id) {
       return new Response(JSON.stringify({ error: "Account not provisioned. Please log out and log back in." }), {
         status: 409,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
     }
 
-    const orgId: string = userRow.org_id;
+    const orgId: string = userRow.active_org_id;
 
     // b. Only the org owner may manage billing
-    if (userRow.org_role !== "owner") {
+    const { data: membership, error: membershipErr } = await supabase
+      .from("organization_members")
+      .select("org_role")
+      .eq("org_id", orgId)
+      .eq("user_id", userRow.id)
+      .maybeSingle();
+
+    if (membershipErr) {
+      console.error("[create-portal-session] organization_members lookup failed:", membershipErr);
+      return new Response(JSON.stringify({ error: "Internal error" }), {
+        status: 500,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      });
+    }
+    if (membership?.org_role !== "owner") {
       return new Response(JSON.stringify({ error: "Only the organization owner can manage billing." }), {
         status: 403,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },

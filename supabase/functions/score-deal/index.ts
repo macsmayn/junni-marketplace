@@ -113,7 +113,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerUser } = await supabase
       .from("users")
-      .select("id, role, org_id")
+      .select("id, role, active_org_id")
       .eq("auth0_id", callerSub)
       .maybeSingle();
 
@@ -126,7 +126,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (callerUser.role !== "admin") {
-      if (!callerUser.org_id) {
+      if (!callerUser.active_org_id) {
         return new Response(JSON.stringify({ error: "Account not provisioned. Please log out and log back in." }), {
           status: 403,
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -138,10 +138,10 @@ Deno.serve(async (req: Request) => {
         .from("deals")
         .select("id")
         .eq("id", deal_id)
-        .eq("org_id", callerUser.org_id)
+        .eq("org_id", callerUser.active_org_id)
         .maybeSingle();
       if (!ownerCheck) {
-        console.error("[score-deal] Org ownership check failed — deal_id:", deal_id, "org_id:", callerUser.org_id);
+        console.error("[score-deal] Org ownership check failed — deal_id:", deal_id, "org_id:", callerUser.active_org_id);
         return new Response(JSON.stringify({ error: "Forbidden" }), {
           status: 403,
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -162,7 +162,7 @@ Deno.serve(async (req: Request) => {
       const { data: subscription, error: subLookupErr } = await supabase
         .from("subscriptions")
         .select("status, plan_key, included_deals, current_period_start, current_period_end")
-        .eq("org_id", callerUser.org_id)
+        .eq("org_id", callerUser.active_org_id)
         .in("status", ["trialing", "active", "past_due"])
         .maybeSingle();
 
@@ -206,7 +206,7 @@ Deno.serve(async (req: Request) => {
         const { data: orgDeals } = await supabase
           .from("deals")
           .select("id")
-          .eq("org_id", callerUser.org_id);
+          .eq("org_id", callerUser.active_org_id);
 
         const orgDealIds = (orgDeals ?? []).map((d: any) => d.id as string);
 
@@ -224,7 +224,7 @@ Deno.serve(async (req: Request) => {
         const included = subscription.included_deals ?? 0;
         if (usedCount >= included) {
           isOverage = true;
-          console.log(`[score-deal] Overage: org ${callerUser.org_id} has used ${usedCount}/${included} included deals this period — deal_id: ${deal_id} will be billed as overage.`);
+          console.log(`[score-deal] Overage: org ${callerUser.active_org_id} has used ${usedCount}/${included} included deals this period — deal_id: ${deal_id} will be billed as overage.`);
         }
       }
     }
@@ -1435,11 +1435,11 @@ Each metric score is 0-100 where 100 is best.`;
         const { data: billingRow } = await supabase
           .from("billing_customers")
           .select("stripe_customer_id")
-          .eq("org_id", callerUser.org_id)
+          .eq("org_id", callerUser.active_org_id)
           .maybeSingle();
 
         if (!billingRow?.stripe_customer_id) {
-          console.error("[score-deal] Meter event skipped — no billing_customers row for org_id:", callerUser.org_id, "deal_id:", deal_id);
+          console.error("[score-deal] Meter event skipped — no billing_customers row for org_id:", callerUser.active_org_id, "deal_id:", deal_id);
         } else {
           const meterParams = new URLSearchParams({
             event_name: "deal_analysis",
@@ -1458,7 +1458,7 @@ Each metric score is 0-100 where 100 is best.`;
             const meterErr = await meterRes.text();
             console.error("[score-deal] Stripe meter event failed — deal_id:", deal_id, "status:", meterRes.status, "body:", meterErr);
           } else {
-            console.log("[score-deal] Stripe meter event reported — deal_id:", deal_id, "org_id:", callerUser.org_id, "overage:", isOverage);
+            console.log("[score-deal] Stripe meter event reported — deal_id:", deal_id, "org_id:", callerUser.active_org_id, "overage:", isOverage);
           }
         }
       } catch (meterErr: any) {
