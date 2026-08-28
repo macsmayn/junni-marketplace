@@ -114,6 +114,98 @@ Deno.serve(async (req: Request) => {
     }
     // ── End idempotency check ──────────────────────────────────────────────────
 
+    // ── Invite check ──────────────────────────────────────────────────────────
+    // Before creating a new org, look for a pending invitation for this email.
+    // If one exists, join that org instead of creating a new one.
+    // No Stripe customer is created: the invited org already has one.
+    const { data: pendingInvite, error: inviteCheckErr } = await supabase
+      .from("org_invites")
+      .select("id, org_id")
+      .eq("status", "pending")
+      .ilike("email", callerEmail)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (inviteCheckErr) {
+      console.error("[provision-user] org_invites lookup failed:", inviteCheckErr);
+      return new Response(JSON.stringify({ error: "Internal error" }), {
+        status: 500,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      });
+    }
+
+    if (pendingInvite) {
+      const inviteOrgId: string = pendingInvite.org_id;
+
+      // a. Upsert the users row into the invited org
+      const inviteUserPayload: Record<string, unknown> = {
+        auth0_id: callerSub,
+        email: callerEmail,
+        active_org_id: inviteOrgId,
+      };
+      // Only write full_name if Auth0 provided a real name (not the email echoed back)
+      if (callerName && callerName !== callerEmail) {
+        inviteUserPayload.full_name = callerName;
+      }
+
+      const { data: inviteUserData, error: inviteUserErr } = await supabase
+        .from("users")
+        .upsert(inviteUserPayload, { onConflict: "auth0_id" })
+        .select("id")
+        .single();
+
+      if (inviteUserErr || !inviteUserData) {
+        console.error("[provision-user] users upsert (invite path) failed:", inviteUserErr);
+        return new Response(JSON.stringify({ error: "Failed to provision user" }), {
+          status: 500,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      const inviteUserId: string = inviteUserData.id;
+
+      // b. Insert membership as 'member' (not owner)
+      const { error: inviteMemberErr } = await supabase
+        .from("organization_members")
+        .insert({ org_id: inviteOrgId, user_id: inviteUserId, org_role: "member" });
+
+      if (inviteMemberErr) {
+        // e. Do NOT touch the invite row — leave it pending so the user can retry
+        console.error("[provision-user] organization_members insert (invite path) failed:", inviteMemberErr);
+        // Reset active_org_id so the idempotency check doesn't short-circuit on retry
+        const { error: rollbackErr } = await supabase
+          .from("users")
+          .update({ active_org_id: null })
+          .eq("auth0_id", callerSub);
+        if (rollbackErr) {
+          console.error("[provision-user] active_org_id rollback after invite membership failure:", rollbackErr);
+        }
+        return new Response(JSON.stringify({ error: "Failed to provision organization membership" }), {
+          status: 500,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      // c. Mark invite accepted — only after membership is confirmed
+      const { error: acceptErr } = await supabase
+        .from("org_invites")
+        .update({ status: "accepted", accepted_at: new Date().toISOString() })
+        .eq("id", pendingInvite.id);
+
+      if (acceptErr) {
+        // Non-fatal: membership already written. Log and continue.
+        console.error("[provision-user] invite status update failed (non-fatal):", acceptErr);
+      }
+
+      // d. Return with joined_via_invite flag
+      return new Response(
+        JSON.stringify({ user_id: inviteUserId, org_id: inviteOrgId, already_provisioned: false, joined_via_invite: true }),
+        { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+      );
+    }
+    // ── End invite check ───────────────────────────────────────────────────────
+
     const orgName = deriveOrgName(callerEmail);
 
     // ── Stripe customer creation ───────────────────────────────────────────────
