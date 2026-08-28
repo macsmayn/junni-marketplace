@@ -32,20 +32,26 @@ export default function CompleteProfile() {
 
     setSaving(true);
     const fullName = `${firstName.trim()} ${lastName.trim()}`;
-    const { error: dbErr } = await supabase
+    const { data: updatedUser, error: dbErr } = await supabase
       .from("users")
       .update({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         full_name: fullName,
       })
-      .eq("auth0_id", user!.sub);
+      .eq("auth0_id", user!.sub)
+      .select("role")
+      .single();
 
     setSaving(false);
     if (dbErr) {
       setError("completeProfile.errorSave");
       return;
     }
+    // Mirror RoleSelect routing so admins land on /admin, not /lender-dashboard
+    const role = updatedUser?.role;
+    if (role === "admin")    { setLocation("/admin"); return; }
+    if (role === "borrower") { setLocation("/borrower-dashboard"); return; }
     setLocation("/lender-dashboard");
   }
 
