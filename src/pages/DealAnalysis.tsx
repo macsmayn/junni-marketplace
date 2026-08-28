@@ -360,21 +360,6 @@ export default function DealAnalysis() {
     </div>
   );
 
-  if (currentUser && currentUser.role !== "admin" && deal.created_by && deal.created_by !== currentUser.id) return (
-    <div style={{ minHeight: "100vh", background: CREAM, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif" }}>
-      <div style={{ textAlign: "center", padding: 40 }}>
-        <div style={{ fontSize: 32, marginBottom: 16 }}>🔒</div>
-        <div style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 22, color: NAVY, marginBottom: 8 }}>{t("analysis.notAuthorized")}</div>
-        <div style={{ color: MUTED, fontSize: 14, marginBottom: 24 }}>{t("analysis.noAccess")}</div>
-        <button
-          onClick={() => setLocation("/lender-dashboard")}
-          style={{ background: NAVY, color: "#fff", border: "none", borderRadius: 8, padding: "10px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
-        >
-          {t("analysis.backToDashboard")}
-        </button>
-      </div>
-    </div>
-  );
 
   const scored = metrics.filter(m => m.counted);
   const notScored = metrics.filter(m => !m.counted);

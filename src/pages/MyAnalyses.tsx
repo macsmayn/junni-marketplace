@@ -151,15 +151,11 @@ export default function MyAnalyses() {
           return;
         }
 
-        let query = supabase
+        const { data: deals, error: dErr } = await supabase
           .from("deals")
           .select("id,title,industry,amount_requested,term_months,interest_rate,created_at,created_by")
           .eq("deal_source", "lender_analysis")
           .order("created_at", { ascending: false });
-        if (userData.role !== "admin") {
-          query = query.eq("created_by", userData.id);
-        }
-        const { data: deals, error: dErr } = await query;
         if (dErr) { setError("myAnalyses.errorLoad"); setLoading(false); return; }
         if (!deals || deals.length === 0) { setAnalyses([]); setLoading(false); return; }
 
