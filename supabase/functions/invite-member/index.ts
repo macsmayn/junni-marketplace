@@ -59,7 +59,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerUser, error: callerErr } = await supabase
       .from("users")
-      .select("id, active_org_id, full_name, language")
+      .select("id, active_org_id, full_name, email, language")
       .eq("auth0_id", callerSub)
       .maybeSingle();
 
@@ -292,7 +292,12 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       const orgName: string = orgRow?.name ?? "your team";
-      const inviterName: string = callerUser.full_name ?? "A colleague";
+      const callerEmail: string = callerUser.email ?? "";
+      const fullName: string | null = callerUser.full_name ?? null;
+      const nameUsable = fullName && fullName.trim() && !fullName.includes("@");
+      const inviterLabel: string = nameUsable
+        ? `${fullName!.trim()} (${callerEmail})`
+        : callerEmail;
 
       // 6. Send invite email via Resend
       let emailSent = false;
@@ -300,7 +305,7 @@ Deno.serve(async (req: Request) => {
         const subject = `You've been invited to join ${orgName} on Junni`;
         const html =
           `<p>Hi,</p>` +
-          `<p>${inviterName} has invited you to join <strong>${orgName}</strong> on Junni, a credit analysis platform for lending professionals.</p>` +
+          `<p>${inviterLabel} has invited you to join <strong>${orgName}</strong> on Junni, a credit analysis platform for lending professionals.</p>` +
           `<p>To accept this invitation, sign up at the link below using this exact email address (<strong>${rawEmail}</strong>):</p>` +
           `<p><a href="https://app.junni.ca">Join ${orgName} on Junni →</a></p>` +
           `<p>Once you've created your account with this email, you'll be added to ${orgName} automatically.</p>` +
