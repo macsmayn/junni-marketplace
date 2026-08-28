@@ -27,6 +27,7 @@ import NewAnalysis from "./pages/NewAnalysis";
 import MyAnalyses from "./pages/MyAnalyses";
 import Billing from "./pages/Billing";
 import Team from "./pages/Team";
+import CompleteProfile from "./pages/CompleteProfile";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import { setSupabaseAuthToken, setTokenProvider, setAccessTokenProvider } from './lib/supabase'
@@ -99,6 +100,11 @@ function Router() {
       <Route path={"/team"}>
         <ProtectedRoute>
           <Team />
+        </ProtectedRoute>
+      </Route>
+      <Route path={"/complete-profile"}>
+        <ProtectedRoute>
+          <CompleteProfile />
         </ProtectedRoute>
       </Route>
       <Route path={"/analysis/:dealId"}>

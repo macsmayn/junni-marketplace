@@ -40,7 +40,7 @@ export default function RoleSelect() {
 
       const { data: existingUser, error } = await supabase
         .from('users')
-        .select('role')
+        .select('role, first_name')
         .eq('auth0_id', user.sub)
         .maybeSingle();
 
@@ -52,6 +52,11 @@ export default function RoleSelect() {
       }
 
       if (existingUser) {
+        // Profile incomplete → collect name before routing anywhere
+        if (!existingUser.first_name?.trim()) {
+          setLocation('/complete-profile');
+          return;
+        }
         if (existingUser.role === 'admin')    { setLocation('/admin'); return; }
         if (existingUser.role === 'lender')   { setLocation('/lender-dashboard'); return; }
         if (existingUser.role === 'borrower') { setLocation('/borrower-dashboard'); return; }

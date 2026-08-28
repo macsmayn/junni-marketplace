@@ -747,6 +747,17 @@ const fr: Record<string, string> = {
   "billing.toggleMonthly":     "Mensuel",
   "billing.toggleAnnual":      "Annuel",
   "billing.monthlyEquiv":      "~{price}/mois",
+
+  "completeProfile.title":           "Complétez votre profil",
+  "completeProfile.subtitle":        "Avant de continuer, indiquez votre nom. Il apparaît dans les invitations d'équipe et les rapports partagés.",
+  "completeProfile.firstNameLabel":  "Prénom",
+  "completeProfile.firstNamePlaceholder": "Marie",
+  "completeProfile.lastNameLabel":   "Nom",
+  "completeProfile.lastNamePlaceholder":  "Dupont",
+  "completeProfile.continueBtn":     "Continuer",
+  "completeProfile.saving":          "Enregistrement…",
+  "completeProfile.errorBlankFields": "Veuillez saisir votre prénom et votre nom.",
+  "completeProfile.errorSave":       "Impossible d'enregistrer votre profil. Veuillez réessayer.",
 };
 
 export default fr;
