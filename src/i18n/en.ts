@@ -785,6 +785,14 @@ const en: Record<string, string> = {
   "financialReview.confirmRescore":       "Confirm & Rescore",
   "financialReview.rescoring":            "Rescoring…",
   "financialReview.rescoreError":         "Figures saved. Re-scoring failed — the updated values will apply on the next score run.",
+  "financialReview.debtDetailSection":    "Debt Detail",
+  "financialReview.debtStatusConfirmed":  "Confirmed on {date}",
+  "financialReview.debtStatusUnreviewed": "AI-extracted — not yet reviewed. Edit values if needed, then confirm.",
+  "financialReview.debtLongTerm":         "Long-term portion",
+  "financialReview.debtCurrentPortion":   "Current portion",
+  "financialReview.debtRates":            "Rates",
+  "financialReview.debtMaturities":       "Maturities",
+  "financialReview.debtDescription":      "Description",
 
   // DealAnalysis — edit financials
   "analysis.editFinancials":              "Edit Financials →",

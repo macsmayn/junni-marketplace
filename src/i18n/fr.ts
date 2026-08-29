@@ -785,6 +785,14 @@ const fr: Record<string, string> = {
   "financialReview.confirmRescore":       "Confirmer et réévaluer",
   "financialReview.rescoring":            "Réévaluation…",
   "financialReview.rescoreError":         "Données enregistrées. La réévaluation a échoué — les nouvelles valeurs s'appliqueront lors de la prochaine exécution du score.",
+  "financialReview.debtDetailSection":    "Détail de la dette",
+  "financialReview.debtStatusConfirmed":  "Confirmé le {date}",
+  "financialReview.debtStatusUnreviewed": "Extrait automatiquement — non encore révisé. Modifiez les valeurs au besoin, puis confirmez.",
+  "financialReview.debtLongTerm":         "Portion à long terme",
+  "financialReview.debtCurrentPortion":   "Portion courante",
+  "financialReview.debtRates":            "Taux",
+  "financialReview.debtMaturities":       "Échéances",
+  "financialReview.debtDescription":      "Description",
 
   // DealAnalysis — edit financials
   "analysis.editFinancials":              "Modifier les données →",

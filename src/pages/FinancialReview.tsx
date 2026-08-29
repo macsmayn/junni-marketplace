@@ -24,16 +24,27 @@ const NUMERIC_FIELDS: { key: string; label: string }[] = [
 
 type Edits = Record<string, Record<string, number | null>>;
 
+type DebtFields = {
+  long_term: number | null;
+  current_portion: number | null;
+  rates: string;
+  maturities: string;
+  description: string;
+};
+type DebtEdits = Record<string, DebtFields>;
+
 export default function FinancialReview() {
   const params = useParams<{ id: string }>();
   const dealId = params.id;
   const [, setLocation] = useLocation();
   const { user, logout } = useAuth0();
 
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const dateLocale = lang === "fr" ? "fr-CA" : "en-CA";
   const [deal, setDeal] = useState<any>(null);
   const [financials, setFinancials] = useState<any[]>([]);
   const [edits, setEdits] = useState<Edits>({});
+  const [debtEdits, setDebtEdits] = useState<DebtEdits>({});
   const [annotations, setAnnotations] = useState<any[]>([]);
   const [dbUser, setDbUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -66,13 +77,23 @@ export default function FinancialReview() {
       if (financialsRes.data) {
         setFinancials(financialsRes.data);
         const initial: Edits = {};
+        const initialDebt: DebtEdits = {};
         for (const row of financialsRes.data) {
           initial[row.id] = {};
           for (const { key } of NUMERIC_FIELDS) {
             initial[row.id][key] = row[key] ?? null;
           }
+          const dd = row.debt_detail ?? {};
+          initialDebt[row.id] = {
+            long_term: dd.long_term ?? null,
+            current_portion: dd.current_portion ?? null,
+            rates: dd.rates ?? "",
+            maturities: dd.maturities ?? "",
+            description: dd.description ?? "",
+          };
         }
         setEdits(initial);
+        setDebtEdits(initialDebt);
         if (financialsRes.data.some((r: any) => r.borrower_confirmed)) setWasAlreadyConfirmed(true);
       }
 
@@ -100,15 +121,45 @@ export default function FinancialReview() {
     }));
   };
 
+  const handleDebtChange = (rowId: string, field: keyof DebtFields, raw: string) => {
+    setDebtEdits(prev => {
+      const curr = prev[rowId] ?? { long_term: null, current_portion: null, rates: "", maturities: "", description: "" };
+      const isNumeric = field === "long_term" || field === "current_portion";
+      const val = isNumeric
+        ? (raw === "" ? null : (isNaN(parseFloat(raw)) ? null : parseFloat(raw)))
+        : raw;
+      return { ...prev, [rowId]: { ...curr, [field]: val } };
+    });
+  };
+
   const saveEdits = async (confirm: boolean) => {
     setIsSaving(true);
     setRescoreError(null);
     let saveOk = false;
+    const confirmNow = confirm ? new Date().toISOString() : null;
     try {
       for (const row of financials) {
         const rowEdits = edits[row.id] ?? {};
         const update: Record<string, any> = { ...rowEdits };
         if (confirm) update.borrower_confirmed = true;
+
+        // Assemble debt_detail jsonb from separate debt state
+        const rowDebt = debtEdits[row.id];
+        if (rowDebt !== undefined) {
+          update.debt_detail = {
+            long_term: rowDebt.long_term,
+            current_portion: rowDebt.current_portion,
+            rates: rowDebt.rates || null,
+            maturities: rowDebt.maturities || null,
+            description: rowDebt.description || null,
+          };
+        }
+        if (confirm && dbUser?.id && confirmNow) {
+          update.debt_detail_confirmed = true;
+          update.debt_detail_confirmed_at = confirmNow;
+          update.debt_detail_confirmed_by = dbUser.id;
+        }
+
         const { error } = await supabase
           .from("extracted_financials")
           .update(update)
@@ -554,6 +605,107 @@ export default function FinancialReview() {
         .btn-primary:hover:not(:disabled) { opacity: 0.88; }
         .btn-primary:disabled { opacity: 0.45; cursor: default; }
 
+        .debt-section {
+          margin: 4px 24px 16px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          overflow: hidden;
+        }
+
+        .debt-section-header {
+          background: rgba(27,43,75,0.035);
+          padding: 10px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 6px;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .debt-section-title {
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: var(--text-muted);
+        }
+
+        .debt-status-confirmed { font-size: 11px; font-weight: 600; color: var(--success); }
+        .debt-status-unreviewed { font-size: 11px; color: var(--text-muted); font-style: italic; }
+
+        .debt-fields {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0;
+          padding: 4px 16px 12px;
+        }
+
+        .debt-field-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 10px 0;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .debt-field-row:nth-child(odd) { padding-right: 20px; border-right: 1px solid var(--border); }
+        .debt-field-row:nth-child(even) { padding-left: 20px; }
+
+        .debt-field-full {
+          grid-column: 1 / -1;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          padding: 10px 0 0;
+        }
+
+        .debt-field-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .debt-text-input {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          padding: 6px 10px;
+          font-size: 13px;
+          font-family: 'Inter', sans-serif;
+          color: var(--navy);
+          background: var(--cream);
+          width: 140px;
+          text-align: right;
+          outline: none;
+          transition: border-color 0.15s ease;
+        }
+
+        .debt-text-input:focus { border-color: var(--navy); background: var(--white); }
+
+        .debt-textarea {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          padding: 8px 10px;
+          font-size: 13px;
+          font-family: 'Inter', sans-serif;
+          color: var(--navy);
+          background: var(--cream);
+          resize: vertical;
+          outline: none;
+          line-height: 1.5;
+          min-height: 64px;
+          width: 100%;
+          box-sizing: border-box;
+          transition: border-color 0.15s ease;
+        }
+
+        .debt-textarea:focus { border-color: var(--navy); background: var(--white); }
+
         @media (max-width: 640px) {
           .container { padding: 24px 16px 60px; }
           nav { padding: 0 16px; }
@@ -565,6 +717,10 @@ export default function FinancialReview() {
           .year-card-header { flex-direction: column; align-items: flex-start; }
           .actions-bar { flex-direction: column-reverse; }
           .btn-secondary, .btn-primary { width: 100%; text-align: center; }
+          .debt-fields { grid-template-columns: 1fr; }
+          .debt-field-row:nth-child(odd) { padding-right: 0; border-right: none; }
+          .debt-field-row:nth-child(even) { padding-left: 0; }
+          .debt-text-input { width: 120px; }
         }
       `}</style>
 
@@ -636,6 +792,70 @@ export default function FinancialReview() {
                       </div>
                     );
                   })}
+                </div>
+
+                <div className="debt-section">
+                  <div className="debt-section-header">
+                    <span className="debt-section-title">{t("financialReview.debtDetailSection")}</span>
+                    {row.debt_detail_confirmed
+                      ? <span className="debt-status-confirmed">
+                          {t("financialReview.debtStatusConfirmed").replace("{date}", new Date(row.debt_detail_confirmed_at).toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" }))}
+                        </span>
+                      : <span className="debt-status-unreviewed">{t("financialReview.debtStatusUnreviewed")}</span>
+                    }
+                  </div>
+                  <div className="debt-fields">
+                    <div className="debt-field-row">
+                      <label className="debt-field-label">{t("financialReview.debtLongTerm")}</label>
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={debtEdits[row.id]?.long_term ?? ""}
+                        onChange={e => handleDebtChange(row.id, "long_term", e.target.value)}
+                        placeholder="—"
+                      />
+                    </div>
+                    <div className="debt-field-row">
+                      <label className="debt-field-label">{t("financialReview.debtCurrentPortion")}</label>
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={debtEdits[row.id]?.current_portion ?? ""}
+                        onChange={e => handleDebtChange(row.id, "current_portion", e.target.value)}
+                        placeholder="—"
+                      />
+                    </div>
+                    <div className="debt-field-row">
+                      <label className="debt-field-label">{t("financialReview.debtRates")}</label>
+                      <input
+                        type="text"
+                        className="debt-text-input"
+                        value={debtEdits[row.id]?.rates ?? ""}
+                        onChange={e => handleDebtChange(row.id, "rates", e.target.value)}
+                        placeholder="—"
+                      />
+                    </div>
+                    <div className="debt-field-row">
+                      <label className="debt-field-label">{t("financialReview.debtMaturities")}</label>
+                      <input
+                        type="text"
+                        className="debt-text-input"
+                        value={debtEdits[row.id]?.maturities ?? ""}
+                        onChange={e => handleDebtChange(row.id, "maturities", e.target.value)}
+                        placeholder="—"
+                      />
+                    </div>
+                    <div className="debt-field-full">
+                      <label className="debt-field-label">{t("financialReview.debtDescription")}</label>
+                      <textarea
+                        className="debt-textarea"
+                        value={debtEdits[row.id]?.description ?? ""}
+                        onChange={e => handleDebtChange(row.id, "description", e.target.value)}
+                        placeholder="—"
+                        rows={3}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {row.notes_summary && (
