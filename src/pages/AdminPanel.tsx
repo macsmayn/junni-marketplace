@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase, invokeFunction } from '../lib/supabase';
 import { useLanguage } from "../contexts/LanguageContext";
+import { LanguageToggle } from "../components/LanguageToggle";
 
 const LOGO_NAVY = "/junni-logo-navy.png";
 
@@ -28,7 +29,7 @@ const fmtDate = (s: string | null | undefined) =>
 export default function AdminPanel() {
   const [, setLocation] = useLocation();
   const { user: auth0User, logout } = useAuth0();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(0); // 0=Questions, 1=Deals, 2=Users, 3=KYC, 4=Bids
@@ -145,7 +146,7 @@ export default function AdminPanel() {
 
   const handleEditStart = (q: any) => {
     setEditingId(q.id);
-    setEditText(q.question_text);
+    setEditText(lang === "fr" && q.question_text_fr ? q.question_text_fr : q.question_text);
   };
 
   const handleEditCancel = () => {
@@ -154,17 +155,23 @@ export default function AdminPanel() {
   };
 
   const handleEditSave = async (q: any) => {
-    const existing = q.input_fields ?? {};
-    const updatedFields = existing.original_question_text
-      ? existing
-      : { ...existing, original_question_text: q.question_text };
+    let dbUpdate: Record<string, any>;
+    if (lang === "fr") {
+      dbUpdate = { question_text_fr: editText };
+    } else {
+      const existing = q.input_fields ?? {};
+      const updatedFields = existing.original_question_text
+        ? existing
+        : { ...existing, original_question_text: q.question_text };
+      dbUpdate = { question_text: editText, input_fields: updatedFields };
+    }
     const { error } = await supabase
       .from("credit_questions")
-      .update({ question_text: editText, input_fields: updatedFields })
+      .update(dbUpdate)
       .eq("id", q.id);
     if (!error) {
       setQuestions(prev =>
-        prev.map(x => x.id === q.id ? { ...x, question_text: editText, input_fields: updatedFields } : x)
+        prev.map(x => x.id === q.id ? { ...x, ...dbUpdate } : x)
       );
       setEditingId(null);
       setEditText("");
@@ -602,7 +609,7 @@ export default function AdminPanel() {
                         </>
                       ) : (
                         <>
-                          <div className="q-text">{q.question_text}</div>
+                          <div className="q-text">{lang === "fr" && q.question_text_fr ? q.question_text_fr : q.question_text}</div>
                           {q.source === "ai" && grounded && (
                             <div className="q-grounded"><strong>{t("adminPanel.groundedIn")}</strong> {grounded}</div>
                           )}
@@ -998,7 +1005,8 @@ export default function AdminPanel() {
             </button>
             <span className="nav-title">{t("adminPanel.pageTitle")}</span>
           </div>
-          <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <LanguageToggle />
             <button className="a-btn a-btn-ghost" style={{ fontSize: 11, padding: "6px 10px" }} onClick={() => setLocation('/my-analyses')}>{t("adminPanel.myAnalysesBtn")}</button>
           </div>
         </div>
@@ -1102,6 +1110,7 @@ export default function AdminPanel() {
       <div className={`d-topbar ${!topbarVisible ? "hidden" : ""}`}>
         <div className="d-topbar-title">{t("adminPanel.pageTitle")}</div>
         <div className="d-topbar-right">
+          <LanguageToggle />
           <button className="a-btn a-btn-ghost" onClick={() => setLocation('/my-analyses')}>{t("adminPanel.myAnalysesBtn")}</button>
           <button className="a-btn a-btn-gold" onClick={() => setLocation('/new-analysis')}>{t("adminPanel.newAnalysisBtn")}</button>
         </div>
