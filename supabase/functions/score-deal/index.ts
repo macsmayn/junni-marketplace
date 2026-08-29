@@ -1080,18 +1080,33 @@ ${translationQueue.map((q, i) => `${i + 1}. ${q.text}`).join("\n")}`;
         console.log("[score-deal] Phase 2d Job B skipped (no notes to analyze).");
       } else {
         try {
-          // Build financial context across all confirmed years
+          // Build current-facility context from lender-entered deal columns (authoritative source)
+          const fmtN = (n: number | null) => n != null ? `$${Number(n).toLocaleString()}` : "N/A";
+          const currentFacilityLines: string[] = [];
+          if (deal.revolver_limit        != null) currentFacilityLines.push(`- Revolver limit: ${fmtN(deal.revolver_limit)}`);
+          if (deal.revolver_drawn        != null) currentFacilityLines.push(`- Revolver drawn: ${fmtN(deal.revolver_drawn)}`);
+          if (deal.existing_debt         != null) currentFacilityLines.push(`- Existing debt (total): ${fmtN(deal.existing_debt)}`);
+          if (deal.existing_debt_service != null) currentFacilityLines.push(`- Existing annual debt service: ${fmtN(deal.existing_debt_service)}`);
+          const currentFacilitiesSection = currentFacilityLines.length > 0
+            ? `CURRENT FACILITIES AS ENTERED AND CONFIRMED BY THE LENDER (authoritative):\n${currentFacilityLines.join("\n")}`
+            : "";
+
+          // Build historical financial context across all confirmed years
           let financialContext = "";
           for (const row of confirmedFinancials) {
-            const fmtN = (n: number | null) => n != null ? `$${Number(n).toLocaleString()}` : "N/A";
             financialContext += `\n--- FY${row.fiscal_year} ---\n`;
             financialContext += `Revenue: ${fmtN(row.revenue)}  EBITDA: ${fmtN(row.ebitda)}  Net Income: ${fmtN(row.net_income)}\n`;
             financialContext += `Total Assets: ${fmtN(row.total_assets)}  Total Debt: ${fmtN(row.total_debt)}  Equity: ${fmtN(row.equity)}\n`;
-            if (row.notes_summary) financialContext += `Notes Summary: ${row.notes_summary}\n`;
-            if (row.debt_detail && typeof row.debt_detail === "object") {
-              financialContext += `Debt Detail: ${JSON.stringify(row.debt_detail)}\n`;
+            if (row.notes_summary) {
+              financialContext += `Notes summary (AI-extracted from the year-end statements, not reviewed by the lender, fiscal year ${row.fiscal_year}): ${row.notes_summary}\n`;
             }
-            if (row.raw_notes) financialContext += `Extraction Flags / Raw Notes: ${row.raw_notes}\n`;
+            if (row.debt_detail && typeof row.debt_detail === "object") {
+              const ddLabel = row.debt_detail_confirmed
+                ? `Debt detail (lender-confirmed, fiscal year ${row.fiscal_year})`
+                : `Debt detail (AI-extracted from the year-end statements, NOT reviewed by the lender, fiscal year ${row.fiscal_year})`;
+              financialContext += `${ddLabel}: ${JSON.stringify(row.debt_detail)}\n`;
+            }
+            // raw_notes is internal extraction diagnostics — never forwarded to question-generating models
           }
 
           const jobBPrompt =
@@ -1102,6 +1117,9 @@ CRITICAL RULES:
 2. MATERIALITY: Only ask about things that genuinely affect credit risk — things that would change how a lender views repayment ability, leverage, or risk. Ignore immaterial or boilerplate disclosures.
 3. IT IS CORRECT TO RETURN FEW OR ZERO QUESTIONS. If the notes contain nothing materially concerning, return an empty list. Do NOT manufacture questions to fill space. A clean set of notes should produce few or no questions. Quality over quantity, always.
 4. MAXIMUM 20 questions, but only ask as many as there are genuinely material issues. Most deals will have between 0 and 8. Going to 20 is rare and only justified when there are truly that many distinct material issues.
+5. LENDER-ENTERED FIGURES ARE AUTHORITATIVE. The "CURRENT FACILITIES AS ENTERED AND CONFIRMED BY THE LENDER" section below contains the lender's confirmed view of the borrower's current facilities. Where anything in the historical extraction text appears to conflict with those figures, the lender-entered figures are correct. Do NOT state a facility limit, drawn balance, or current debt figure in any question unless it comes from that authoritative lender-entered section.
+6. NEVER ASSERT AN EXTRACTION FIGURE AS FACT FOR CURRENT FACILITIES. Historical extraction text (labeled "AI-extracted" or "NOT reviewed by the lender") may be used to raise a question about a trend or a pattern, but never as a source of current facility amounts. If you reference an AI-extracted figure, do so only to ask the borrower to clarify or reconcile it — not to assert it as accurate.
+7. DISCREPANCY QUESTIONS. If a figure in the historical extraction text appears to contradict a lender-entered current facility figure, that contradiction is itself a legitimate question to raise. Phrase it as a discrepancy to clarify: cite both figures and their sources explicitly (e.g. "The lender-entered revolver limit is X, but the year-end notes extracted from the FY20XX statements show Y — can you explain the difference?"). Never state either figure as definitively correct.
 
 Look specifically for (only if actually present in the documents):
 - Litigation, lawsuits, legal contingencies, or claims
@@ -1136,8 +1154,8 @@ If there are no material issues, return { "questions": [] }.
 DEAL CONTEXT:
 - Amount Requested: $${Number(deal.amount_requested ?? 0).toLocaleString()} CAD
 - Loan Term: ${deal.term_months ?? "N/A"} months
-
-FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
+${currentFacilitiesSection ? `\n${currentFacilitiesSection}` : ""}
+HISTORICAL FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
 
           const parsedJobB = await callJsonApi(
             ANTHROPIC_API_KEY,
