@@ -2,18 +2,20 @@ import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase, invokeFunction } from '../lib/supabase';
+import { useLanguage } from "../contexts/LanguageContext";
 
 const LOGO_NAVY = "/junni-logo-navy.png";
 
+// Text values are i18n keys, resolved via t() in render
 const ADMIN_NAV_ITEMS = [
-  { icon: "◉", text: "Overview", tab: null },
-  { icon: "📋", text: "Deals", tab: 1 },
-  { icon: "👥", text: "Users", tab: 2 },
-  { icon: "❓", text: "Questions", tab: 0 },
+  { icon: "◉", text: "adminPanel.navOverview", tab: null },
+  { icon: "📋", text: "adminPanel.navDeals",    tab: 1 },
+  { icon: "👥", text: "adminPanel.navUsers",    tab: 2 },
+  { icon: "❓", text: "adminPanel.navQuestions", tab: 0 },
 ];
 const ADMIN_ACCOUNT_ITEMS = [
-  { icon: "📊", text: "Analytics", badge: null },
-  { icon: "⚙️", text: "Settings", badge: null },
+  { icon: "📊", text: "adminPanel.navAnalytics", badge: null },
+  { icon: "⚙️", text: "adminPanel.navSettings",  badge: null },
 ];
 
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
@@ -26,6 +28,7 @@ const fmtDate = (s: string | null | undefined) =>
 export default function AdminPanel() {
   const [, setLocation] = useLocation();
   const { user: auth0User, logout } = useAuth0();
+  const { t } = useLanguage();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(0); // 0=Questions, 1=Deals, 2=Users, 3=KYC, 4=Bids
@@ -135,7 +138,7 @@ export default function AdminPanel() {
   };
 
   const handleReject = async (q: any) => {
-    if (!window.confirm("Reject this question? It won't be shown to the borrower.")) return;
+    if (!window.confirm(t("adminPanel.confirmRejectQuestion"))) return;
     const { error } = await supabase.from("credit_questions").update({ status: "dismissed" }).eq("id", q.id);
     if (!error) setQuestions(prev => prev.filter(x => x.id !== q.id));
   };
@@ -232,9 +235,7 @@ export default function AdminPanel() {
 
   const handleDeleteSelected = async () => {
     const ids = [...selectedDealIds];
-    if (!window.confirm(
-      `Delete ${ids.length} deal(s)? This permanently removes the deal(s) and ALL associated bids, documents, financials, credit flags, and questions. This cannot be undone.`
-    )) return;
+    if (!window.confirm(t("adminPanel.confirmDeleteDeals").replace("{n}", String(ids.length)))) return;
     const { error } = await supabase.from("deals").delete().in("id", ids);
     if (!error) {
       setDealsList(prev => prev.filter(d => !selectedDealIds.has(d.id)));
@@ -246,7 +247,7 @@ export default function AdminPanel() {
   const handleUserRoleChange = async (userId: string, newRole: string) => {
     const { error } = await supabase.from("users").update({ role: newRole }).eq("id", userId);
     if (error) {
-      alert("Role changes are disabled from the app for security. Roles can only be changed directly in the database. This is intentional — it prevents anyone from granting themselves admin access.");
+      alert(t("adminPanel.alertRoleDisabled"));
       return;
     }
     setUsersList(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
@@ -267,7 +268,7 @@ export default function AdminPanel() {
   };
 
   const handleKycReject = async (userId: string) => {
-    if (!window.confirm("Reject this user's KYC? Their status will be marked as rejected.")) return;
+    if (!window.confirm(t("adminPanel.confirmRejectKyc"))) return;
     const { error } = await supabase.from("users").update({ kyc_status: "rejected" }).eq("id", userId);
     if (!error) {
       setUsersList(prev => prev.map(u => u.id === userId ? { ...u, kyc_status: "rejected" } : u));
@@ -300,9 +301,7 @@ export default function AdminPanel() {
 
   const handleDeleteSelectedUsers = async () => {
     const ids = [...selectedUserIds];
-    if (!window.confirm(
-      `Delete ${ids.length} user(s)? This permanently removes the user(s) AND all of their deals, and every bid, document, financial record, and question associated with those deals. This cannot be undone.`
-    )) return;
+    if (!window.confirm(t("adminPanel.confirmDeleteUsers").replace("{n}", String(ids.length)))) return;
     const { error } = await supabase.from("users").delete().in("id", ids);
     if (!error) {
       setUsersList(prev => prev.filter(u => !selectedUserIds.has(u.id)));
@@ -343,7 +342,7 @@ export default function AdminPanel() {
     setViewingUser((prev: any) => prev ? { ...prev, ...updates } : null);
     if (roleChanged) {
       setEditUserForm(prev => ({ ...prev, role: viewingUser.role }));
-      alert("Role changes are disabled from the app for security. Roles can only be changed directly in the database. This is intentional — it prevents anyone from granting themselves admin access.");
+      alert(t("adminPanel.alertRoleDisabled"));
     }
   };
 
@@ -366,19 +365,21 @@ export default function AdminPanel() {
     const total = currentAccepted + newAmount;
     if (requested > 0 && total > requested) {
       const ok = window.confirm(
-        `Accepting these bids brings funding to ${fmtAmount(total)}, above the requested ${fmtAmount(requested)}. Continue with oversubscription?`
+        t("adminPanel.confirmOversubscribe")
+          .replace("{total}", fmtAmount(total))
+          .replace("{requested}", fmtAmount(requested))
       );
       if (!ok) return;
     }
     const { error } = await supabase.rpc('accept_bids', { p_deal_id: dealId, p_bid_ids: bidIds });
-    if (error) { alert('Failed to accept bids: ' + error.message); return; }
+    if (error) { alert(t("adminPanel.errorAcceptBids").replace("{msg}", error.message)); return; }
     setSelectedBidsByDeal(prev => { const next = { ...prev }; delete next[dealId]; return next; });
     await refetchBids();
   };
 
   const handleAdminUnacceptBid = async (dealId: string, bidId: string) => {
     const { error } = await supabase.rpc('unaccept_bid', { p_deal_id: dealId, p_bid_id: bidId });
-    if (error) { alert('Failed to un-accept bid: ' + error.message); return; }
+    if (error) { alert(t("adminPanel.errorUnacceptBid").replace("{msg}", error.message)); return; }
     await refetchBids();
   };
 
@@ -388,11 +389,11 @@ export default function AdminPanel() {
       .filter((b: any) => b.status === 'accepted')
       .reduce((sum: number, b: any) => sum + (b.amount ?? 0), 0);
     const ok = window.confirm(
-      `Close this deal? It will be funded at ${fmtAmount(acceptedTotal)}, removed from the marketplace, and all remaining open bids will be rejected. This cannot be undone.`
+      t("adminPanel.confirmCloseDeal").replace("{amount}", fmtAmount(acceptedTotal))
     );
     if (!ok) return;
     const { error } = await supabase.rpc('close_deal', { p_deal_id: dealId });
-    if (error) { alert('Failed to close deal: ' + error.message); return; }
+    if (error) { alert(t("adminPanel.errorCloseDeal").replace("{msg}", error.message)); return; }
     await refetchBids();
   };
 
@@ -403,21 +404,21 @@ export default function AdminPanel() {
     <div style={{ position: "fixed", inset: 0, background: "rgba(15,27,48,0.55)", zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
       <div style={{ background: "#fff", borderRadius: "12px", padding: "28px", width: "100%", maxWidth: "560px", maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-          <div style={{ fontFamily: "Fraunces, serif", fontSize: "18px", fontWeight: 700, color: "#1B2B4B" }}>Edit Deal</div>
+          <div style={{ fontFamily: "Fraunces, serif", fontSize: "18px", fontWeight: 700, color: "#1B2B4B" }}>{t("adminPanel.editDealTitle")}</div>
           <button onClick={() => setEditingDeal(null)} style={{ background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "#7A7060", lineHeight: 1 }}>✕</button>
         </div>
         <div style={{ display: "grid", gap: "12px" }}>
           {([
-            { label: "Company Name", key: "title", type: "text" },
-            { label: "Industry", key: "industry", type: "text" },
-            { label: "Amount Requested ($)", key: "amount_requested", type: "number" },
-            { label: "Annual Revenue ($)", key: "annual_revenue", type: "number" },
-            { label: "EBITDA ($)", key: "ebitda", type: "number" },
-            { label: "Years in Business", key: "years_in_business", type: "number" },
-            { label: "AI Score (0–100)", key: "ai_score", type: "number" },
-          ] as { label: string; key: string; type: string }[]).map(({ label, key, type }) => (
+            { labelKey: "adminPanel.fieldCompanyName",    key: "title",            type: "text" },
+            { labelKey: "adminPanel.fieldIndustry",       key: "industry",         type: "text" },
+            { labelKey: "adminPanel.fieldAmountReq",      key: "amount_requested", type: "number" },
+            { labelKey: "adminPanel.fieldAnnualRevenue",  key: "annual_revenue",   type: "number" },
+            { labelKey: "adminPanel.fieldEbitda",         key: "ebitda",           type: "number" },
+            { labelKey: "adminPanel.fieldYearsInBiz",     key: "years_in_business", type: "number" },
+            { labelKey: "adminPanel.fieldAiScore",        key: "ai_score",         type: "number" },
+          ] as { labelKey: string; key: string; type: string }[]).map(({ labelKey, key, type }) => (
             <div key={key}>
-              <div style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", marginBottom: "5px" }}>{label}</div>
+              <div style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", marginBottom: "5px" }}>{t(labelKey)}</div>
               <input
                 type={type}
                 value={editDealForm[key]}
@@ -427,36 +428,36 @@ export default function AdminPanel() {
             </div>
           ))}
           <div>
-            <div style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", marginBottom: "5px" }}>Deal label (optional)</div>
+            <div style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", marginBottom: "5px" }}>{t("adminPanel.fieldDealLabel")}</div>
             <input
               type="text"
               value={editDealForm.deal_label ?? ""}
               onChange={e => setEditDealForm(prev => ({ ...prev, deal_label: e.target.value }))}
-              placeholder="e.g. Refinancing 2026, Project Alpha…"
+              placeholder={t("adminPanel.fieldDealLabelPlaceholder")}
               style={{ width: "100%", padding: "8px 10px", border: "1px solid #E8E2D9", borderRadius: "6px", fontFamily: "Inter, sans-serif", fontSize: "14px", color: "#1B2B4B", outline: "none", boxSizing: "border-box" }}
             />
           </div>
           <div>
-            <div style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", marginBottom: "5px" }}>Status</div>
+            <div style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", marginBottom: "5px" }}>{t("adminPanel.fieldStatus")}</div>
             <select
               value={editDealForm.status}
               onChange={e => setEditDealForm(prev => ({ ...prev, status: e.target.value }))}
               style={{ width: "100%", padding: "8px 10px", border: "1px solid #E8E2D9", borderRadius: "6px", fontFamily: "Inter, sans-serif", fontSize: "14px", color: "#1B2B4B", background: "#fff", outline: "none", boxSizing: "border-box" }}
             >
-              <option value="pending">Pending</option>
-              <option value="active">Active</option>
-              <option value="funded">Funded</option>
-              <option value="closed">Closed</option>
-              <option value="rejected">Rejected</option>
+              <option value="pending">{t("adminPanel.statusPending")}</option>
+              <option value="active">{t("adminPanel.statusActive")}</option>
+              <option value="funded">{t("adminPanel.statusFunded")}</option>
+              <option value="closed">{t("adminPanel.statusClosed")}</option>
+              <option value="rejected">{t("adminPanel.statusRejected")}</option>
             </select>
           </div>
         </div>
         <div style={{ display: "flex", gap: "10px", marginTop: "20px", paddingTop: "16px", borderTop: "1px solid #E8E2D9" }}>
-          <button className="a-btn a-btn-navy" onClick={handleDealEditSave}>Save</button>
-          <button className="a-btn a-btn-ghost" onClick={() => setEditingDeal(null)}>Cancel</button>
+          <button className="a-btn a-btn-navy" onClick={handleDealEditSave}>{t("adminPanel.btnSave")}</button>
+          <button className="a-btn a-btn-ghost" onClick={() => setEditingDeal(null)}>{t("adminPanel.btnCancel")}</button>
         </div>
         <div style={{ fontSize: "11px", color: "#7A7060", marginTop: "10px" }}>
-          To update the score after editing financial figures, use the Financials link → Confirm & Rescore, or the Recalculate score button.
+          {t("adminPanel.editDealHint")}
         </div>
       </div>
     </div>
@@ -485,61 +486,61 @@ export default function AdminPanel() {
         {/* Edit form */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
           <div>
-            <div style={labelStyle}>Full Name</div>
+            <div style={labelStyle}>{t("adminPanel.fieldFullName")}</div>
             <input type="text" value={editUserForm.full_name} onChange={e => setEditUserForm(p => ({ ...p, full_name: e.target.value }))} style={fieldStyle} />
           </div>
           <div>
-            <div style={labelStyle}>Company Name</div>
+            <div style={labelStyle}>{t("adminPanel.fieldCompanyName")}</div>
             <input type="text" value={editUserForm.company_name} onChange={e => setEditUserForm(p => ({ ...p, company_name: e.target.value }))} style={fieldStyle} />
           </div>
           <div>
-            <div style={labelStyle}>Email</div>
+            <div style={labelStyle}>{t("adminPanel.fieldEmail")}</div>
             <input type="email" value={editUserForm.email} onChange={e => setEditUserForm(p => ({ ...p, email: e.target.value }))} style={fieldStyle} />
           </div>
           <div>
-            <div style={labelStyle}>Phone</div>
+            <div style={labelStyle}>{t("adminPanel.fieldPhone")}</div>
             <input type="text" value={editUserForm.phone} onChange={e => setEditUserForm(p => ({ ...p, phone: e.target.value }))} style={fieldStyle} />
           </div>
           <div>
-            <div style={labelStyle}>Role</div>
+            <div style={labelStyle}>{t("adminPanel.fieldRole")}</div>
             <select value={editUserForm.role} onChange={e => setEditUserForm(p => ({ ...p, role: e.target.value }))} style={{ ...fieldStyle, background: "#fff" }}>
-              <option value="lender">Lender</option>
-              <option value="admin">Admin</option>
+              <option value="lender">{t("adminPanel.roleLender")}</option>
+              <option value="admin">{t("adminPanel.roleAdmin")}</option>
             </select>
           </div>
           <div>
-            <div style={labelStyle}>KYC Status</div>
+            <div style={labelStyle}>{t("adminPanel.fieldKycStatus")}</div>
             <select value={editUserForm.kyc_status} onChange={e => setEditUserForm(p => ({ ...p, kyc_status: e.target.value }))} style={{ ...fieldStyle, background: "#fff" }}>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
+              <option value="pending">{t("adminPanel.statusPending")}</option>
+              <option value="approved">{t("adminPanel.statusApproved")}</option>
+              <option value="rejected">{t("adminPanel.statusRejected")}</option>
             </select>
           </div>
         </div>
         <div style={{ fontSize: "11px", color: "#7A7060", marginBottom: "14px" }}>
-          Note: editing the email field does not change their login (tied to Auth0), but may affect admin allowlist matching.
+          {t("adminPanel.emailNote")}
         </div>
         <div style={{ display: "flex", gap: "10px", paddingBottom: "20px", borderBottom: "1px solid #E8E2D9" }}>
-          <button className="a-btn a-btn-navy" onClick={handleUserEditSave}>Save Changes</button>
-          <button className="a-btn a-btn-ghost" onClick={() => setViewingUser(null)}>Close</button>
+          <button className="a-btn a-btn-navy" onClick={handleUserEditSave}>{t("adminPanel.btnSaveChanges")}</button>
+          <button className="a-btn a-btn-ghost" onClick={() => setViewingUser(null)}>{t("adminPanel.btnClose")}</button>
         </div>
 
         {/* Deals */}
         {userModalLoading ? (
-          <div style={{ padding: "24px 0", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>Loading activity…</div>
+          <div style={{ padding: "24px 0", textAlign: "center", color: "#7A7060", fontSize: "13px" }}>{t("adminPanel.loadingActivity")}</div>
         ) : (
           <>
             {/* Deals */}
             <div style={{ marginTop: "20px", marginBottom: "16px" }}>
-              <div style={sectionHeadStyle}>Deals ({userModalDeals.length})</div>
+              <div style={sectionHeadStyle}>{t("adminPanel.colDeals")} ({userModalDeals.length})</div>
               {userModalDeals.length === 0 ? (
-                <div style={{ fontSize: "13px", color: "#7A7060" }}>No deals.</div>
+                <div style={{ fontSize: "13px", color: "#7A7060" }}>{t("adminPanel.noUserDeals")}</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                   {userModalDeals.map(d => (
                     <div key={d.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "rgba(27,43,75,0.02)", border: "1px solid #E8E2D9", borderRadius: "8px" }}>
                       <div>
-                        <div style={{ fontSize: "13px", fontWeight: 600, color: "#1B2B4B" }}>{d.title ?? "Untitled"}</div>
+                        <div style={{ fontSize: "13px", fontWeight: 600, color: "#1B2B4B" }}>{d.title ?? t("adminPanel.untitled")}</div>
                         <div style={{ fontSize: "11px", color: "#7A7060", marginTop: "2px" }}>{fmtAmount(d.amount_requested)}</div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -566,19 +567,19 @@ export default function AdminPanel() {
 
     // ── Questions (tab 0) ──
     if (activeTab === 0) {
-      if (questionsLoading) return <div className="q-empty">Loading questions…</div>;
-      if (questions.length === 0) return <div className="q-empty">No questions pending review.</div>;
+      if (questionsLoading) return <div className="q-empty">{t("adminPanel.loadingQuestions")}</div>;
+      if (questions.length === 0) return <div className="q-empty">{t("adminPanel.noQuestions")}</div>;
       const dealIds = [...new Set(questions.map(q => q.deal_id))];
       return (
         <>
           {dealIds.map(dealId => {
             const dealQs = questions.filter(q => q.deal_id === dealId);
-            const title = dealTitles[dealId] ?? `Deal ${String(dealId).slice(0, 8)}…`;
+            const title = dealTitles[dealId] ?? `${t("adminPanel.dealFallback")} ${String(dealId).slice(0, 8)}…`;
             return (
               <div key={dealId} className="q-deal-group">
                 <div className="q-deal-header">
                   {title}
-                  <span className="q-deal-count">{dealQs.length} pending</span>
+                  <span className="q-deal-count">{dealQs.length} {t("adminPanel.qPending")}</span>
                 </div>
                 {dealQs.map(q => {
                   const grounded = q.input_fields?.grounded_in;
@@ -595,20 +596,20 @@ export default function AdminPanel() {
                         <>
                           <textarea className="q-textarea" value={editText} onChange={e => setEditText(e.target.value)} />
                           <div className="q-actions">
-                            <button className="a-btn a-btn-navy" onClick={() => handleEditSave(q)}>Save</button>
-                            <button className="a-btn a-btn-ghost" onClick={handleEditCancel}>Cancel</button>
+                            <button className="a-btn a-btn-navy" onClick={() => handleEditSave(q)}>{t("adminPanel.btnSave")}</button>
+                            <button className="a-btn a-btn-ghost" onClick={handleEditCancel}>{t("adminPanel.btnCancel")}</button>
                           </div>
                         </>
                       ) : (
                         <>
                           <div className="q-text">{q.question_text}</div>
                           {q.source === "ai" && grounded && (
-                            <div className="q-grounded"><strong>Grounded in:</strong> {grounded}</div>
+                            <div className="q-grounded"><strong>{t("adminPanel.groundedIn")}</strong> {grounded}</div>
                           )}
                           <div className="q-actions">
-                            <button className="a-btn a-btn-green" onClick={() => handleApprove(q)}>Approve</button>
-                            <button className="a-btn a-btn-ghost" onClick={() => handleEditStart(q)}>Edit</button>
-                            <button className="a-btn a-btn-red" onClick={() => handleReject(q)}>Reject</button>
+                            <button className="a-btn a-btn-green" onClick={() => handleApprove(q)}>{t("adminPanel.btnApprove")}</button>
+                            <button className="a-btn a-btn-ghost" onClick={() => handleEditStart(q)}>{t("adminPanel.btnEdit")}</button>
+                            <button className="a-btn a-btn-red" onClick={() => handleReject(q)}>{t("adminPanel.btnReject")}</button>
                           </div>
                         </>
                       )}
@@ -624,15 +625,26 @@ export default function AdminPanel() {
 
     // ── Deals (tab 1) ──
     if (activeTab === 1) {
-      if (dealsLoading) return <div className="q-empty">Loading deals…</div>;
-      if (dealsList.length === 0) return <div className="q-empty">No deals found.</div>;
+      if (dealsLoading) return <div className="q-empty">{t("adminPanel.loadingDeals")}</div>;
+      if (dealsList.length === 0) return <div className="q-empty">{t("adminPanel.noDeals")}</div>;
       const allSelected = selectedDealIds.size === dealsList.length && dealsList.length > 0;
+      const dealHeaders = [
+        t("adminPanel.colCompany"),
+        t("adminPanel.dealLabelCol"),
+        t("adminPanel.colCreatedBy"),
+        t("adminPanel.colIndustry"),
+        t("adminPanel.colAmount"),
+        t("adminPanel.colAiScore"),
+        t("adminPanel.colStatus"),
+        t("adminPanel.colCreated"),
+        t("adminPanel.colActions"),
+      ];
       return (
         <>
           {selectedDealIds.size > 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-              <span style={{ fontSize: "12px", color: "#7A7060" }}>{selectedDealIds.size} selected</span>
-              <button className="a-btn a-btn-red" onClick={handleDeleteSelected}>Delete selected ({selectedDealIds.size})</button>
+              <span style={{ fontSize: "12px", color: "#7A7060" }}>{selectedDealIds.size} {t("adminPanel.selected")}</span>
+              <button className="a-btn a-btn-red" onClick={handleDeleteSelected}>{t("adminPanel.deleteSelected")} ({selectedDealIds.size})</button>
             </div>
           )}
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", overflow: "hidden" }}>
@@ -642,8 +654,8 @@ export default function AdminPanel() {
                   <th style={{ padding: thPad, borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)", width: "32px" }}>
                     <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: "pointer" }} />
                   </th>
-                  {["Company Name", "Deal label", "Created by", "Industry", "Amount", "AI Score", "Status", "Created", "Actions"].map(h => (
-                    <th key={h} style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", padding: thPad, textAlign: "left", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)" }}>{h}</th>
+                  {dealHeaders.map((h, i) => (
+                    <th key={i} style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", padding: thPad, textAlign: "left", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -656,31 +668,31 @@ export default function AdminPanel() {
                       <td style={{ padding: tdPad }}>
                         <input type="checkbox" checked={selectedDealIds.has(deal.id)} onChange={() => toggleDealSelect(deal.id)} style={{ cursor: "pointer" }} />
                       </td>
-                      <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B", maxWidth: mobile ? "140px" : "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.title ?? "Untitled"}</td>
+                      <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B", maxWidth: mobile ? "140px" : "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deal.title ?? t("adminPanel.untitled")}</td>
                       <td style={{ padding: tdPad, color: "#7A7060" }}>{deal.deal_label ?? "—"}</td>
                       <td style={{ padding: tdPad, color: "#7A7060" }}>{borrowerName}</td>
                       <td style={{ padding: tdPad, color: "#7A7060" }}>{deal.industry ?? "—"}</td>
                       <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B" }}>{fmtAmount(deal.amount_requested)}</td>
                       <td style={{ padding: tdPad }}>
                         {isRescoring
-                          ? <span style={{ fontSize: "11px", color: "#D4940A", fontStyle: "italic" }}>Recalculating…</span>
+                          ? <span style={{ fontSize: "11px", color: "#D4940A", fontStyle: "italic" }}>{t("adminPanel.recalculating")}</span>
                           : <span style={{ fontWeight: 700, color: "#1B2B4B" }}>{deal.ai_score ?? "—"}</span>}
                       </td>
                       <td style={{ padding: tdPad }}>
                         <select value={deal.status ?? "pending"} onChange={e => handleStatusChange(deal.id, e.target.value)} style={selectStyle}>
-                          <option value="pending">Pending</option>
-                          <option value="active">Active</option>
-                          <option value="funded">Funded</option>
-                          <option value="closed">Closed</option>
-                          <option value="rejected">Rejected</option>
+                          <option value="pending">{t("adminPanel.statusPending")}</option>
+                          <option value="active">{t("adminPanel.statusActive")}</option>
+                          <option value="funded">{t("adminPanel.statusFunded")}</option>
+                          <option value="closed">{t("adminPanel.statusClosed")}</option>
+                          <option value="rejected">{t("adminPanel.statusRejected")}</option>
                         </select>
                       </td>
                       <td style={{ padding: tdPad, color: "#7A7060", whiteSpace: "nowrap" }}>{fmtDate(deal.created_at)}</td>
                       <td style={{ padding: tdPad }}>
                         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                          <button className="a-btn a-btn-ghost" onClick={() => handleDealEditStart(deal)}>Edit</button>
-                          <button className="a-btn a-btn-ghost" onClick={() => setLocation(`/analysis/${deal.id}`)}>Analysis</button>
-                          <button className="a-btn a-btn-ghost" onClick={() => setLocation(`/deals/${deal.id}/review-financials`)}>Financials</button>
+                          <button className="a-btn a-btn-ghost" onClick={() => handleDealEditStart(deal)}>{t("adminPanel.btnEdit")}</button>
+                          <button className="a-btn a-btn-ghost" onClick={() => setLocation(`/analysis/${deal.id}`)}>{t("adminPanel.btnAnalysis")}</button>
+                          <button className="a-btn a-btn-ghost" onClick={() => setLocation(`/deals/${deal.id}/review-financials`)}>{t("adminPanel.btnFinancials")}</button>
                           <button
                             className="a-btn a-btn-ghost"
                             disabled={rescoringDealId === deal.id}
@@ -700,7 +712,7 @@ export default function AdminPanel() {
                               }
                             }}
                           >
-                            {rescoringDealId === deal.id ? "Recalculating…" : "Recalculate score"}
+                            {rescoringDealId === deal.id ? t("adminPanel.recalculating") : t("adminPanel.recalculateScore")}
                           </button>
                         </div>
                       </td>
@@ -716,18 +728,27 @@ export default function AdminPanel() {
 
     // ── Users (tab 2) ──
     if (activeTab === 2) {
-      if (usersLoading) return <div className="q-empty">Loading users…</div>;
-      if (usersList.length === 0) return <div className="q-empty">No users found.</div>;
+      if (usersLoading) return <div className="q-empty">{t("adminPanel.loadingUsers")}</div>;
+      if (usersList.length === 0) return <div className="q-empty">{t("adminPanel.noUsers")}</div>;
 
       const deletableUsers = getDeletableUsers();
       const allUsersSelected = deletableUsers.length > 0 && selectedUserIds.size === deletableUsers.length;
+      const userHeaders = [
+        t("adminPanel.colName"),
+        t("adminPanel.colEmail"),
+        t("adminPanel.colRole"),
+        t("adminPanel.colKyc"),
+        t("adminPanel.colJoined"),
+        t("adminPanel.colDeals"),
+        t("adminPanel.colActions"),
+      ];
 
       return (
         <>
           {selectedUserIds.size > 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-              <span style={{ fontSize: "12px", color: "#7A7060" }}>{selectedUserIds.size} selected</span>
-              <button className="a-btn a-btn-red" onClick={handleDeleteSelectedUsers}>Delete selected ({selectedUserIds.size})</button>
+              <span style={{ fontSize: "12px", color: "#7A7060" }}>{selectedUserIds.size} {t("adminPanel.selected")}</span>
+              <button className="a-btn a-btn-red" onClick={handleDeleteSelectedUsers}>{t("adminPanel.deleteSelected")} ({selectedUserIds.size})</button>
             </div>
           )}
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: "12px", overflow: "hidden" }}>
@@ -737,8 +758,8 @@ export default function AdminPanel() {
                   <th style={{ padding: thPad, borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)", width: "40px" }}>
                     <input type="checkbox" checked={allUsersSelected} onChange={toggleSelectAllUsers} style={{ cursor: "pointer" }} />
                   </th>
-                  {["Name", "Email", "Role", "KYC Status", "Joined", "Deals", "Actions"].map(h => (
-                    <th key={h} style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", padding: thPad, textAlign: "left", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)" }}>{h}</th>
+                  {userHeaders.map((h, i) => (
+                    <th key={i} style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#7A7060", padding: thPad, textAlign: "left", borderBottom: "1px solid #E8E2D9", background: "rgba(27,43,75,0.02)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -750,7 +771,7 @@ export default function AdminPanel() {
                     <tr key={u.id} style={{ borderBottom: idx < usersList.length - 1 ? "1px solid #E8E2D9" : "none", background: selectedUserIds.has(u.id) ? "rgba(212,148,10,0.04)" : undefined }}>
                       <td style={{ padding: tdPad, textAlign: "center" }}>
                         {isProtected ? (
-                          <span title="Protected admin — cannot be deleted" style={{ fontSize: "13px" }}>🔒</span>
+                          <span title={t("adminPanel.protectedAdmin")} style={{ fontSize: "13px" }}>🔒</span>
                         ) : (
                           <input
                             type="checkbox"
@@ -763,26 +784,26 @@ export default function AdminPanel() {
                       </td>
                       <td style={{ padding: tdPad, fontWeight: 600, color: "#1B2B4B" }}>
                         {u.full_name ?? "—"}
-                        {isOwnRow && <span style={{ fontSize: "9px", color: "#7A7060", marginLeft: "6px", fontWeight: 400 }}>(you)</span>}
+                        {isOwnRow && <span style={{ fontSize: "9px", color: "#7A7060", marginLeft: "6px", fontWeight: 400 }}>{t("adminPanel.youLabel")}</span>}
                       </td>
                       <td style={{ padding: tdPad, color: "#7A7060", maxWidth: mobile ? "100px" : "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email ?? "—"}</td>
                       <td style={{ padding: tdPad }}>
                         <select value={u.role ?? "lender"} onChange={e => handleUserRoleChange(u.id, e.target.value)} style={selectStyle}>
-                          <option value="lender">Lender</option>
-                          <option value="admin">Admin</option>
+                          <option value="lender">{t("adminPanel.roleLender")}</option>
+                          <option value="admin">{t("adminPanel.roleAdmin")}</option>
                         </select>
                       </td>
                       <td style={{ padding: tdPad }}>
                         <select value={u.kyc_status ?? "pending"} onChange={e => handleUserKycChange(u.id, e.target.value)} style={selectStyle}>
-                          <option value="pending">Pending</option>
-                          <option value="approved">Approved</option>
-                          <option value="rejected">Rejected</option>
+                          <option value="pending">{t("adminPanel.statusPending")}</option>
+                          <option value="approved">{t("adminPanel.statusApproved")}</option>
+                          <option value="rejected">{t("adminPanel.statusRejected")}</option>
                         </select>
                       </td>
                       <td style={{ padding: tdPad, color: "#7A7060", whiteSpace: "nowrap" }}>{fmtDate(u.created_at)}</td>
                       <td style={{ padding: tdPad, color: "#1B2B4B", fontWeight: 600 }}>{dealCountByUser[u.id] ?? 0}</td>
                       <td style={{ padding: tdPad }}>
-                        <button className="a-btn a-btn-ghost" onClick={() => handleViewUser(u)}>View / Edit</button>
+                        <button className="a-btn a-btn-ghost" onClick={() => handleViewUser(u)}>{t("adminPanel.btnViewEdit")}</button>
                       </td>
                     </tr>
                   );
@@ -975,10 +996,10 @@ export default function AdminPanel() {
             <button className="hamburger" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Menu">
               <span></span><span></span><span></span>
             </button>
-            <span className="nav-title">Admin Panel</span>
+            <span className="nav-title">{t("adminPanel.pageTitle")}</span>
           </div>
           <div>
-            <button className="a-btn a-btn-ghost" style={{ fontSize: 11, padding: "6px 10px" }} onClick={() => setLocation('/my-analyses')}>My Analyses</button>
+            <button className="a-btn a-btn-ghost" style={{ fontSize: 11, padding: "6px 10px" }} onClick={() => setLocation('/my-analyses')}>{t("adminPanel.myAnalysesBtn")}</button>
           </div>
         </div>
 
@@ -988,47 +1009,47 @@ export default function AdminPanel() {
             <img src={LOGO_NAVY} alt="Junni" className="sb-logo" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} />
             <button className="sb-close" onClick={() => setSidebarOpen(false)}>✕</button>
           </div>
-          <div className="sb-section">ADMIN</div>
+          <div className="sb-section">{t("adminPanel.sectionAdmin")}</div>
           {ADMIN_NAV_ITEMS.map((item, idx) => (
             <button key={idx} className="sb-item" onClick={() => { if (item.tab !== null && item.tab !== undefined) setActiveTab(item.tab); setSidebarOpen(false); }}>
-              <span>{item.icon}</span><span>{item.text}</span>
+              <span>{item.icon}</span><span>{t(item.text)}</span>
             </button>
           ))}
-          <div className="sb-section">Platform</div>
+          <div className="sb-section">{t("adminPanel.sectionPlatform")}</div>
           {ADMIN_ACCOUNT_ITEMS.map((item, idx) => (
             <button key={idx} className="sb-item" onClick={() => setSidebarOpen(false)}>
-              <span>{item.icon}</span><span>{item.text}</span>
+              <span>{item.icon}</span><span>{t(item.text)}</span>
             </button>
           ))}
           <button className="sb-item" onClick={() => { window.open("https://dashboard.stripe.com", "_blank", "noopener,noreferrer"); setSidebarOpen(false); }}>
-            <span>💳</span><span>Stripe Dashboard</span>
+            <span>💳</span><span>{t("adminPanel.stripeDashboard")}</span>
           </button>
           <button
             onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
             style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
           >
-            <span>⏻</span>Sign Out
+            <span>⏻</span>{t("adminPanel.signOut")}
           </button>
           <div className="sb-bottom">
             <div className="sb-user">
               <div className="sb-avatar">A</div>
-              <div><div className="sb-name">Admin</div><div className="sb-role">Full Access</div></div>
+              <div><div className="sb-name">{t("adminPanel.adminBadge")}</div><div className="sb-role">{t("adminPanel.fullAccess")}</div></div>
             </div>
           </div>
         </div>
 
         <div className="content">
           <div className="stats-grid">
-            <div className="stat-card"><div className="stat-label">Total Users</div><div className="stat-num">{usersLoading ? "—" : usersList.length}</div><div className="stat-sub">registered</div></div>
-            <div className="stat-card"><div className="stat-label">Total Analyses</div><div className="stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="stat-sub">on platform</div></div>
+            <div className="stat-card"><div className="stat-label">{t("adminPanel.statUsers")}</div><div className="stat-num">{usersLoading ? "—" : usersList.length}</div><div className="stat-sub">{t("adminPanel.statUsersSubtitle")}</div></div>
+            <div className="stat-card"><div className="stat-label">{t("adminPanel.statAnalyses")}</div><div className="stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="stat-sub">{t("adminPanel.statAnalysesSubtitle")}</div></div>
           </div>
           <div>
             <div className="tabs">
               <button className={`tab ${activeTab === 0 ? "active" : ""}`} onClick={() => setActiveTab(0)}>
-                Questions{questions.length > 0 && <span className="tab-badge">{questions.length}</span>}
+                {t("adminPanel.tabQuestions")}{questions.length > 0 && <span className="tab-badge">{questions.length}</span>}
               </button>
-              <button className={`tab ${activeTab === 1 ? "active" : ""}`} onClick={() => setActiveTab(1)}>Deals</button>
-              <button className={`tab ${activeTab === 2 ? "active" : ""}`} onClick={() => setActiveTab(2)}>Users</button>
+              <button className={`tab ${activeTab === 1 ? "active" : ""}`} onClick={() => setActiveTab(1)}>{t("adminPanel.tabDeals")}</button>
+              <button className={`tab ${activeTab === 2 ? "active" : ""}`} onClick={() => setActiveTab(2)}>{t("adminPanel.tabUsers")}</button>
             </div>
             {renderTabContent(true)}
           </div>
@@ -1047,60 +1068,60 @@ export default function AdminPanel() {
       <div className="d-sidebar">
         <div className="d-sb-head">
           <img src={LOGO_NAVY} alt="Junni" className="d-sb-logo" style={{ cursor: 'pointer' }} onClick={() => setLocation('/')} />
-          <span className="d-admin-badge">Admin</span>
+          <span className="d-admin-badge">{t("adminPanel.adminBadge")}</span>
         </div>
-        <div className="d-sb-section">Management</div>
+        <div className="d-sb-section">{t("adminPanel.sectionManagement")}</div>
         {ADMIN_NAV_ITEMS.map((item, idx) => (
           <button key={idx} className="d-sb-item" onClick={() => { if (item.tab !== null && item.tab !== undefined) setActiveTab(item.tab); }}>
-            <span>{item.icon}</span>{item.text}
+            <span>{item.icon}</span>{t(item.text)}
           </button>
         ))}
-        <div className="d-sb-section">Platform</div>
+        <div className="d-sb-section">{t("adminPanel.sectionPlatform")}</div>
         {ADMIN_ACCOUNT_ITEMS.map((item, idx) => (
           <button key={idx} className="d-sb-item">
-            <span>{item.icon}</span>{item.text}
+            <span>{item.icon}</span>{t(item.text)}
           </button>
         ))}
         <button className="d-sb-item" onClick={() => window.open("https://dashboard.stripe.com", "_blank", "noopener,noreferrer")}>
-          <span>💳</span>Stripe Dashboard
+          <span>💳</span>{t("adminPanel.stripeDashboard")}
         </button>
         <button
           onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
           style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '10px 14px', margin: '2px 10px', borderRadius: 8, fontSize: 13, fontWeight: 500, color: 'rgba(239,68,68,0.8)', cursor: 'pointer', border: 'none', background: 'none', fontFamily: "'Inter', sans-serif", width: 'calc(100% - 20px)' }}
         >
-          <span>⏻</span>Sign Out
+          <span>⏻</span>{t("adminPanel.signOut")}
         </button>
         <div className="d-sb-bottom">
           <div className="d-sb-user">
             <div className="d-sb-avatar">A</div>
-            <div><div className="d-sb-name">Admin</div><div className="d-sb-role">Full Access</div></div>
+            <div><div className="d-sb-name">{t("adminPanel.adminBadge")}</div><div className="d-sb-role">{t("adminPanel.fullAccess")}</div></div>
           </div>
         </div>
       </div>
 
       <div className={`d-topbar ${!topbarVisible ? "hidden" : ""}`}>
-        <div className="d-topbar-title">Admin Panel</div>
+        <div className="d-topbar-title">{t("adminPanel.pageTitle")}</div>
         <div className="d-topbar-right">
-          <button className="a-btn a-btn-ghost" onClick={() => setLocation('/my-analyses')}>My Analyses</button>
-          <button className="a-btn a-btn-gold" onClick={() => setLocation('/new-analysis')}>✦ New Analysis</button>
+          <button className="a-btn a-btn-ghost" onClick={() => setLocation('/my-analyses')}>{t("adminPanel.myAnalysesBtn")}</button>
+          <button className="a-btn a-btn-gold" onClick={() => setLocation('/new-analysis')}>{t("adminPanel.newAnalysisBtn")}</button>
         </div>
       </div>
 
 <div className="d-main">
         <div className="d-stats" style={{ gridTemplateColumns: "repeat(2,1fr)" }}>
-          <div className="d-stat-card"><div className="d-stat-label">Total Users</div><div className="d-stat-num">{usersLoading ? "—" : usersList.length}</div><div className="d-stat-sub">registered</div></div>
-          <div className="d-stat-card"><div className="d-stat-label">Total Analyses</div><div className="d-stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="d-stat-sub">on platform</div></div>
+          <div className="d-stat-card"><div className="d-stat-label">{t("adminPanel.statUsers")}</div><div className="d-stat-num">{usersLoading ? "—" : usersList.length}</div><div className="d-stat-sub">{t("adminPanel.statUsersSubtitle")}</div></div>
+          <div className="d-stat-card"><div className="d-stat-label">{t("adminPanel.statAnalyses")}</div><div className="d-stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="d-stat-sub">{t("adminPanel.statAnalysesSubtitle")}</div></div>
         </div>
 
         <div className="d-tabs">
           <button className={`d-tab ${activeTab === 0 ? "active" : ""}`} onClick={() => setActiveTab(0)}>
-            Questions{questions.length > 0 && <span className="d-tab-badge">{questions.length}</span>}
+            {t("adminPanel.tabQuestions")}{questions.length > 0 && <span className="d-tab-badge">{questions.length}</span>}
           </button>
           <button className={`d-tab ${activeTab === 1 ? "active" : ""}`} onClick={() => setActiveTab(1)}>
-            Deals{!dealsLoading && dealsList.length > 0 && <span className="d-tab-badge" style={{ background: "#1B2B4B" }}>{dealsList.length}</span>}
+            {t("adminPanel.tabDeals")}{!dealsLoading && dealsList.length > 0 && <span className="d-tab-badge" style={{ background: "#1B2B4B" }}>{dealsList.length}</span>}
           </button>
           <button className={`d-tab ${activeTab === 2 ? "active" : ""}`} onClick={() => setActiveTab(2)}>
-            Users{!usersLoading && usersList.length > 0 && <span className="d-tab-badge" style={{ background: "#1B2B4B" }}>{usersList.length}</span>}
+            {t("adminPanel.tabUsers")}{!usersLoading && usersList.length > 0 && <span className="d-tab-badge" style={{ background: "#1B2B4B" }}>{usersList.length}</span>}
           </button>
         </div>
 
