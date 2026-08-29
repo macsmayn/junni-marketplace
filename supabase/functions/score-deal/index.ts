@@ -962,19 +962,9 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
         let questionsGenerated = 0;
         const translationQueue: { id: string; text: string }[] = [];
 
+        let questionsSkipped = 0;
         for (const flag of ruleFlags ?? []) {
           try {
-            // Skip if a pending_review or approved question already exists for this metric
-            const { data: existing } = await supabase
-              .from("credit_questions")
-              .select("id")
-              .eq("deal_id", deal_id)
-              .eq("related_metric", flag.flag_key)
-              .in("status", ["pending_review", "approved"])
-              .limit(1);
-
-            if (existing && existing.length > 0) continue;
-
             const from = flag.fiscal_year_from;
             const to = flag.fiscal_year_to;
             const vFrom = flag.value_from != null ? `$${Number(flag.value_from).toLocaleString()}` : "N/A";
@@ -1007,6 +997,21 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
 
             if (!questionText) continue;
 
+            // Duplicate guard: skip if an identical rule question (same metric + same text) already exists in any status
+            const { data: existingRule } = await supabase
+              .from("credit_questions")
+              .select("id")
+              .eq("deal_id", deal_id)
+              .eq("source", "rule")
+              .eq("related_metric", flag.flag_key)
+              .eq("question_text", questionText)
+              .limit(1);
+
+            if (existingRule && existingRule.length > 0) {
+              questionsSkipped++;
+              continue;
+            }
+
             const { data: qRow, error: qErr } = await supabase.from("credit_questions").insert({
               deal_id,
               question_type: "metric_anomaly",
@@ -1029,7 +1034,7 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
           }
         }
 
-        console.log(`[score-deal] Phase 2d Part 2 generated ${questionsGenerated} question(s) for review.`);
+        console.log(`[score-deal] Phase 2d Part 2 generated ${questionsGenerated} question(s) for review; skipped ${questionsSkipped} duplicate(s).`);
 
         // Batch-translate Phase 2d Part 2 questions into French (non-blocking)
         if (translationQueue.length > 0) {
@@ -1169,43 +1174,55 @@ HISTORICAL FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
             let jobBCount = 0;
             const aiQuestions = (parsedJobB.questions ?? []).slice(0, 20);
 
-            for (const q of aiQuestions) {
-              try {
-                // Duplicate guard: skip if an AI question for this category already exists
-                const { data: existing } = await supabase
-                  .from("credit_questions")
-                  .select("id")
-                  .eq("deal_id", deal_id)
-                  .eq("related_metric", q.category)
-                  .eq("source", "ai")
-                  .in("status", ["pending_review", "approved"])
-                  .limit(1);
+            if (aiQuestions.length > 0) {
+              // Supersede existing open AI questions — they were generated from data that may have since changed
+              const supersededAt = new Date().toISOString();
+              const { data: supersededRows, error: supersededErr } = await supabase
+                .from("credit_questions")
+                .update({
+                  status: "superseded",
+                  superseded_at: supersededAt,
+                  superseded_reason: "Replaced by questions generated from updated deal data",
+                })
+                .eq("deal_id", deal_id)
+                .eq("source", "ai")
+                .in("status", ["pending_review", "open", "approved"])
+                .select("id");
 
-                if (existing && existing.length > 0) continue;
-
-                const priority = q.materiality === "high" ? "high" : q.materiality === "low" ? "low" : "medium";
-
-                const { error: qErr } = await supabase.from("credit_questions").insert({
-                  deal_id,
-                  question_type: "qualitative_notes",
-                  source: "ai",
-                  related_metric: q.category,
-                  question_text: q.question,
-                  question_text_fr: q.question_fr ?? null,
-                  priority,
-                  status: "pending_review",
-                  ai_reviewed: false,
-                  input_fields: { grounded_in: q.grounded_in ?? null },
-                });
-
-                if (qErr) {
-                  console.error(`[score-deal] Phase 2d Job B insert error (${q.category}):`, qErr);
-                } else {
-                  jobBCount++;
-                }
-              } catch (qBErr) {
-                console.error(`[score-deal] Phase 2d Job B question error (${q.category}):`, qBErr);
+              if (supersededErr) {
+                console.error("[score-deal] Phase 2d Job B supersede error:", supersededErr);
+              } else {
+                console.log(`[score-deal] Phase 2d Job B superseded ${supersededRows?.length ?? 0} stale AI question(s).`);
               }
+
+              for (const q of aiQuestions) {
+                try {
+                  const priority = q.materiality === "high" ? "high" : q.materiality === "low" ? "low" : "medium";
+
+                  const { error: qErr } = await supabase.from("credit_questions").insert({
+                    deal_id,
+                    question_type: "qualitative_notes",
+                    source: "ai",
+                    related_metric: q.category,
+                    question_text: q.question,
+                    question_text_fr: q.question_fr ?? null,
+                    priority,
+                    status: "pending_review",
+                    ai_reviewed: false,
+                    input_fields: { grounded_in: q.grounded_in ?? null },
+                  });
+
+                  if (qErr) {
+                    console.error(`[score-deal] Phase 2d Job B insert error (${q.category}):`, qErr);
+                  } else {
+                    jobBCount++;
+                  }
+                } catch (qBErr) {
+                  console.error(`[score-deal] Phase 2d Job B question error (${q.category}):`, qBErr);
+                }
+              }
+            } else {
+              console.log("[score-deal] Phase 2d Job B returned 0 questions — no supersession performed.");
             }
 
             console.log(`[score-deal] Phase 2d Job B generated ${jobBCount} qualitative question(s) for review.`);
