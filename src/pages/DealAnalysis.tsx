@@ -142,6 +142,7 @@ export default function DealAnalysis() {
   const [questions, setQuestions] = useState<any[]>([]);
   const [questionsLoading, setQuestionsLoading] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
+  const [showSuperseded, setShowSuperseded] = useState(false);
   const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({});
   const [savingAnswer, setSavingAnswer] = useState<string | null>(null);
   const [savingStatus, setSavingStatus] = useState<string | null>(null);
@@ -799,6 +800,7 @@ export default function DealAnalysis() {
           });
           const outstanding = sortedQs.filter(q => q.status === "open" || q.status === "asked");
           const resolved = sortedQs.filter(q => q.status === "answered" || q.status === "dismissed");
+          const superseded = sortedQs.filter(q => q.status === "superseded");
           const openCount = outstanding.length;
 
           const priBadge = (priority: string) => {
@@ -914,7 +916,7 @@ export default function DealAnalysis() {
           const dqHeading = (() => {
             const base = t("analysis.diligenceQuestions");
             if (openCount > 0) return `${base} (${openCount} ${t("analysis.dilQOpenSuffix")})`;
-            if (questions.length > 0) return `${base} (${t("analysis.dilQAllResolved")})`;
+            if (outstanding.length + resolved.length > 0) return `${base} (${t("analysis.dilQAllResolved")})`;
             return base;
           })();
 
@@ -926,7 +928,7 @@ export default function DealAnalysis() {
 
               {questionsLoading ? (
                 <div style={{ color: MUTED, fontSize: 13, padding: "8px 0" }}>{t("analysis.dilQLoading")}</div>
-              ) : questions.length === 0 ? (
+              ) : outstanding.length === 0 && resolved.length === 0 && superseded.length === 0 ? (
                 <div style={{ color: MUTED, fontSize: 13, padding: "8px 0 16px" }}>{t("analysis.dilQNone")}</div>
               ) : (
                 <>
@@ -950,6 +952,45 @@ export default function DealAnalysis() {
                       {showResolved && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
                           {resolved.map(renderCard)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {superseded.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <button
+                        onClick={() => setShowSuperseded(v => !v)}
+                        style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "Inter, sans-serif" }}
+                      >
+                        <span style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>
+                          {showSuperseded ? `▲ ${t("analysis.hideSuperseded")}` : `▼ ${superseded.length} ${t("analysis.supersededLabel")}`}
+                        </span>
+                      </button>
+                      {showSuperseded && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+                          {superseded.map(q => {
+                            const qText = (lang === "fr" && q.question_text_fr) ? q.question_text_fr : q.question_text;
+                            return (
+                              <div key={q.id} style={{ border: "1px solid #E8E2D9", borderRadius: 10, padding: isMobile ? "14px" : "18px", background: CREAM, opacity: 0.8 }}>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 10 }}>
+                                  {priBadge(q.priority)}
+                                  {srcChip(q.source)}
+                                  {q.related_metric && (
+                                    <span style={{ fontSize: 10, color: MUTED, fontFamily: "monospace", padding: "2px 6px", background: "rgba(27,43,75,0.04)", borderRadius: 4 }}>
+                                      {fmtMetric(q.related_metric)}
+                                    </span>
+                                  )}
+                                </div>
+                                <p style={{ margin: "0 0 8px", fontSize: 14, color: NAVY, lineHeight: 1.6, fontWeight: 500 }}>{qText}</p>
+                                {q.superseded_at && (
+                                  <div style={{ fontSize: 11, color: MUTED }}>
+                                    {t("analysis.supersededOn")} {new Date(q.superseded_at).toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

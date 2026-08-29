@@ -1019,7 +1019,7 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
               related_metric: flag.flag_key,
               question_text: questionText,
               priority: flag.severity,
-              status: "pending_review",
+              status: "open",
               ai_reviewed: false,
             }).select("id").single();
 
@@ -1186,7 +1186,7 @@ HISTORICAL FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
                 })
                 .eq("deal_id", deal_id)
                 .eq("source", "ai")
-                .in("status", ["pending_review", "open", "approved"])
+                .eq("status", "open")
                 .select("id");
 
               if (supersededErr) {
@@ -1207,7 +1207,7 @@ HISTORICAL FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
                     question_text: q.question,
                     question_text_fr: q.question_fr ?? null,
                     priority,
-                    status: "pending_review",
+                    status: "open",
                     ai_reviewed: false,
                     input_fields: { grounded_in: q.grounded_in ?? null },
                   });
@@ -1309,7 +1309,7 @@ HISTORICAL FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
       .from('credit_questions')
       .select('id, question_text, answer, related_metric, source')
       .eq('deal_id', deal_id)
-      .eq('status', 'approved')
+      .eq('status', 'answered')
       .not('answer', 'is', null);
     const answeredQuestions = (answeredQData ?? []).filter((q: any) => q.answer && String(q.answer).trim());
 

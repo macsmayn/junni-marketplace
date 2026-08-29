@@ -92,7 +92,7 @@ export default function AdminPanel() {
       setDealsLoading(true);
       setUsersLoading(true);
       const [{ data: qData }, { data: dlData }, { data: ulData }, { data: alData }] = await Promise.all([
-        supabase.from("credit_questions").select("*").eq("status", "pending_review").order("deal_id"),
+        supabase.from("credit_questions").select("*").neq("status", "superseded").order("deal_id"),
         supabase.from("deals").select("*, users!deals_created_by_fkey(full_name, email)").eq("deal_source", "lender_analysis").order("created_at", { ascending: false }),
         supabase.from("users").select("*").order("created_at", { ascending: false }),
         supabase.from("admin_allowlist").select("email"),
@@ -133,11 +133,6 @@ export default function AdminPanel() {
   }, []);
 
   // ── Questions handlers ──────────────────────────────────────────────
-  const handleApprove = async (q: any) => {
-    const { error } = await supabase.from("credit_questions").update({ status: "approved" }).eq("id", q.id);
-    if (!error) setQuestions(prev => prev.filter(x => x.id !== q.id));
-  };
-
   const handleReject = async (q: any) => {
     if (!window.confirm(t("adminPanel.confirmRejectQuestion"))) return;
     const { error } = await supabase.from("credit_questions").update({ status: "dismissed" }).eq("id", q.id);
@@ -586,7 +581,7 @@ export default function AdminPanel() {
               <div key={dealId} className="q-deal-group">
                 <div className="q-deal-header">
                   {title}
-                  <span className="q-deal-count">{dealQs.length} {t("adminPanel.qPending")}</span>
+                  <span className="q-deal-count">{dealQs.length} {t("adminPanel.qCount")}</span>
                 </div>
                 {dealQs.map(q => {
                   const grounded = q.input_fields?.grounded_in;
@@ -614,7 +609,6 @@ export default function AdminPanel() {
                             <div className="q-grounded"><strong>{t("adminPanel.groundedIn")}</strong> {grounded}</div>
                           )}
                           <div className="q-actions">
-                            <button className="a-btn a-btn-green" onClick={() => handleApprove(q)}>{t("adminPanel.btnApprove")}</button>
                             <button className="a-btn a-btn-ghost" onClick={() => handleEditStart(q)}>{t("adminPanel.btnEdit")}</button>
                             <button className="a-btn a-btn-red" onClick={() => handleReject(q)}>{t("adminPanel.btnReject")}</button>
                           </div>
