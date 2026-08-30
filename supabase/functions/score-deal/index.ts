@@ -1455,6 +1455,7 @@ Each metric score is 0-100 where 100 is best.`;
           metrics: scoring.metrics,
           score_source: "llm",
           model_used: "claude-opus-4-8",
+          generated_at: new Date().toISOString(),
         },
         { onConflict: "deal_id" }
       );

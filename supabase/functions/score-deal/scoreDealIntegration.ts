@@ -199,6 +199,7 @@ export async function persistEngineResult(
       capped_reason: engine.score.capped_reason ?? null,
       score_source: "engine",
       model_used: "junni-engine-v1",
+      generated_at: new Date().toISOString(),
     },
     { onConflict: "deal_id" }
   );
