@@ -47,6 +47,7 @@ export default function FinancialReview() {
   const [debtEdits, setDebtEdits] = useState<DebtEdits>({});
   const [annotations, setAnnotations] = useState<any[]>([]);
   const [dbUser, setDbUser] = useState<any>(null);
+  const [showRawNotes, setShowRawNotes] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [wasAlreadyConfirmed, setWasAlreadyConfirmed] = useState(false);
@@ -706,6 +707,45 @@ export default function FinancialReview() {
 
         .debt-textarea:focus { border-color: var(--navy); background: var(--white); }
 
+        .raw-notes-block {
+          margin: 0 24px 20px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          overflow: hidden;
+        }
+
+        .raw-notes-toggle {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          width: 100%;
+          background: rgba(27,43,75,0.02);
+          border: none;
+          padding: 9px 14px;
+          cursor: pointer;
+          font-family: 'Inter', sans-serif;
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          text-align: left;
+        }
+
+        .raw-notes-toggle:hover { background: rgba(27,43,75,0.05); }
+
+        .raw-notes-text {
+          padding: 12px 14px;
+          font-size: 11px;
+          font-family: 'ui-monospace', 'Menlo', 'Consolas', monospace;
+          color: var(--text-muted);
+          line-height: 1.65;
+          white-space: pre-wrap;
+          word-break: break-word;
+          border-top: 1px solid var(--border);
+          background: rgba(27,43,75,0.015);
+        }
+
         @media (max-width: 640px) {
           .container { padding: 24px 16px 60px; }
           nav { padding: 0 16px; }
@@ -862,6 +902,20 @@ export default function FinancialReview() {
                   <div className="notes-block">
                     <div className="notes-label">Notes from your statements (extracted)</div>
                     <div className="notes-text">{row.notes_summary}</div>
+                  </div>
+                )}
+
+                {row.raw_notes && String(row.raw_notes).trim() && (
+                  <div className="raw-notes-block">
+                    <button
+                      className="raw-notes-toggle"
+                      onClick={() => setShowRawNotes(prev => ({ ...prev, [row.id]: !prev[row.id] }))}
+                    >
+                      {showRawNotes[row.id] ? `▲ ${t("financialReview.rawNotesHide")}` : `▼ ${t("financialReview.rawNotesShow")}`}
+                    </button>
+                    {showRawNotes[row.id] && (
+                      <div className="raw-notes-text">{String(row.raw_notes).trim()}</div>
+                    )}
                   </div>
                 )}
               </div>

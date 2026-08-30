@@ -793,6 +793,8 @@ const fr: Record<string, string> = {
   "financialReview.debtRates":            "Taux",
   "financialReview.debtMaturities":       "Échéances",
   "financialReview.debtDescription":      "Description",
+  "financialReview.rawNotesShow":         "Afficher les notes d'extraction (technique)",
+  "financialReview.rawNotesHide":         "Masquer les notes d'extraction (technique)",
 
   // DealAnalysis — edit financials
   "analysis.editFinancials":              "Modifier les données →",
