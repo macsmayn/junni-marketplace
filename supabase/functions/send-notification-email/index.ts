@@ -24,10 +24,16 @@ Deno.serve(async (req: Request) => {
     }
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    let secretKey: string;
+    try { secretKey = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? '{}')['default'] ?? ''; }
+    catch { secretKey = ''; }
+    if (!secretKey) {
+      console.error("[send-notification-email] SUPABASE_SECRET_KEYS missing or 'default' entry not found");
+      return new Response(JSON.stringify({ error: "Server configuration error" }), { status: 500, headers: { "Content-Type": "application/json" } });
+    }
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = createClient(SUPABASE_URL, secretKey);
 
     // Look up the user's email
     const { data: userData, error: userError } = await supabase
