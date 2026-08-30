@@ -249,7 +249,7 @@ export default function BorrowerDashboard() {
           const { data: questionsData } = await supabase
             .from("credit_questions")
             .select("id, deal_id, question_text, source, related_metric, priority, answer, answered_at, input_fields")
-            .eq("status", "approved")
+            .eq("status", "open")
             .in("deal_id", dealIds)
             .order("deal_id");
           const qs: CreditQuestion[] = questionsData || [];

@@ -176,7 +176,7 @@ export default function DealDetail() {
         supabase.from('credit_questions')
           .select('id, question_text, answer, answer_assessment, related_metric, source')
           .eq('deal_id', dealId)
-          .eq('status', 'approved')
+          .eq('status', 'answered')
           .not('answer', 'is', null)
           .not('answer_assessment', 'is', null),
       ]);
