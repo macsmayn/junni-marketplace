@@ -343,8 +343,29 @@ Deno.serve(async (req: Request) => {
         });
 
       if (logErr) {
-        console.error("[set-threshold] set: audit log insert failed (override was written):", logErr);
-        // Non-fatal: the override succeeded; log failure should not block the caller.
+        console.error(`[set-threshold] set: audit log insert failed for org ${orgId} metric ${metricId}:`, logErr);
+        // Roll back: restore the previous state before returning 500.
+        if (existingOverride) {
+          await supabase.from("lender_threshold_overrides").upsert(
+            {
+              org_id:     orgId,
+              metric_id:  metricId,
+              strong:     existingOverride.strong     ?? null,
+              adequate:   existingOverride.adequate   ?? null,
+              weak:       existingOverride.weak       ?? null,
+              version:    existingOverride.version,
+              created_by: userId,
+            },
+            { onConflict: "org_id,metric_id" }
+          );
+        } else {
+          await supabase.from("lender_threshold_overrides").delete()
+            .eq("org_id", orgId).eq("metric_id", metricId);
+        }
+        return new Response(
+          JSON.stringify({ error: "The change could not be recorded and was not applied." }),
+          { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+        );
       }
 
       console.log(`[set-threshold] set: metric ${metricId} → v${nextVersion} for org ${orgId} by user ${userId}`);
@@ -441,8 +462,20 @@ Deno.serve(async (req: Request) => {
         });
 
       if (logErr) {
-        console.error("[set-threshold] reset: audit log insert failed (override was deleted):", logErr);
-        // Non-fatal: deletion succeeded; log failure should not block the caller.
+        console.error(`[set-threshold] reset: audit log insert failed for org ${orgId} metric ${metricId}:`, logErr);
+        // Roll back: re-insert the override row that was just deleted.
+        await supabase.from("lender_threshold_overrides").insert({
+          org_id:     orgId,
+          metric_id:  metricId,
+          strong:     existingOverride.strong     ?? null,
+          adequate:   existingOverride.adequate   ?? null,
+          weak:       existingOverride.weak       ?? null,
+          created_by: userId,
+        });
+        return new Response(
+          JSON.stringify({ error: "The change could not be recorded and was not applied." }),
+          { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+        );
       }
 
       console.log(`[set-threshold] reset: metric ${metricId} removed for org ${orgId} by user ${userId}`);
