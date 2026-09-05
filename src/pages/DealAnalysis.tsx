@@ -7,6 +7,7 @@ import { LanguageToggle } from "../components/LanguageToggle";
 import { tRiskLabel } from "../lib/riskLabel";
 import { translateBandUnits } from "../lib/bandUnits";
 import { fmtValue } from "../lib/metricFormat";
+import type { MemoSections } from "../lib/memoExport";
 
 const NAVY = "#1B2B4B";
 const GOLD = "#D4940A";
@@ -155,6 +156,18 @@ export default function DealAnalysis() {
   const [memoError, setMemoError] = useState<string | null>(null);
   const [memoIncludeQ, setMemoIncludeQ] = useState(false);
   const [memoQFilter, setMemoQFilter] = useState<'answered' | 'all'>('answered');
+  const [memoSections, setMemoSections] = useState<MemoSections>({
+    execSummary:          true,
+    financialMetrics:     true,
+    analystCommentary:    true,
+    strengthsRisks:       true,
+    historicalBenchmark:  true,
+    sourcesUses:          true,
+    capitalization:       true,
+    collateral:           true,
+    diligenceQuestions:   true,
+    methodology:          false,
+  });
   const memoRef = useRef<HTMLDivElement>(null);
   const [benchmarks, setBenchmarks] = useState<{
     naicsMap: string[] | null;
@@ -453,7 +466,7 @@ export default function DealAnalysis() {
     setMemoError(null);
     try {
       const { downloadPDF, downloadDocx } = await import('../lib/memoExport');
-      const filteredQ = memoIncludeQ
+      const filteredQ = (memoSections.diligenceQuestions && memoIncludeQ)
         ? (memoQFilter === 'answered' ? questions.filter((q: any) => q.answer?.trim()) : questions)
         : [];
       const metricsWithFr = metrics.map((m: any) => ({
@@ -461,8 +474,8 @@ export default function DealAnalysis() {
         metric_name_fr: definitions[m.metric_name]?.metric_name_fr ?? null,
       }));
       const memoData = { deal, score, metrics: metricsWithFr, confirmedCash, suEntries: sourcesUses, capItems, collateral, benchmarks, lang };
-      if (format === 'pdf') await downloadPDF(memoData, filteredQ, t);
-      else await downloadDocx(memoData, filteredQ, t);
+      if (format === 'pdf') await downloadPDF(memoData, filteredQ, t, memoSections);
+      else await downloadDocx(memoData, filteredQ, t, memoSections);
       setMemoOpen(false);
     } catch (err) {
       console.error('[memo export]', err);
@@ -615,29 +628,66 @@ export default function DealAnalysis() {
               {memoOpen && (
                 <div style={{
                   position: "absolute", right: 0, top: "calc(100% + 6px)", background: "#fff",
-                  border: "1px solid #E8E2D9", borderRadius: 10, padding: "14px 16px",
-                  minWidth: 220, boxShadow: "0 4px 18px rgba(0,0,0,0.10)", zIndex: 200,
+                  border: "1px solid #E8E2D9", borderRadius: 10, padding: "16px 18px",
+                  minWidth: 300, maxWidth: 340, boxShadow: "0 4px 18px rgba(0,0,0,0.13)", zIndex: 200,
                 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: "pointer", marginBottom: 8 }}>
-                    <input type="checkbox" checked={memoIncludeQ} onChange={e => setMemoIncludeQ(e.target.checked)} />
-                    {t("analysis.includeDiligenceQ")}
-                  </label>
-                  {memoIncludeQ && (
-                    <div style={{ paddingLeft: 20, marginBottom: 10 }}>
-                      {(["answered", "all"] as const).map(opt => (
-                        <label key={opt} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 4 }}>
-                          <input type="radio" name="memoQFilter" value={opt} checked={memoQFilter === opt} onChange={() => setMemoQFilter(opt)} />
-                          {opt === "answered" ? t("analysis.memoAnsweredOnly") : t("analysis.memoAllQuestions")}
-                        </label>
-                      ))}
+                  <div style={{ fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 12, fontFamily: "Inter, sans-serif" }}>
+                    {t("analysis.exportDialogTitle")}
+                  </div>
+                  {(([
+                    { key: "execSummary"         as keyof MemoSections, labelKey: "memo.sectionExecSummary",         hasData: !!(deal?.executive_summary?.trim() || deal?.executive_summary_fr?.trim()) },
+                    { key: "financialMetrics"    as keyof MemoSections, labelKey: "memo.sectionFinancialMetrics",     hasData: true },
+                    { key: "analystCommentary"   as keyof MemoSections, labelKey: "memo.sectionAnalystCommentary",    hasData: !!(score?.summary?.trim() || score?.summary_fr?.trim()) },
+                    { key: "strengthsRisks"      as keyof MemoSections, labelKey: "memo.sectionStrengthsRisks",       hasData: !!(score?.strengths?.length || score?.strengths_fr?.length || score?.risks?.length || score?.risks_fr?.length) },
+                    { key: "historicalBenchmark" as keyof MemoSections, labelKey: "memo.sectionHistoricalBenchmark",  hasData: !!(benchmarks?.csbfp || (!benchmarks?.noMapping && benchmarks?.base?.sector && benchmarks?.stress?.sector)) },
+                    { key: "sourcesUses"         as keyof MemoSections, labelKey: "memo.sectionSourcesUses",          hasData: !!sourcesUses?.length },
+                    { key: "capitalization"      as keyof MemoSections, labelKey: "memo.sectionCapitalization",       hasData: !!capItems?.length },
+                    { key: "collateral"          as keyof MemoSections, labelKey: "memo.sectionCollateral",           hasData: !!collateral?.length },
+                    { key: "diligenceQuestions"  as keyof MemoSections, labelKey: "memo.sectionDiligenceQ",           hasData: !!questions?.length },
+                    { key: "methodology"         as keyof MemoSections, labelKey: "memo.sectionMethodology",          hasData: true },
+                  ]) as Array<{ key: keyof MemoSections; labelKey: string; hasData: boolean }>).map(({ key, labelKey, hasData }) => (
+                    <div key={key}>
+                      <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, cursor: hasData ? "pointer" : "default", marginBottom: 4, opacity: hasData ? 1 : 0.5, fontFamily: "Inter, sans-serif" }}>
+                        <input
+                          type="checkbox"
+                          checked={memoSections[key] && hasData}
+                          disabled={!hasData}
+                          onChange={e => setMemoSections(prev => ({ ...prev, [key]: e.target.checked }))}
+                          style={{ marginTop: 2, flexShrink: 0 }}
+                        />
+                        <div>
+                          {t(labelKey)}
+                          {!hasData && (
+                            <div style={{ fontSize: 10, color: MUTED, fontStyle: "italic" }}>{t("memo.sectionNoData")}</div>
+                          )}
+                        </div>
+                      </label>
+                      {key === "diligenceQuestions" && memoSections.diligenceQuestions && hasData && (
+                        <div style={{ paddingLeft: 24, marginBottom: 4, marginTop: 0 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 4, fontFamily: "Inter, sans-serif" }}>
+                            <input type="checkbox" checked={memoIncludeQ} onChange={e => setMemoIncludeQ(e.target.checked)} />
+                            {t("analysis.includeDiligenceQ")}
+                          </label>
+                          {memoIncludeQ && (
+                            <div style={{ paddingLeft: 18 }}>
+                              {(["answered", "all"] as const).map(opt => (
+                                <label key={opt} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer", marginBottom: 3, fontFamily: "Inter, sans-serif" }}>
+                                  <input type="radio" name="memoQFilter" value={opt} checked={memoQFilter === opt} onChange={() => setMemoQFilter(opt)} />
+                                  {opt === "answered" ? t("analysis.memoAnsweredOnly") : t("analysis.memoAllQuestions")}
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ))}
                   {memoError && (
-                    <div style={{ fontSize: 11, color: "#B71C1C", background: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 6, padding: "6px 8px", marginBottom: 8, wordBreak: "break-word" }}>
+                    <div style={{ fontSize: 11, color: "#B71C1C", background: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 6, padding: "6px 8px", margin: "8px 0 4px", wordBreak: "break-word" }}>
                       {memoError}
                     </div>
                   )}
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
                     <button
                       onClick={() => handleMemoDownload("pdf")}
                       disabled={!!memoGenerating}
@@ -651,6 +701,13 @@ export default function DealAnalysis() {
                       style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: `1px solid ${NAVY}`, background: "transparent", color: NAVY, fontSize: 11, fontWeight: 700, cursor: memoGenerating ? "wait" : "pointer", fontFamily: "Inter, sans-serif" }}
                     >
                       {memoGenerating === "docx" ? t("analysis.generating") : t("analysis.exportWord")}
+                    </button>
+                    <button
+                      onClick={() => setMemoOpen(false)}
+                      disabled={!!memoGenerating}
+                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #D8D2C8", background: "transparent", color: MUTED, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
+                    >
+                      {t("analysis.exportDialogCancel")}
                     </button>
                   </div>
                 </div>

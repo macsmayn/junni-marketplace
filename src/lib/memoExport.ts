@@ -83,6 +83,34 @@ export interface MemoData {
   } | null;
 }
 
+export interface MemoSections {
+  execSummary:          boolean;
+  financialMetrics:     boolean;
+  analystCommentary:    boolean;
+  strengthsRisks:       boolean;
+  historicalBenchmark:  boolean;
+  sourcesUses:          boolean;
+  capitalization:       boolean;
+  collateral:           boolean;
+  diligenceQuestions:   boolean;
+  methodology:          boolean;
+}
+
+export function defaultSections(): MemoSections {
+  return {
+    execSummary:          true,
+    financialMetrics:     true,
+    analystCommentary:    true,
+    strengthsRisks:       true,
+    historicalBenchmark:  true,
+    sourcesUses:          true,
+    capitalization:       true,
+    collateral:           true,
+    diligenceQuestions:   true,
+    methodology:          true,
+  };
+}
+
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 const NAVY   = '#1B2B4B';
@@ -327,7 +355,7 @@ function pdfScoredMetricsTable(rows: MemoMetric[], t: (k: string) => string, lan
 
 // ── PDF section builders ──────────────────────────────────────────────────────
 
-function pdfCover(data: MemoData, t: (k: string) => string, lang: string, fmt: (n: number | null | undefined) => string): any[] {
+function pdfCover(data: MemoData, t: (k: string) => string, lang: string, fmt: (n: number | null | undefined) => string, partialNoticeNames: string[] = []): any[] {
   const loc = [data.deal.city, data.deal.province].filter(Boolean).join(', ');
   const loanParts = [
     data.deal.amount_requested ? fmt(data.deal.amount_requested) + ' ' + t('memo.requested') : null,
@@ -355,6 +383,16 @@ function pdfCover(data: MemoData, t: (k: string) => string, lang: string, fmt: (
     ...(loanParts.length ? [{ text: loanParts.join('  ·  '), fontSize: 12, color: NAVY, margin: [0, 0, 0, 0] }] : []),
     ...scoreBlock,
     { text: displayDate(lang), fontSize: 18, color: MUTED, margin: [0, 32, 0, 0] },
+    ...(partialNoticeNames.length ? [
+      { text: t('memo.partialExportNotice'), fontSize: 9, bold: true, color: AMBER, margin: [0, 18, 0, 6] },
+      ...partialNoticeNames.map(name => ({
+        columns: [
+          { text: '•', width: 14, fontSize: 9, color: GOLD, margin: [0, 1, 0, 0] },
+          { text: name, fontSize: 9, color: AMBER },
+        ],
+        margin: [0, 0, 0, 2],
+      })),
+    ] : []),
     { text: '', pageBreak: 'after', margin: [0, 0, 0, 0] },
   ];
 }
@@ -977,21 +1015,49 @@ function pdfMethodology(data: MemoData, t: (k: string) => string, lang: string):
   ];
 }
 
-function buildPdfDef(data: MemoData, questions: MemoQuestion[], t: (k: string) => string, lang: string): any {
+function buildPdfDef(data: MemoData, questions: MemoQuestion[], t: (k: string) => string, lang: string, sections?: Partial<MemoSections>): any {
+  const sec: MemoSections = { ...defaultSections(), ...sections };
   const borrower = data.deal.title ?? 'Credit Memorandum';
   const fmt = (n: number | null | undefined) => fmtMoney(n, lang);
+
+  // Compute partial-export notice — list of section names actually included
+  const bm        = data.benchmarks;
+  const hasCsbfp  = !!bm?.csbfp;
+  const hasSba    = !bm?.noMapping && !!(bm?.base?.sector && bm?.stress?.sector);
+  const execRaw   = lang === 'fr' ? (data.deal.executive_summary_fr ?? data.deal.executive_summary) : data.deal.executive_summary;
+  const sumRaw    = lang === 'fr' ? (data.score?.summary_fr ?? data.score?.summary) : data.score?.summary;
+  const strs      = (lang === 'fr' ? (data.score?.strengths_fr ?? data.score?.strengths) : data.score?.strengths) ?? [];
+  const rsks      = (lang === 'fr' ? (data.score?.risks_fr     ?? data.score?.risks)     : data.score?.risks)     ?? [];
+  const allSel    = (Object.keys(sec) as Array<keyof MemoSections>).every(k => sec[k]);
+  const partialNoticeNames: string[] = [];
+  if (!allSel) {
+    const cands: Array<[boolean, string]> = [
+      [sec.execSummary         && !!execRaw?.trim(),                     t('memo.sectionExecSummary')],
+      [sec.financialMetrics,                                              t('memo.sectionFinancialMetrics')],
+      [sec.analystCommentary   && !!sumRaw?.trim(),                      t('memo.sectionAnalystCommentary')],
+      [sec.strengthsRisks      && (strs.length > 0 || rsks.length > 0), t('memo.sectionStrengthsRisks')],
+      [sec.historicalBenchmark && (hasCsbfp || hasSba),                  t('memo.sectionHistoricalBenchmark')],
+      [sec.sourcesUses         && (data.suEntries?.length ?? 0) > 0,    t('memo.sectionSourcesUses')],
+      [sec.capitalization      && (data.capItems?.length ?? 0) > 0,     t('memo.sectionCapitalization')],
+      [sec.collateral          && (data.collateral?.length ?? 0) > 0,   t('memo.sectionCollateral')],
+      [sec.diligenceQuestions  && questions.length > 0,                  t('memo.sectionDiligenceQ')],
+      [sec.methodology,                                                   t('memo.sectionMethodology')],
+    ];
+    for (const [ok, name] of cands) if (ok) partialNoticeNames.push(name);
+  }
+
   const content: any[] = [
-    ...pdfCover(data, t, lang, fmt),
-    ...pdfExecSummary(data, t, lang),
-    ...pdfMetrics(data, t, lang),
-    ...pdfAnalystCommentary(data, t, lang),
-    ...pdfStrengthsRisks(data, t, lang),
-    ...pdfBenchmark(data, t, lang, fmt),
-    ...pdfSourcesUses(data, t, fmt),
-    ...pdfCapitalization(data, t, fmt),
-    ...pdfCollateral(data, t, fmt),
-    ...pdfDiligence(questions, t, lang),
-    ...pdfMethodology(data, t, lang),
+    ...pdfCover(data, t, lang, fmt, partialNoticeNames),
+    ...(sec.execSummary         ? pdfExecSummary(data, t, lang) : []),
+    ...(sec.financialMetrics    ? pdfMetrics(data, t, lang) : []),
+    ...(sec.analystCommentary   ? pdfAnalystCommentary(data, t, lang) : []),
+    ...(sec.strengthsRisks      ? pdfStrengthsRisks(data, t, lang) : []),
+    ...(sec.historicalBenchmark ? pdfBenchmark(data, t, lang, fmt) : []),
+    ...(sec.sourcesUses         ? pdfSourcesUses(data, t, fmt) : []),
+    ...(sec.capitalization      ? pdfCapitalization(data, t, fmt) : []),
+    ...(sec.collateral          ? pdfCollateral(data, t, fmt) : []),
+    ...(sec.diligenceQuestions  ? pdfDiligence(questions, t, lang) : []),
+    ...(sec.methodology         ? pdfMethodology(data, t, lang) : []),
   ];
 
   return {
@@ -1022,7 +1088,7 @@ function buildPdfDef(data: MemoData, questions: MemoQuestion[], t: (k: string) =
   };
 }
 
-export async function downloadPDF(data: MemoData, questions: MemoQuestion[], t: (key: string) => string): Promise<void> {
+export async function downloadPDF(data: MemoData, questions: MemoQuestion[], t: (key: string) => string, sections?: Partial<MemoSections>): Promise<void> {
   const lang = data.lang ?? 'en';
   const [pdfMakeModule, pdfFontsModule, fontBuffer] = await Promise.all([
     import('pdfmake/build/pdfmake'),
@@ -1038,7 +1104,7 @@ export async function downloadPDF(data: MemoData, questions: MemoQuestion[], t: 
   // In pdfmake 0.3, fonts must be registered on the instance, not in docDefinition.
   pdfMake.addFonts({ Fraunces: { normal: 'Fraunces-Bold.woff', bold: 'Fraunces-Bold.woff' } });
 
-  const docDef = buildPdfDef(data, questions, t, lang);
+  const docDef = buildPdfDef(data, questions, t, lang, sections);
   await pdfMake.createPdf(docDef).download(memoFilename(data.deal.title, 'pdf', lang, t));
 }
 
@@ -1046,7 +1112,7 @@ export async function downloadPDF(data: MemoData, questions: MemoQuestion[], t: 
 // Word export (docx 9)
 // ══════════════════════════════════════════════════════════════════════════════
 
-export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t: (key: string) => string): Promise<void> {
+export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t: (key: string) => string, sections?: Partial<MemoSections>): Promise<void> {
   const lang = data.lang ?? 'en';
   const fmt  = (n: number | null | undefined) => fmtMoney(n, lang);
 
@@ -1161,6 +1227,34 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
     return `$${Math.round(d).toLocaleString('en-US')}`;
   };
 
+  // ── Section selection & partial-export notice ─────────────────────────────
+  const sec: MemoSections = { ...defaultSections(), ...sections };
+  const bmW        = data.benchmarks;
+  const hasCsbfpW  = !!bmW?.csbfp;
+  const hasSbaW    = !bmW?.noMapping && !!(bmW?.base?.sector && bmW?.stress?.sector);
+  const execRaw    = lang === 'fr' ? (data.deal.executive_summary_fr ?? data.deal.executive_summary) : data.deal.executive_summary;
+  const summaryRaw = lang === 'fr' ? (data.score?.summary_fr ?? data.score?.summary) : data.score?.summary;
+  const strengths  = (lang === 'fr' ? (data.score?.strengths_fr ?? data.score?.strengths) : data.score?.strengths) ?? [];
+  const risks      = (lang === 'fr' ? (data.score?.risks_fr     ?? data.score?.risks)     : data.score?.risks)     ?? [];
+  const allSelW    = (Object.keys(sec) as Array<keyof MemoSections>).every(k => sec[k]);
+  const partialNoticeNames: string[] = [];
+  if (!allSelW) {
+    const cands: Array<[boolean, string]> = [
+      [sec.execSummary         && !!execRaw?.trim(),                           t('memo.sectionExecSummary')],
+      [sec.financialMetrics,                                                    t('memo.sectionFinancialMetrics')],
+      [sec.analystCommentary   && !!summaryRaw?.trim(),                         t('memo.sectionAnalystCommentary')],
+      [sec.strengthsRisks      && (strengths.length > 0 || risks.length > 0),  t('memo.sectionStrengthsRisks')],
+      [sec.historicalBenchmark && (hasCsbfpW || hasSbaW),                       t('memo.sectionHistoricalBenchmark')],
+      [sec.sourcesUses         && (data.suEntries?.length ?? 0) > 0,            t('memo.sectionSourcesUses')],
+      [sec.capitalization      && (data.capItems?.length ?? 0) > 0,             t('memo.sectionCapitalization')],
+      [sec.collateral          && (data.collateral?.length ?? 0) > 0,           t('memo.sectionCollateral')],
+      [sec.diligenceQuestions  && questions.length > 0,                          t('memo.sectionDiligenceQ')],
+      [sec.methodology,                                                           t('memo.sectionMethodology')],
+    ];
+    for (const [ok, name] of cands) if (ok) partialNoticeNames.push(name);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const children: any[] = [];
 
   // ── Cover ──
@@ -1179,20 +1273,33 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
   }
   children.push(
     new Paragraph({ children: [new TextRun({ text: displayDate(lang), size: 36, color: '888888', font: 'Calibri' })], spacing: { after: 120 } }),
+  );
+  if (partialNoticeNames.length) {
+    children.push(
+      new Paragraph({ children: [new TextRun({ text: t('memo.partialExportNotice'), bold: true, size: 18, color: AMBER.replace('#', ''), font: 'Calibri' })], spacing: { before: 360, after: 80 } }),
+      ...partialNoticeNames.map(name => new Paragraph({
+        children: [new TextRun({ text: `• ${name}`, size: 18, color: AMBER.replace('#', ''), font: 'Calibri' })],
+        spacing: { after: 40 }, indent: { left: 360 },
+      })),
+    );
+  }
+  children.push(
     new Paragraph({ children: [new TextRun({ text: t('memo.confidentialDraft'), bold: true, size: 18, color: '888888', font: 'Calibri' })], spacing: { after: 0 } }),
     wPageBreak(),
   );
 
   // ── Executive Summary ──
-  const execRaw  = lang === 'fr' ? (data.deal.executive_summary_fr ?? data.deal.executive_summary) : data.deal.executive_summary;
-  const execText = execRaw?.trim();
-  if (execText) {
-    children.push(wHead1(t('memo.secExecSummary').replace(/^[A-Z ]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())));
-    splitIntoParagraphs(execText).forEach(p => children.push(wPara(p, { spaceAfter: 160 })));
-    children.push(wPageBreak());
+  if (sec.execSummary) {
+    const execText = execRaw?.trim();
+    if (execText) {
+      children.push(wHead1(t('memo.secExecSummary').replace(/^[A-Z ]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())));
+      splitIntoParagraphs(execText).forEach(p => children.push(wPara(p, { spaceAfter: 160 })));
+      children.push(wPageBreak());
+    }
   }
 
   // ── Financial Metrics ──
+  if (sec.financialMetrics) {
   children.push(wHead1(t('memo.secFinancialMetrics').replace(/^[A-Z ]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())));
   if (data.score?.coverage_pct != null) children.push(wPara(t('memo.metricCoverageNote').replace('{pct}', String(data.score.coverage_pct)), { italics: true, color: '888888', spaceAfter: 160 }));
 
@@ -1236,45 +1343,44 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
       ],
     }), wSpacer(200));
   }
+  } // end sec.financialMetrics
 
   // ── Analyst Commentary ──
-  const summaryRaw  = lang === 'fr' ? (data.score?.summary_fr ?? data.score?.summary) : data.score?.summary;
-  const summaryText = summaryRaw?.trim();
-  if (summaryText) {
-    children.push(wHead1(t('memo.secAnalystCommentary').replace(/^[A-Z ]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())));
-    splitIntoParagraphs(summaryText).forEach(p => children.push(wPara(p, { spaceAfter: 160 })));
+  if (sec.analystCommentary) {
+    const summaryText = summaryRaw?.trim();
+    if (summaryText) {
+      children.push(wHead1(t('memo.secAnalystCommentary').replace(/^[A-Z ]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())));
+      splitIntoParagraphs(summaryText).forEach(p => children.push(wPara(p, { spaceAfter: 160 })));
+    }
   }
 
   // ── Strengths & Risks ──
-  const strengths = (lang === 'fr' ? (data.score?.strengths_fr ?? data.score?.strengths) : data.score?.strengths) ?? [];
-  const risks     = (lang === 'fr' ? (data.score?.risks_fr     ?? data.score?.risks)     : data.score?.risks)     ?? [];
-  if (strengths.length || risks.length) {
-    children.push(wHead1(t('memo.secStrengthsRisks').replace(/^[A-Z &]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())));
-    if (strengths.length) {
-      children.push(wHead2(t('memo.keyStrengths')));
-      // keepNext on all bullets except the last keeps the list from splitting mid-way
-      strengths.forEach((s, i) => children.push(wBullet(s, STRONG.replace('#', ''), i < strengths.length - 1)));
+  if (sec.strengthsRisks) {
+    if (strengths.length || risks.length) {
+      children.push(wHead1(t('memo.secStrengthsRisks').replace(/^[A-Z &]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())));
+      if (strengths.length) {
+        children.push(wHead2(t('memo.keyStrengths')));
+        // keepNext on all bullets except the last keeps the list from splitting mid-way
+        strengths.forEach((s, i) => children.push(wBullet(s, STRONG.replace('#', ''), i < strengths.length - 1)));
+      }
+      if (risks.length) {
+        // wHead2 has keepNext: true, binding it to the first bullet
+        children.push(wHead2(t('memo.keyRisks')));
+        risks.forEach((r, i) => children.push(wBullet(r, RED.replace('#', ''), i < risks.length - 1)));
+      }
+      children.push(wSpacer(160));
     }
-    if (risks.length) {
-      // wHead2 has keepNext: true, binding it to the first bullet
-      children.push(wHead2(t('memo.keyRisks')));
-      risks.forEach((r, i) => children.push(wBullet(r, RED.replace('#', ''), i < risks.length - 1)));
-    }
-    children.push(wSpacer(160));
   }
 
   // ── Historical Benchmark ──
-  {
-    const bm       = data.benchmarks;
-    const csbfp    = bm?.csbfp;
-    const hasCsbfp = !!csbfp;
-    const hasSba   = !bm?.noMapping && !!(bm?.base?.sector && bm?.stress?.sector);
+  if (sec.historicalBenchmark) {
+    const csbfp = bmW?.csbfp;
 
-    if (hasCsbfp || hasSba) {
+    if (hasCsbfpW || hasSbaW) {
       children.push(wHead1(t('memo.secHistoricalBenchmark').replace(/^[A-Z ]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())));
 
       // ── Canada sub-section ──
-      if (hasCsbfp) {
+      if (hasCsbfpW) {
         const cIndLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
         const drPct  = (csbfp!.defaultRate * 100).toFixed(1) + '%';
         const lrPct  = (csbfp!.lossRate   * 100).toFixed(1) + '%';
@@ -1323,13 +1429,13 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
       }
 
       // ── Separator note ──
-      if (hasCsbfp && hasSba) {
+      if (hasCsbfpW && hasSbaW) {
         children.push(wPara(t('memo.benchmarkComparability'), { italics: true, color: '888888', spaceAfter: 120, keepNext: true }));
       }
 
       // ── US sub-section ──
-      if (hasSba) {
-        const { base, stress, totalN } = bm!;
+      if (hasSbaW) {
+        const { base, stress, totalN } = bmW!;
         const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
         const baseLGD   = Math.round(base!.sector!.lgd  * 100);
         const stressLGD = Math.round(stress!.sector!.lgd * 100);
@@ -1391,6 +1497,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
   }
 
   // ── Sources & Uses ──
+  if (sec.sourcesUses) {
   const suEntries = data.suEntries ?? [];
   if (suEntries.length) {
     const uses   = suEntries.filter(e => e.side === 'use');
@@ -1406,8 +1513,10 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
     suRows.push(wTotalRow([t('memo.totalUses'), fmt(totalU), t('memo.totalSources'), fmt(totalS)], suCols));
     children.push(wHead1(t('memo.secSourcesUses').replace(/^[A-Z &]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())), new Table({ width: { size: TW_CONT, type: WidthType.DXA }, rows: suRows }), wSpacer(200));
   }
+  } // end sec.sourcesUses
 
   // ── Capitalization ──
+  if (sec.capitalization) {
   const capItems = data.capItems ?? [];
   if (capItems.length) {
     const ebitdaVal  = Number(data.deal?.ebitda);
@@ -1472,8 +1581,10 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
       wSpacer(200),
     );
   }
+  } // end sec.capitalization
 
   // ── Collateral ──
+  if (sec.collateral) {
   const collateral = data.collateral ?? [];
   if (collateral.length) {
     const collCols = [1300, 2100, 1440, 1200, 1620];
@@ -1484,9 +1595,10 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
       wTotalRow([t('memo.totalLendingValue'), '', '', '', fmt(totalL)], collCols),
     ]}), wSpacer(200));
   }
+  } // end sec.collateral
 
   // ── Diligence Questions ──
-  if (questions.length) {
+  if (sec.diligenceQuestions && questions.length) {
     children.push(wPageBreak(), wHead1(t('memo.secAnnexA').replace(/^[A-Z —]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())));
     questions.forEach((q, i) => {
       const tag = [q.priority?.toUpperCase(), q.source].filter(Boolean).join(' · ');
@@ -1509,6 +1621,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
   }
 
   // ── Methodology ──
+  if (sec.methodology) {
   children.push(wPageBreak(), wHead1(t('memo.secMethodology').replace(/^[A-Z ]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())));
 
   // ── How This Score Was Calculated ──
@@ -1591,6 +1704,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
     wHead2(t('memo.secDisclaimer')),
     wPara(t('memo.disclaimerText'), { italics: true, color: '888888', spaceAfter: 0 }),
   );
+  } // end sec.methodology
 
   const borrower = data.deal.title ?? 'Credit Memorandum';
   const doc = new Document({

@@ -910,6 +910,22 @@ const fr: Record<string, string> = {
 
   // FinancialReview — confirm figures (unbundled from rescore)
   "financialReview.confirmFigures": "Confirmer les données",
+
+  // Memo section selector & partial export notice
+  "memo.sectionExecSummary":          "Sommaire exécutif",
+  "memo.sectionFinancialMetrics":     "Indicateurs financiers",
+  "memo.sectionAnalystCommentary":    "Commentaire de l'analyste",
+  "memo.sectionStrengthsRisks":       "Forces et risques",
+  "memo.sectionHistoricalBenchmark":  "Données historiques de référence",
+  "memo.sectionSourcesUses":          "Sources et utilisations",
+  "memo.sectionCapitalization":       "Capitalisation",
+  "memo.sectionCollateral":           "Sûretés",
+  "memo.sectionDiligenceQ":           "Questions de diligence (Annexe A)",
+  "memo.sectionMethodology":          "Note méthodologique",
+  "memo.partialExportNotice":         "Export partiel — ce document contient uniquement :",
+  "memo.sectionNoData":               "Aucune donnée pour ce dossier",
+  "analysis.exportDialogTitle":       "Exporter la note de crédit",
+  "analysis.exportDialogCancel":      "Annuler",
 };
 
 export default fr;
