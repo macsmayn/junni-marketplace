@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase, invokeFunction } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { useParams, useLocation } from "wouter";
 import { useLanguage } from "../contexts/LanguageContext";
 
@@ -51,8 +51,6 @@ export default function FinancialReview() {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [wasAlreadyConfirmed, setWasAlreadyConfirmed] = useState(false);
-  const [isRescoring, setIsRescoring] = useState(false);
-  const [rescoreError, setRescoreError] = useState<string | null>(null);
   const [newNoteYear, setNewNoteYear] = useState("general");
   const [newNoteText, setNewNoteText] = useState("");
   const [addingNote, setAddingNote] = useState(false);
@@ -135,7 +133,6 @@ export default function FinancialReview() {
 
   const saveEdits = async (confirm: boolean) => {
     setIsSaving(true);
-    setRescoreError(null);
     let saveOk = false;
     const confirmNow = confirm ? new Date().toISOString() : null;
     try {
@@ -179,23 +176,7 @@ export default function FinancialReview() {
       setIsSaving(false);
     }
     if (confirm && saveOk) {
-      setIsRescoring(true);
-      try {
-        const { error: scoreErr } = await invokeFunction("score-deal", { deal_id: dealId });
-        if (scoreErr) {
-          const body402 = await (scoreErr as any).context?.json().catch(() => null);
-          if (body402?.error === "no_subscription") {
-            setRescoreError(t("financialReview.rescoreErrorNoSub"));
-          } else {
-            console.error("[FinancialReview] rescore failed:", scoreErr);
-            setRescoreError(t("financialReview.rescoreError"));
-          }
-        } else {
-          setLocation(`/analysis/${dealId}`);
-        }
-      } finally {
-        setIsRescoring(false);
-      }
+      setLocation(`/analysis/${dealId}`);
     }
   };
 
@@ -969,21 +950,12 @@ export default function FinancialReview() {
           </div>
         </div>
 
-        {rescoreError && (
-          <div style={{ background: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#B71C1C" }}>
-            {rescoreError}
-          </div>
-        )}
         <div className="actions-bar">
-          <button className="btn-secondary" onClick={() => saveEdits(false)} disabled={isSaving || isRescoring}>
+          <button className="btn-secondary" onClick={() => saveEdits(false)} disabled={isSaving}>
             {isSaving ? t("financialReview.saving") : "Save Draft"}
           </button>
-          <button className="btn-primary" onClick={() => saveEdits(true)} disabled={isSaving || isRescoring}>
-            {isRescoring
-              ? t("financialReview.rescoring")
-              : isSaving
-              ? t("financialReview.saving")
-              : t("financialReview.confirmRescore")}
+          <button className="btn-primary" onClick={() => saveEdits(true)} disabled={isSaving}>
+            {isSaving ? t("financialReview.saving") : t("financialReview.confirmFigures")}
           </button>
         </div>
       </div>

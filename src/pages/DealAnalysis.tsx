@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase } from "../lib/supabase";
+import { supabase, invokeFunction } from "../lib/supabase";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { tRiskLabel } from "../lib/riskLabel";
@@ -166,6 +166,14 @@ export default function DealAnalysis() {
   } | null>(null);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [docTypes, setDocTypes] = useState<any[]>([]);
+  const [uploadDocType, setUploadDocType] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [showRescorePrompt, setShowRescorePrompt] = useState(false);
+  const [isRescoring, setIsRescoring] = useState(false);
+  const [rescoreError, setRescoreError] = useState<string | null>(null);
+  const [latestFinUpdatedAt, setLatestFinUpdatedAt] = useState<string | null>(null);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900);
@@ -199,9 +207,9 @@ export default function DealAnalysis() {
     if (!dealId) return;
     (async () => {
       setLoading(true);
-      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }, { data: qsData }] = await Promise.all([
-        supabase.from("deals").select("title,deal_label,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,created_by,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr").eq("id", dealId).single(),
-        supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source,summary_fr,strengths_fr,risks_fr").eq("deal_id", dealId).maybeSingle(),
+      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }, { data: qsData }, { data: docsData }, { data: latestFinRow }] = await Promise.all([
+        supabase.from("deals").select("title,deal_label,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,created_by,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr,updated_at").eq("id", dealId).single(),
+        supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source,summary_fr,strengths_fr,risks_fr,generated_at").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
         supabase.from("users").select("id,role").eq("auth0_id", user?.sub ?? "").maybeSingle(),
         supabase.from("sources_uses_entries").select("side,label,amount,sort_order").eq("deal_id", dealId).order("sort_order"),
@@ -209,6 +217,8 @@ export default function DealAnalysis() {
         supabase.from("collateral_assets").select("asset_type,description,market_value,advance_rate,lending_value").eq("deal_id", dealId),
         supabase.from("extracted_financials").select("cash").eq("deal_id", dealId).eq("borrower_confirmed", true).order("fiscal_year", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("credit_questions").select("*").eq("deal_id", dealId).order("created_at"),
+        supabase.from("documents").select("id,file_name,file_type,storage_path,doc_category,created_at,size_bytes").eq("deal_id", dealId).order("created_at", { ascending: true }),
+        supabase.from("extracted_financials").select("updated_at").eq("deal_id", dealId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
       if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
@@ -238,6 +248,8 @@ export default function DealAnalysis() {
         setDefinitions(defMap);
       }
 
+      setDocuments(docsData ?? []);
+      setLatestFinUpdatedAt(latestFinRow?.updated_at ?? null);
       setLoading(false);
     })();
   }, [dealId, user?.sub]);
@@ -341,6 +353,20 @@ export default function DealAnalysis() {
       }
     })();
   }, [deal?.industry, deal?.amount_requested, deal?.term_months]);
+
+  useEffect(() => {
+    if (!deal?.industry) return;
+    (async () => {
+      const { data } = await supabase
+        .from("document_types")
+        .select("key,label_en,label_fr,category,is_extracted,sort_order")
+        .eq("active", true)
+        .or(`industry_key.is.null,industry_key.eq.${deal.industry}`)
+        .order("category")
+        .order("sort_order");
+      setDocTypes(data ?? []);
+    })();
+  }, [deal?.industry]);
 
   if (auth0Loading) return (
     <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", fontFamily: "Inter, sans-serif" }}>
@@ -463,6 +489,60 @@ export default function DealAnalysis() {
     setAddingSaving(false);
   };
 
+  const handleRescore = async () => {
+    setIsRescoring(true);
+    setRescoreError(null);
+    setShowRescorePrompt(false);
+    try {
+      const { error: scoreErr } = await invokeFunction("score-deal", { deal_id: dealId });
+      if (scoreErr) {
+        const body402 = await (scoreErr as any).context?.json().catch(() => null);
+        if (body402?.error === "no_subscription") {
+          setRescoreError(t("analysis.rescoreErrorNoSub"));
+        } else {
+          setRescoreError(t("analysis.rescoreError"));
+        }
+      } else {
+        window.location.reload();
+      }
+    } catch {
+      setRescoreError(t("analysis.rescoreError"));
+    } finally {
+      setIsRescoring(false);
+    }
+  };
+
+  const handleUploadDocs = async (files: FileList) => {
+    if (!currentUser?.id || !dealId || !uploadDocType || isUploading) return;
+    setIsUploading(true);
+    try {
+      const newDocs: any[] = [];
+      for (const file of Array.from(files)) {
+        const path = `${currentUser.id}/${Date.now()}_${file.name}`;
+        const { error: upErr } = await supabase.storage
+          .from("documents")
+          .upload(path, file, { contentType: file.type });
+        if (upErr) { console.error("[DealAnalysis] upload failed:", file.name, upErr.message); continue; }
+        const { data: inserted } = await supabase.from("documents").insert({
+          deal_id: dealId,
+          uploaded_by: currentUser.id,
+          file_name: file.name,
+          file_type: file.type,
+          size_bytes: file.size,
+          storage_path: path,
+          doc_category: uploadDocType,
+        }).select().single();
+        if (inserted) newDocs.push(inserted);
+      }
+      if (newDocs.length > 0) {
+        setDocuments(prev => [...prev, ...newDocs]);
+        setShowRescorePrompt(true);
+      }
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const scoreConfidenceLabel = (pct: number) => {
     if (pct >= 60) return t("analysis.scoreConfidenceHigh");
     if (pct >= 30) return t("analysis.scoreConfidenceModerate");
@@ -501,6 +581,20 @@ export default function DealAnalysis() {
               }}
             >
               {t("analysis.editFinancials")}
+            </button>
+          )}
+          {deal && (
+            <button
+              onClick={handleRescore}
+              disabled={isRescoring}
+              style={{
+                padding: "4px 12px", borderRadius: 8, border: `1px solid ${NAVY}`,
+                fontSize: 11, fontWeight: 700, cursor: isRescoring ? "wait" : "pointer",
+                fontFamily: "Inter, sans-serif", background: "transparent", color: NAVY,
+                letterSpacing: "0.03em", opacity: isRescoring ? 0.6 : 1,
+              }}
+            >
+              {isRescoring ? t("analysis.rescoring") : t("analysis.rescoreBtn")}
             </button>
           )}
           {deal && (
@@ -584,6 +678,44 @@ export default function DealAnalysis() {
             <span>{deal.term_months ?? "—"} {t("analysis.monthsWord")} @ {deal.interest_rate ?? "—"}%</span>
           </div>
         </div>
+
+        {/* ── Stale score banner ── */}
+        {score?.generated_at && (() => {
+          const gen = new Date(score.generated_at).getTime();
+          const stale =
+            (deal?.updated_at != null && new Date(deal.updated_at).getTime() > gen) ||
+            (latestFinUpdatedAt != null && new Date(latestFinUpdatedAt).getTime() > gen) ||
+            (documents.length > 0 && Math.max(...documents.map((doc: any) => new Date(doc.created_at).getTime())) > gen);
+          if (!stale) return null;
+          return (
+            <div style={{
+              background: "#FFFBEB", border: `1px solid ${GOLD}`, borderRadius: 12,
+              padding: "16px 20px", marginBottom: 20, display: "flex", flexWrap: "wrap",
+              gap: 12, alignItems: "center",
+            }}>
+              <span style={{ fontSize: 13, color: "#92400E", flex: 1, minWidth: 160, lineHeight: 1.5 }}>
+                {t("analysis.staleBannerText")}
+              </span>
+              <button
+                onClick={handleRescore}
+                disabled={isRescoring}
+                style={{
+                  padding: "6px 16px", borderRadius: 6, border: "none",
+                  background: GOLD, color: "#fff", fontSize: 12, fontWeight: 700,
+                  cursor: isRescoring ? "wait" : "pointer", fontFamily: "Inter, sans-serif",
+                  opacity: isRescoring ? 0.7 : 1, whiteSpace: "nowrap",
+                }}
+              >
+                {isRescoring ? t("analysis.rescoring") : t("analysis.rescoreBtn")}
+              </button>
+            </div>
+          );
+        })()}
+        {rescoreError && (
+          <div style={{ background: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#B71C1C", marginBottom: 16 }}>
+            {rescoreError}
+          </div>
+        )}
 
         {/* ── 2. Score card ── */}
         {score ? (
@@ -790,7 +922,142 @@ export default function DealAnalysis() {
           </div>
         )}
 
-        {/* ── 6. Diligence Questions ── */}
+        {/* ── 6. Documents ── */}
+        {(() => {
+          const resolveLabel = (key: string) => {
+            const dt = docTypes.find((d: any) => d.key === key);
+            if (!dt) return key;
+            return (lang === "fr" && dt.label_fr) ? dt.label_fr : dt.label_en;
+          };
+          const groupedTypes = docTypes.reduce((acc: Record<string, any[]>, dt: any) => {
+            if (!acc[dt.category]) acc[dt.category] = [];
+            acc[dt.category].push(dt);
+            return acc;
+          }, {});
+          const selectedDt = docTypes.find((d: any) => d.key === uploadDocType);
+          return (
+            <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
+              <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 16px" }}>
+                {t("analysis.documentsSection")}
+              </h2>
+
+              {documents.length === 0 ? (
+                <div style={{ fontSize: 13, color: MUTED, marginBottom: 16 }}>{t("analysis.docNoFiles")}</div>
+              ) : (
+                <div style={{ marginBottom: 16 }}>
+                  {documents.map((doc: any, i: number) => {
+                    const dt = docTypes.find((d: any) => d.key === doc.doc_category);
+                    return (
+                      <div key={doc.id ?? i} style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr auto" : "2fr 1fr 1fr auto",
+                        gap: 10, alignItems: "center", padding: "10px 0",
+                        borderBottom: i < documents.length - 1 ? "1px solid #F0EDE8" : "none",
+                      }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{doc.file_name}</div>
+                          {dt && !dt.is_extracted && (
+                            <div style={{ fontSize: 11, color: MUTED, fontStyle: "italic", marginTop: 2 }}>
+                              {t("analysis.docNotAnalysed")}
+                            </div>
+                          )}
+                        </div>
+                        {!isMobile && (
+                          <div style={{ fontSize: 12, color: MUTED }}>{resolveLabel(doc.doc_category)}</div>
+                        )}
+                        {!isMobile && (
+                          <div style={{ fontSize: 12, color: MUTED }}>
+                            {new Date(doc.created_at).toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" })}
+                          </div>
+                        )}
+                        <button
+                          onClick={async () => {
+                            const { data: signed } = await supabase.storage.from("documents").createSignedUrl(doc.storage_path, 3600);
+                            if (signed?.signedUrl) window.open(signed.signedUrl, "_blank");
+                          }}
+                          style={{
+                            padding: "4px 10px", borderRadius: 6, border: "1px solid #E8E2D9",
+                            background: "transparent", color: NAVY, fontSize: 11, fontWeight: 600,
+                            cursor: "pointer", fontFamily: "Inter, sans-serif",
+                          }}
+                        >{t("analysis.docView")}</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {showRescorePrompt && (
+                <div style={{
+                  background: "#FFFBEB", border: `1px solid ${GOLD}`, borderRadius: 8,
+                  padding: "12px 16px", marginBottom: 16, display: "flex", flexWrap: "wrap",
+                  gap: 10, alignItems: "center",
+                }}>
+                  <span style={{ fontSize: 13, color: "#92400E", flex: 1, minWidth: 160 }}>{t("analysis.docRescorePrompt")}</span>
+                  <button onClick={handleRescore} disabled={isRescoring} style={{
+                    padding: "5px 12px", borderRadius: 6, border: "none", background: GOLD,
+                    color: "#fff", fontSize: 12, fontWeight: 700, cursor: isRescoring ? "wait" : "pointer",
+                    fontFamily: "Inter, sans-serif", opacity: isRescoring ? 0.7 : 1,
+                  }}>{isRescoring ? t("analysis.rescoring") : t("analysis.docRescoreBtn")}</button>
+                  <button onClick={() => setShowRescorePrompt(false)} style={{
+                    padding: "5px 12px", borderRadius: 6, border: "1px solid #E8E2D9",
+                    background: "transparent", color: MUTED, fontSize: 12, cursor: "pointer",
+                    fontFamily: "Inter, sans-serif",
+                  }}>{t("analysis.docRescoreNotNow")}</button>
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <select
+                  value={uploadDocType}
+                  onChange={e => setUploadDocType(e.target.value)}
+                  style={{
+                    padding: "6px 10px", borderRadius: 6, border: "1px solid #E8E2D9",
+                    fontSize: 12, color: NAVY, fontFamily: "Inter, sans-serif",
+                    background: "#fff", cursor: "pointer", minWidth: 200,
+                  }}
+                >
+                  <option value="">{t("analysis.docTypeSelect")}</option>
+                  {Object.entries(groupedTypes).map(([cat, types]) => (
+                    <optgroup key={cat} label={cat}>
+                      {types.map((dt: any) => (
+                        <option key={dt.key} value={dt.key}>
+                          {(lang === "fr" && dt.label_fr) ? dt.label_fr : dt.label_en}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <label style={{
+                  display: "inline-block", padding: "6px 14px", borderRadius: 6,
+                  border: `1px solid ${uploadDocType && !isUploading ? NAVY : "#E8E2D9"}`,
+                  background: uploadDocType && !isUploading ? NAVY : "#F5F3EE",
+                  color: uploadDocType && !isUploading ? "#fff" : MUTED,
+                  fontSize: 12, fontWeight: 700,
+                  cursor: uploadDocType && !isUploading ? "pointer" : "not-allowed",
+                  fontFamily: "Inter, sans-serif",
+                }}>
+                  {isUploading ? t("analysis.docUploading") : t("analysis.docUploadBtn")}
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.xlsx,.xls,.csv,.docx,.doc"
+                    disabled={!uploadDocType || isUploading}
+                    style={{ display: "none" }}
+                    onChange={e => e.target.files && handleUploadDocs(e.target.files)}
+                  />
+                </label>
+                {selectedDt && !selectedDt.is_extracted && (
+                  <span style={{ fontSize: 11, color: MUTED, fontStyle: "italic" }}>
+                    {t("analysis.docNotAnalysed")}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── 7. Diligence Questions ── */}
         {(() => {
           const Q_PRI: Record<string, number> = { high: 0, medium: 1, low: 2 };
           const sortedQs = [...questions].sort((a, b) => {

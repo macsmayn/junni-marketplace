@@ -884,6 +884,31 @@ const en: Record<string, string> = {
   "completeProfile.saving":          "Saving…",
   "completeProfile.errorBlankFields": "Please enter your first and last name.",
   "completeProfile.errorSave":       "Could not save your profile. Please try again.",
+
+  // DealAnalysis — documents section
+  "analysis.documentsSection":      "Documents",
+  "analysis.docNoFiles":            "No documents attached to this deal yet.",
+  "analysis.docView":               "View",
+  "analysis.docTypeLabel":          "Document type",
+  "analysis.docTypeSelect":         "Select type…",
+  "analysis.docUploadBtn":          "Upload files",
+  "analysis.docUploading":          "Uploading…",
+  "analysis.docRescorePrompt":      "Documents uploaded. Re-score now to include them in the analysis?",
+  "analysis.docRescoreBtn":         "Re-score",
+  "analysis.docRescoreNotNow":      "Not now",
+  "analysis.docNotAnalysed":        "Stored for reference — not currently analysed.",
+
+  // DealAnalysis — re-score
+  "analysis.rescoreBtn":            "Re-score",
+  "analysis.rescoring":             "Re-scoring…",
+  "analysis.rescoreError":          "Re-scoring failed. Please try again.",
+  "analysis.rescoreErrorNoSub":     "No active subscription. Go to Billing to subscribe.",
+
+  // DealAnalysis — stale score banner
+  "analysis.staleBannerText":       "The data has changed since this analysis was generated. The score below does not reflect the latest information.",
+
+  // FinancialReview — confirm figures (unbundled from rescore)
+  "financialReview.confirmFigures": "Confirm figures",
 };
 
 export default en;

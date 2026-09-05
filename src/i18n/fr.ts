@@ -884,6 +884,31 @@ const fr: Record<string, string> = {
   "completeProfile.saving":          "Enregistrement…",
   "completeProfile.errorBlankFields": "Veuillez saisir votre prénom et votre nom.",
   "completeProfile.errorSave":       "Impossible d'enregistrer votre profil. Veuillez réessayer.",
+
+  // DealAnalysis — documents section
+  "analysis.documentsSection":      "Documents",
+  "analysis.docNoFiles":            "Aucun document associé à cette analyse pour l'instant.",
+  "analysis.docView":               "Voir",
+  "analysis.docTypeLabel":          "Type de document",
+  "analysis.docTypeSelect":         "Choisir un type…",
+  "analysis.docUploadBtn":          "Téléverser des fichiers",
+  "analysis.docUploading":          "Téléversement…",
+  "analysis.docRescorePrompt":      "Documents téléversés. Réévaluer maintenant pour les inclure dans l'analyse ?",
+  "analysis.docRescoreBtn":         "Réévaluer",
+  "analysis.docRescoreNotNow":      "Pas maintenant",
+  "analysis.docNotAnalysed":        "Conservé à titre de référence — non analysé actuellement.",
+
+  // DealAnalysis — re-score
+  "analysis.rescoreBtn":            "Réévaluer",
+  "analysis.rescoring":             "Réévaluation…",
+  "analysis.rescoreError":          "Échec de la réévaluation. Veuillez réessayer.",
+  "analysis.rescoreErrorNoSub":     "Aucun abonnement actif. Accédez à Facturation pour vous abonner.",
+
+  // DealAnalysis — stale score banner
+  "analysis.staleBannerText":       "Les données ont été modifiées depuis la génération de cette analyse. Le score ci-dessous ne reflète pas les informations les plus récentes.",
+
+  // FinancialReview — confirm figures (unbundled from rescore)
+  "financialReview.confirmFigures": "Confirmer les données",
 };
 
 export default fr;
