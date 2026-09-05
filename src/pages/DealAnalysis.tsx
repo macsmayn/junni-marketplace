@@ -75,6 +75,7 @@ interface MetricRow {
   strong_band: string | null;
   adequate_band: string | null;
   weak_band: string | null;
+  band_is_override?: boolean;
 }
 
 function DefContent({ def, lang }: { def: any; lang: "en" | "fr" }) {
@@ -405,6 +406,7 @@ export default function DealAnalysis() {
   const scored = metrics.filter(m => m.counted);
   const notScored = metrics.filter(m => !m.counted);
   const byTier = TIER_ORDER.map(tier => ({ tier, rows: scored.filter(m => m.tier === tier) })).filter(g => g.rows.length > 0);
+  const anyOverride = metrics.some((m: MetricRow) => m.band_is_override);
 
   // French DB content with English fallback
   const displayExecSummary = (lang === "fr" && deal.executive_summary_fr?.trim())
@@ -825,6 +827,11 @@ export default function DealAnalysis() {
                   </div>
                 </div>
               )}
+              {anyOverride && (
+                <div style={{ fontSize: 11, color: GOLD, marginTop: 2 }}>
+                  {t("analysis.customThresholdCardNote")}
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -886,10 +893,15 @@ export default function DealAnalysis() {
                         </div>
 
                         {!isMobile && !isExpanded && (row.strong_band || row.adequate_band || row.weak_band) && (
-                          <div style={{ display: "flex", gap: 20, padding: "0 18px 10px", fontSize: 11, color: MUTED }}>
+                          <div style={{ display: "flex", gap: 20, padding: "0 18px 10px", fontSize: 11, color: MUTED, alignItems: "center" }}>
                             <span>{t("analysis.bandStrong")}: {translateBandUnits(row.strong_band, lang) ?? "—"}</span>
                             <span>{t("analysis.bandAdequate")}: {translateBandUnits(row.adequate_band, lang) ?? "—"}</span>
                             <span>{t("analysis.bandWeak")}: {translateBandUnits(row.weak_band, lang) ?? "—"}</span>
+                            {row.band_is_override && (
+                              <span style={{ fontSize: 10, fontWeight: 600, color: GOLD, border: `1px solid ${GOLD}70`, borderRadius: 99, padding: "1px 7px", letterSpacing: "0.04em" }}>
+                                {t("metric.customThreshold")}
+                              </span>
+                            )}
                           </div>
                         )}
 
@@ -899,10 +911,15 @@ export default function DealAnalysis() {
                               {row.compute_detail && <div><strong>{t("analysis.formulaLabel")}</strong> {row.compute_detail}</div>}
                               {row.grade_reason && <div style={{ marginTop: 4 }}><strong>{t("analysis.gradeReasonLabel")}</strong> {row.grade_reason}</div>}
                               {(row.strong_band || row.adequate_band || row.weak_band) && (
-                                <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
+                                <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: "4px 16px", alignItems: "center" }}>
                                   {row.strong_band && <span style={{ color: GREEN }}>{t("analysis.bandStrong")}: {translateBandUnits(row.strong_band, lang)}</span>}
                                   {row.adequate_band && <span style={{ color: GOLD }}>{t("analysis.bandAdequate")}: {translateBandUnits(row.adequate_band, lang)}</span>}
                                   {row.weak_band && <span style={{ color: RED }}>{t("analysis.bandWeak")}: {translateBandUnits(row.weak_band, lang)}</span>}
+                                  {row.band_is_override && (
+                                    <span style={{ fontSize: 10, fontWeight: 600, color: GOLD, border: `1px solid ${GOLD}70`, borderRadius: 99, padding: "1px 7px", letterSpacing: "0.04em" }}>
+                                      {t("metric.customThreshold")}
+                                    </span>
+                                  )}
                                 </div>
                               )}
                             </div>

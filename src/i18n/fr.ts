@@ -926,6 +926,11 @@ const fr: Record<string, string> = {
   "memo.sectionNoData":               "Aucune donnée pour ce dossier",
   "analysis.exportDialogTitle":       "Exporter la note de crédit",
   "analysis.exportDialogCancel":      "Annuler",
+
+  // Custom threshold override indicators
+  "metric.customThreshold":           "Seuil personnalisé",
+  "analysis.customThresholdCardNote": "Certains indicateurs ont été évalués selon les seuils propres à cette organisation plutôt que les valeurs par défaut de Junni.",
+  "memo.customThresholdFootnote":     "† Les indicateurs marqués comme personnalisés ont été évalués selon les seuils fixés par le prêteur plutôt que les valeurs par défaut de Junni.",
 };
 
 export default fr;

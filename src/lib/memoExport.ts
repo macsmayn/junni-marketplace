@@ -19,6 +19,7 @@ export interface MemoMetric {
   strong_band: string | null;
   adequate_band: string | null;
   weak_band: string | null;
+  band_is_override?: boolean;
   compute_detail?: string | null;
   grade_reason?: string | null;
 }
@@ -334,8 +335,14 @@ function pdfScoredMetricsTable(rows: MemoMetric[], t: (k: string) => string, lan
   const body = rows.map((r, i) => {
     const bg = i % 2 === 1 ? '#F8F6F3' : undefined;
     const displayName = (lang === 'fr' && r.metric_name_fr) ? r.metric_name_fr : r.metric_name;
+    const nameCell = r.band_is_override
+      ? { stack: [
+          { text: displayName + ' †', fontSize: 8.5, margin: [4, 3, 4, 1] },
+          { text: t('metric.customThreshold'), fontSize: 6.5, color: GOLD, italics: true, margin: [4, 0, 4, 3] },
+        ], fillColor: bg ?? null }
+      : cell(displayName, {}, bg);
     return [
-      cell(displayName, {}, bg),
+      nameCell,
       cell(tTier(r.tier, t), { fontSize: 7.5, color: MUTED }, bg),
       cell(fmtValue(r.value, r.metric_name, r.strong_band, lang), {}, bg),
       cell(tGrade(r.grade, t), { bold: true, color: gradeColor(r.grade) }, bg),
@@ -432,7 +439,12 @@ function pdfMetrics(data: MemoData, t: (k: string) => string, lang: string): any
 
   // Scored table is intentionally breakable (can exceed one page with 17+ rows).
   // headerRows: 1 repeats the column header on each continuation page.
-  if (scored.length > 0) out.push(pdfScoredMetricsTable(scored, t, lang));
+  if (scored.length > 0) {
+    out.push(pdfScoredMetricsTable(scored, t, lang));
+    if (scored.some(r => r.band_is_override)) {
+      out.push({ text: t('memo.customThresholdFootnote'), fontSize: 7.5, italics: true, color: GOLD, margin: [0, 0, 0, 10] });
+    }
+  }
 
   // Not-scored table: small, keep heading + table together.
   if (notScored.length > 0) {
@@ -1316,7 +1328,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
         ...scored.map((r, i) => {
           const displayName = (lang === 'fr' && r.metric_name_fr) ? r.metric_name_fr : r.metric_name;
           return wDataRow([
-            displayName,
+            r.band_is_override ? displayName + ' †' : displayName,
             tTier(r.tier, t),
             fmtValue(r.value, r.metric_name, r.strong_band, lang),
             tGrade(r.grade, t),
@@ -1327,6 +1339,9 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
         }),
       ],
     }), wSpacer(200));
+    if (scored.some(r => r.band_is_override)) {
+      children.push(wPara(t('memo.customThresholdFootnote'), { italics: true, color: GOLD, size: 16 }));
+    }
   }
 
   if (notScored.length > 0) {

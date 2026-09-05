@@ -926,6 +926,11 @@ const en: Record<string, string> = {
   "memo.sectionNoData":               "No data for this deal",
   "analysis.exportDialogTitle":       "Export Credit Memo",
   "analysis.exportDialogCancel":      "Cancel",
+
+  // Custom threshold override indicators
+  "metric.customThreshold":           "Custom threshold",
+  "analysis.customThresholdCardNote": "Some metrics were graded against this organization's own thresholds rather than Junni's defaults.",
+  "memo.customThresholdFootnote":     "† Metrics marked as custom were graded against thresholds set by the lender rather than Junni's defaults.",
 };
 
 export default en;
