@@ -270,8 +270,15 @@ Deno.serve(async (req: Request) => {
     // Skipped for admins and for extract_only (extraction produces no scored analysis
     // and must not consume quota or require a subscription).
     let isOverage = false;
-    let isRescore = false;
     let usedCount = 0;
+
+    // Detect re-score unconditionally so archiving fires for admins too.
+    const { data: existingScoreRow } = await supabase
+      .from("credit_scores")
+      .select("deal_id")
+      .eq("deal_id", deal_id)
+      .maybeSingle();
+    let isRescore = existingScoreRow != null;
 
     if (callerUser.role !== "admin" && !extract_only) {
       // a. Check for an active subscription
@@ -308,15 +315,7 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      // f. Check whether this deal already has a credit_scores row (re-score = no quota consumed)
-      const { data: existingScore } = await supabase
-        .from("credit_scores")
-        .select("deal_id")
-        .eq("deal_id", deal_id)
-        .maybeSingle();
-
-      isRescore = existingScore != null;
-
+      // f. isRescore already set above (unconditional); skip quota for re-scores.
       if (!isRescore) {
         // e. Count deals already analysed in the current billing period for this org
         const { data: orgDeals } = await supabase
