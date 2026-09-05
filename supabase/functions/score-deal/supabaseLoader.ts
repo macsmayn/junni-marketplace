@@ -41,6 +41,8 @@ export interface LoaderOptions {
   versionId?: string;
   /** Lender whose policy overrides apply. Omit/null → canonical defaults only. */
   lenderId?: string | null;
+  /** Organisation whose threshold overrides apply (lender_threshold_overrides.org_id). */
+  orgId?: string | null;
 }
 
 /**
@@ -75,22 +77,26 @@ export function makeSupabaseLoader(
       if (mErr) throw new Error(`metrics query failed: ${mErr.message}`);
       if (!metricRows || metricRows.length === 0) return [];
 
-      // 3) Load lender overrides once (threshold + tier/enable), if a lender is set.
+      // 3) Load lender overrides once (threshold + tier/enable), if org/lender is set.
       const thresholdOverrides = new Map<string, { strong: string | null; adequate: string | null; weak: string | null }>();
       const policyOverrides = new Map<string, { tier?: string | null; enabled?: boolean | null }>();
 
-      if (opts.lenderId) {
-        const metricIds = metricRows.map((r: any) => r.id);
+      const metricIds = metricRows.map((r: any) => r.id);
 
+      // Per-org threshold bands (lender_threshold_overrides.org_id).
+      // Null columns inherit from canonical — the ?? chain in step 4 handles this.
+      if (opts.orgId && metricIds.length > 0) {
         const { data: thr } = await supabase
           .from("lender_threshold_overrides")
-          .select("metric_id, strong, adequate, weak")
-          .eq("lender_id", opts.lenderId)
+          .select("metric_id, strong, adequate, weak, very_strong, very_weak")
+          .eq("org_id", opts.orgId)
           .in("metric_id", metricIds);
         for (const o of thr ?? []) {
           thresholdOverrides.set(o.metric_id, { strong: o.strong, adequate: o.adequate, weak: o.weak });
         }
+      }
 
+      if (opts.lenderId && metricIds.length > 0) {
         // lender_metric_overrides is the policy-level table (tier re-grade + enable/disable).
         // Guarded: if the table isn't present yet, ignore overrides rather than fail.
         try {
@@ -140,6 +146,7 @@ export function makeSupabaseLoader(
           adequate_band: adequate,
           weak_band: weak,
           enabled,
+          band_is_override: thresholdOverrides.has(row.id),
         };
       });
     },

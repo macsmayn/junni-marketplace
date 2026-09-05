@@ -150,7 +150,7 @@ export async function runDeterministicScore(
   deal_id: string,
   deal: DealRowForTerms,
   confirmedFinancials: ExtractedFinancialsRow[],
-  opts: { lenderId?: string | null; versionId?: string } = {}
+  opts: { lenderId?: string | null; orgId?: string | null; versionId?: string } = {}
 ): Promise<EngineResult | null> {
   if (!confirmedFinancials || confirmedFinancials.length === 0) return null;
 
@@ -166,6 +166,7 @@ export async function runDeterministicScore(
 
   const loader = makeSupabaseLoader(supabase, {
     lenderId: opts.lenderId ?? null,      // null = canonical defaults (no lender policy yet)
+    orgId: opts.orgId ?? null,            // per-org threshold overrides
     versionId: opts.versionId,            // omit → loader resolves the active version
   });
 
@@ -229,6 +230,7 @@ export async function persistEngineResult(
         strong_band: m.bands.strong,
         adequate_band: m.bands.adequate,
         weak_band: m.bands.weak,
+        band_is_override: m.bands.band_is_override,
       },
       { onConflict: "deal_id,metric_id" }
     );

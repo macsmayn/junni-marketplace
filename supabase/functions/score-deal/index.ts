@@ -240,7 +240,7 @@ Deno.serve(async (req: Request) => {
     const { data: deal, error: dealError } = await supabase
       .from("deals")
       .select(
-        "title, industry, city, amount_requested, term_months, interest_rate, annual_revenue, ebitda, years_in_business, province, ai_summary, financials_status, existing_debt, existing_debt_service, use_of_funds, revolver_limit, revolver_drawn, enterprise_value"
+        "title, industry, city, amount_requested, term_months, interest_rate, annual_revenue, ebitda, years_in_business, province, ai_summary, financials_status, existing_debt, existing_debt_service, use_of_funds, revolver_limit, revolver_drawn, enterprise_value, org_id"
       )
       .eq("id", deal_id)
       .single();
@@ -1257,7 +1257,7 @@ HISTORICAL FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
           existing_debt_service: deal.existing_debt_service,
         },
         confirmedFinancials ?? [],
-        { lenderId: null }   // null = canonical defaults; wire lender policy later
+        { lenderId: null, orgId: deal.org_id ?? null }
       );
       if (engineResult) {
         console.log(`[score-deal] Engine score: ${engineResult.score.overall_score} ` +
