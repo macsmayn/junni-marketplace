@@ -897,6 +897,7 @@ const en: Record<string, string> = {
   "analysis.docRescoreBtn":         "Re-score",
   "analysis.docRescoreNotNow":      "Not now",
   "analysis.docNotAnalysed":        "Stored for reference — not currently analysed.",
+  "analysis.docViewError":          "Could not generate a view link for this document.",
 
   // DealAnalysis — re-score
   "analysis.rescoreBtn":            "Re-score",

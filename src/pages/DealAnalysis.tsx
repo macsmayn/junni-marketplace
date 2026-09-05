@@ -174,6 +174,7 @@ export default function DealAnalysis() {
   const [isRescoring, setIsRescoring] = useState(false);
   const [rescoreError, setRescoreError] = useState<string | null>(null);
   const [latestFinUpdatedAt, setLatestFinUpdatedAt] = useState<string | null>(null);
+  const [docViewError, setDocViewError] = useState<string | null>(null);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900);
@@ -972,8 +973,16 @@ export default function DealAnalysis() {
                         )}
                         <button
                           onClick={async () => {
-                            const { data: signed } = await supabase.storage.from("documents").createSignedUrl(doc.storage_path, 3600);
-                            if (signed?.signedUrl) window.open(signed.signedUrl, "_blank");
+                            setDocViewError(null);
+                            const { data: signed, error: signErr } = await supabase.storage
+                              .from("documents")
+                              .createSignedUrl(doc.storage_path, 3600);
+                            if (signErr || !signed?.signedUrl) {
+                              console.error("[DealAnalysis] createSignedUrl failed:", doc.storage_path, signErr);
+                              setDocViewError(t("analysis.docViewError"));
+                              return;
+                            }
+                            window.open(signed.signedUrl, "_blank");
                           }}
                           style={{
                             padding: "4px 10px", borderRadius: 6, border: "1px solid #E8E2D9",
@@ -984,6 +993,12 @@ export default function DealAnalysis() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+
+              {docViewError && (
+                <div style={{ background: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#B71C1C", marginBottom: 12 }}>
+                  {docViewError}
                 </div>
               )}
 

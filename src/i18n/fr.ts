@@ -897,6 +897,7 @@ const fr: Record<string, string> = {
   "analysis.docRescoreBtn":         "Réévaluer",
   "analysis.docRescoreNotNow":      "Pas maintenant",
   "analysis.docNotAnalysed":        "Conservé à titre de référence — non analysé actuellement.",
+  "analysis.docViewError":          "Impossible de générer un lien d'affichage pour ce document.",
 
   // DealAnalysis — re-score
   "analysis.rescoreBtn":            "Réévaluer",
