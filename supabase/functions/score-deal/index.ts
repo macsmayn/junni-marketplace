@@ -64,13 +64,123 @@ async function callJsonApi(
   return null;
 }
 
+// ── Score archiving ──────────────────────────────────────────────────────────
+// Copies the current credit_scores + score_metric_results rows into their
+// *_history tables before every re-score overwrites them.  Non-blocking: any
+// error is logged and the scoring run continues.
+async function archiveCurrentScore(
+  supabase: any,
+  deal_id: string,
+  deal: { executive_summary?: string | null; executive_summary_fr?: string | null },
+  archived_reason: string,
+): Promise<void> {
+  try {
+    // Fetch the full current credit_scores row.
+    const { data: cs } = await supabase
+      .from("credit_scores")
+      .select(
+        "overall_score, risk_label, summary, summary_fr, strengths, strengths_fr, " +
+        "risks, risks_fr, metrics, model_used, generated_at, framework_version_id, " +
+        "scoring_config_id, coverage_pct, critical_floor_applied, score_source, " +
+        "capped_reason, input_tokens, output_tokens, api_cost_cad"
+      )
+      .eq("deal_id", deal_id)
+      .maybeSingle();
+
+    if (!cs) return; // nothing to archive
+
+    // Determine the next version number.
+    const { data: maxRow } = await supabase
+      .from("credit_scores_history")
+      .select("version")
+      .eq("deal_id", deal_id)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const version = (maxRow?.version ?? 0) + 1;
+
+    // Insert into credit_scores_history.
+    const { error: csErr } = await supabase.from("credit_scores_history").insert({
+      deal_id,
+      version,
+      archived_at: new Date().toISOString(),
+      archived_reason,
+      overall_score:          cs.overall_score,
+      risk_label:             cs.risk_label,
+      summary:                cs.summary,
+      summary_fr:             cs.summary_fr,
+      strengths:              cs.strengths,
+      strengths_fr:           cs.strengths_fr,
+      risks:                  cs.risks,
+      risks_fr:               cs.risks_fr,
+      metrics:                cs.metrics,
+      model_used:             cs.model_used,
+      generated_at:           cs.generated_at,
+      framework_version_id:   cs.framework_version_id,
+      scoring_config_id:      cs.scoring_config_id,
+      coverage_pct:           cs.coverage_pct,
+      critical_floor_applied: cs.critical_floor_applied,
+      score_source:           cs.score_source,
+      capped_reason:          cs.capped_reason,
+      input_tokens:           cs.input_tokens,
+      output_tokens:          cs.output_tokens,
+      api_cost_cad:           cs.api_cost_cad,
+      executive_summary:      deal.executive_summary ?? null,
+      executive_summary_fr:   deal.executive_summary_fr ?? null,
+    });
+    if (csErr) {
+      console.error(`[score-deal] credit_scores_history insert error (deal_id: ${deal_id}):`, csErr);
+      return;
+    }
+
+    // Archive all current score_metric_results rows.
+    const { data: metricRows } = await supabase
+      .from("score_metric_results")
+      .select(
+        "metric_id, metric_name, tier, value, grade, status, counted, " +
+        "compute_detail, grade_reason, strong_band, adequate_band, weak_band, band_is_override"
+      )
+      .eq("deal_id", deal_id);
+
+    const rows: any[] = metricRows ?? [];
+    if (rows.length > 0) {
+      const archivedAt = new Date().toISOString();
+      const { error: smErr } = await supabase.from("score_metric_results_history").insert(
+        rows.map((r) => ({
+          deal_id,
+          version,
+          metric_id:       r.metric_id,
+          metric_name:     r.metric_name,
+          tier:            r.tier,
+          value:           r.value,
+          grade:           r.grade,
+          status:          r.status,
+          counted:         r.counted,
+          compute_detail:  r.compute_detail,
+          grade_reason:    r.grade_reason,
+          strong_band:     r.strong_band,
+          adequate_band:   r.adequate_band,
+          weak_band:       r.weak_band,
+          band_is_override: r.band_is_override,
+          archived_at:     archivedAt,
+        }))
+      );
+      if (smErr) console.error(`[score-deal] score_metric_results_history insert error (deal_id: ${deal_id}):`, smErr);
+    }
+
+    console.log(`[score-deal] Archived score v${version} for deal ${deal_id}: ${rows.length} metric row(s).`);
+  } catch (err) {
+    console.error(`[score-deal] archiveCurrentScore unhandled error (deal_id: ${deal_id}):`, err);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
   try {
-    const { deal_id, extract_only } = await req.json();
+    const { deal_id, extract_only, rescore_reason } = await req.json();
     const tokenAcc: Record<string, { input: number; output: number }> = {};
     if (!deal_id) {
       return new Response(JSON.stringify({ error: "deal_id is required" }), {
@@ -240,7 +350,7 @@ Deno.serve(async (req: Request) => {
     const { data: deal, error: dealError } = await supabase
       .from("deals")
       .select(
-        "title, industry, city, amount_requested, term_months, interest_rate, annual_revenue, ebitda, years_in_business, province, ai_summary, financials_status, existing_debt, existing_debt_service, use_of_funds, revolver_limit, revolver_drawn, enterprise_value, org_id"
+        "title, industry, city, amount_requested, term_months, interest_rate, annual_revenue, ebitda, years_in_business, province, ai_summary, financials_status, existing_debt, existing_debt_service, use_of_funds, revolver_limit, revolver_drawn, enterprise_value, org_id, executive_summary, executive_summary_fr"
       )
       .eq("id", deal_id)
       .single();
@@ -1418,6 +1528,16 @@ Each metric score is 0-100 where 100 is best.`;
     // Engine owns the number when it ran; LLM owns the narrative.
     const finalScore = engineResult ? engineResult.score.overall_score : scoring.overall_score;
     const finalRisk  = engineResult ? engineResult.score.risk_label     : scoring.risk_label;
+
+    // Archive the existing score (if any) before either write path overwrites it.
+    if (isRescore) {
+      await archiveCurrentScore(
+        supabase,
+        deal_id,
+        deal,
+        rescore_reason ?? "Re-scored",
+      );
+    }
 
     if (engineResult) {
       // Engine path: persist deterministic score + per-metric rationale,
