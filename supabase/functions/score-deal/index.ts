@@ -1759,6 +1759,25 @@ ${execParts.join("\n\n")}`;
     }
     // ── End token usage and API cost tracking ─────────────────────────────────
 
+    // ── Stamp generated_at to end of run ─────────────────────────────────────
+    // Must be the LAST database write before returning. The run writes back to
+    // deals (ai_score, ai_summary, executive_summary) and extracted_financials,
+    // both of which have updated_at triggers. Stamping generated_at here ensures
+    // it is always the newest timestamp, so the stale-score banner does not fire
+    // immediately after a successful score.
+    {
+      const { error: genAtErr } = await supabase
+        .from("credit_scores")
+        .update({ generated_at: new Date().toISOString() })
+        .eq("deal_id", deal_id);
+      if (genAtErr) {
+        console.error("[score-deal] generated_at end-of-run stamp failed:", genAtErr);
+      } else {
+        console.log("[score-deal] generated_at stamped at end of run.");
+      }
+    }
+    // ── End generated_at stamp ────────────────────────────────────────────────
+
     return new Response(
       JSON.stringify({
         deal_id,

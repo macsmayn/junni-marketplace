@@ -974,15 +974,18 @@ export default function DealAnalysis() {
                         <button
                           onClick={async () => {
                             setDocViewError(null);
+                            const win = window.open("", "_blank");
+                            if (!win) { setDocViewError(t("analysis.docViewError")); return; }
                             const { data: signed, error: signErr } = await supabase.storage
                               .from("documents")
                               .createSignedUrl(doc.storage_path, 3600);
                             if (signErr || !signed?.signedUrl) {
                               console.error("[DealAnalysis] createSignedUrl failed:", doc.storage_path, signErr);
+                              win.close();
                               setDocViewError(t("analysis.docViewError"));
                               return;
                             }
-                            window.open(signed.signedUrl, "_blank");
+                            win.location.href = signed.signedUrl;
                           }}
                           style={{
                             padding: "4px 10px", borderRadius: 6, border: "1px solid #E8E2D9",
