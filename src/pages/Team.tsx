@@ -49,6 +49,9 @@ export default function Team() {
   const [revokingId, setRevokingId]   = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
 
+  const [settingRoleFor, setSettingRoleFor] = useState<string | null>(null);
+  const [roleError, setRoleError]           = useState<string | null>(null);
+
   async function loadTeam() {
     const { data, httpStatus } = await invokeFunctionWithDetails("invite-member", { action: "list" });
     if (httpStatus >= 400 || !data) {
@@ -153,6 +156,22 @@ export default function Team() {
     await loadTeam();
   }
 
+  async function handleSetRole(userId: string, newRole: string) {
+    setRoleError(null);
+    setSettingRoleFor(userId);
+    const { httpStatus } = await invokeFunctionWithDetails("invite-member", {
+      action: "set_role",
+      user_id: userId,
+      org_role: newRole,
+    });
+    setSettingRoleFor(null);
+    if (httpStatus >= 400) {
+      setRoleError("team.setRoleError");
+      return;
+    }
+    await loadTeam();
+  }
+
   function fmtDate(s: string): string {
     return new Date(s).toLocaleDateString(dateLocale, {
       year: "numeric",
@@ -225,6 +244,11 @@ export default function Team() {
         {/* ── Team members ──────────────────────────────────────────── */}
         <div style={cardStyle}>
           <h2 style={h2Style}>{t("team.membersSection")}</h2>
+          {roleError && (
+            <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", color: RED, fontSize: 13, marginBottom: 16 }}>
+              {t(roleError)}
+            </div>
+          )}
           {members.length === 0 ? (
             <div style={{ color: MUTED, fontSize: 14 }}>{t("team.noMembers")}</div>
           ) : (
@@ -238,28 +262,66 @@ export default function Team() {
                   </tr>
                 </thead>
                 <tbody>
-                  {members.map((m, i) => (
-                    <tr key={m.id}>
-                      <td style={{ ...tdStyle, fontWeight: 600, borderBottom: i < members.length - 1 ? `1px solid ${BORDER}` : "none" }}>
-                        {m.full_name || m.email}
-                      </td>
-                      <td style={{ ...tdStyle, color: MUTED, borderBottom: i < members.length - 1 ? `1px solid ${BORDER}` : "none" }}>
-                        {m.email}
-                      </td>
-                      <td style={{ ...tdStyle, borderBottom: i < members.length - 1 ? `1px solid ${BORDER}` : "none" }}>
+                  {members.map((m, i) => {
+                    const roleBadge = (role: string) => {
+                      const isOwnerRole  = role === "owner";
+                      const isCreditAdmin = role === "credit_admin";
+                      return (
                         <span style={{
                           display: "inline-block", fontSize: 11, fontWeight: 700,
                           padding: "3px 10px", borderRadius: 20,
-                          background: m.org_role === "owner" ? "rgba(212,148,10,0.12)" : "rgba(27,43,75,0.07)",
-                          color: m.org_role === "owner" ? GOLD : NAVY,
+                          background: isOwnerRole
+                            ? "rgba(212,148,10,0.12)"
+                            : isCreditAdmin
+                            ? "rgba(5,150,105,0.10)"
+                            : "rgba(27,43,75,0.07)",
+                          color: isOwnerRole ? GOLD : isCreditAdmin ? GREEN : NAVY,
                         }}>
-                          {m.org_role === "owner" ? t("team.roleOwner") : t("team.roleMember")}
+                          {isOwnerRole ? t("team.roleOwner") : isCreditAdmin ? t("team.roleCreditAdmin") : t("team.roleMember")}
                         </span>
-                      </td>
-                    </tr>
-                  ))}
+                      );
+                    };
+                    const canEditRole = isOwner && m.org_role !== "owner";
+                    const isChanging  = settingRoleFor === m.id;
+                    return (
+                      <tr key={m.id}>
+                        <td style={{ ...tdStyle, fontWeight: 600, borderBottom: i < members.length - 1 ? `1px solid ${BORDER}` : "none" }}>
+                          {m.full_name || m.email}
+                        </td>
+                        <td style={{ ...tdStyle, color: MUTED, borderBottom: i < members.length - 1 ? `1px solid ${BORDER}` : "none" }}>
+                          {m.email}
+                        </td>
+                        <td style={{ ...tdStyle, borderBottom: i < members.length - 1 ? `1px solid ${BORDER}` : "none" }}>
+                          {canEditRole ? (
+                            <select
+                              value={m.org_role}
+                              disabled={settingRoleFor !== null}
+                              onChange={e => handleSetRole(m.id, e.target.value)}
+                              style={{
+                                fontSize: 12, fontWeight: 600,
+                                padding: "4px 8px", borderRadius: 7,
+                                border: `1px solid ${BORDER}`,
+                                fontFamily: "Inter, sans-serif",
+                                color: NAVY, background: "#fff",
+                                cursor: settingRoleFor !== null ? "not-allowed" : "pointer",
+                                opacity: isChanging ? 0.5 : 1,
+                              }}
+                            >
+                              <option value="member">{t("team.roleMember")}</option>
+                              <option value="credit_admin">{t("team.roleCreditAdmin")}</option>
+                            </select>
+                          ) : (
+                            roleBadge(m.org_role)
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+              <div style={{ fontSize: 12, color: MUTED, marginTop: 12 }}>
+                {t("team.creditAdminNote")}
+              </div>
             </div>
           )}
         </div>

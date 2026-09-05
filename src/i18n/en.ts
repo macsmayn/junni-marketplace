@@ -836,6 +836,9 @@ const en: Record<string, string> = {
   "team.errorNoSubscription":  "An active subscription is required to invite members.",
   "team.goBilling":            "Go to Billing →",
   "team.errorGeneric":         "Something went wrong. Please try again.",
+  "team.roleCreditAdmin":      "Credit admin",
+  "team.creditAdminNote":      "Credit admins can update the organization's scoring thresholds.",
+  "team.setRoleError":         "Could not update role. Please try again.",
 
   // Billing page
   "billing.title":             "Billing",

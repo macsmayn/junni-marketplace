@@ -388,9 +388,87 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // ACTION: set_role
+    // ══════════════════════════════════════════════════════════════════════════
+    if (action === "set_role") {
+      if (callerOrgRole !== "owner") {
+        return new Response(JSON.stringify({ error: "Only the organization owner can change member roles." }), {
+          status: 403,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      const targetUserId = typeof body.user_id === "string" ? body.user_id.trim() : "";
+      const newRole = typeof body.org_role === "string" ? body.org_role.trim() : "";
+
+      if (!targetUserId) {
+        return new Response(JSON.stringify({ error: "user_id is required." }), {
+          status: 400,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!["credit_admin", "member"].includes(newRole)) {
+        return new Response(JSON.stringify({ error: "org_role must be 'credit_admin' or 'member'. Ownership transfer is not supported." }), {
+          status: 400,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      if (targetUserId === callerUser.id) {
+        return new Response(JSON.stringify({ error: "An owner cannot change their own role." }), {
+          status: 400,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: targetMembership, error: targetErr } = await supabase
+        .from("organization_members")
+        .select("user_id")
+        .eq("org_id", orgId)
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+
+      if (targetErr) {
+        console.error("[invite-member] set_role: membership lookup failed:", targetErr);
+        return new Response(JSON.stringify({ error: "Internal error" }), {
+          status: 500,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!targetMembership) {
+        return new Response(JSON.stringify({ error: "User is not a member of this organization." }), {
+          status: 404,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error: updateErr } = await supabase
+        .from("organization_members")
+        .update({ org_role: newRole })
+        .eq("org_id", orgId)
+        .eq("user_id", targetUserId);
+
+      if (updateErr) {
+        console.error("[invite-member] set_role: update failed:", updateErr);
+        return new Response(JSON.stringify({ error: "Internal error" }), {
+          status: 500,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      console.log(`[invite-member] set_role: user ${targetUserId} → ${newRole} in org ${orgId}`);
+      return new Response(
+        JSON.stringify({ updated: true }),
+        { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+      );
+    }
+
     // ── Unknown action ─────────────────────────────────────────────────────────
     return new Response(
-      JSON.stringify({ error: `Unknown action "${action}". Valid actions: invite, revoke, list.` }),
+      JSON.stringify({ error: `Unknown action "${action}". Valid actions: invite, revoke, list, set_role.` }),
       { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
     );
 

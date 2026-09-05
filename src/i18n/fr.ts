@@ -836,6 +836,9 @@ const fr: Record<string, string> = {
   "team.errorNoSubscription":  "Un abonnement actif est requis pour inviter des membres.",
   "team.goBilling":            "Accéder à la facturation →",
   "team.errorGeneric":         "Une erreur s'est produite. Veuillez réessayer.",
+  "team.roleCreditAdmin":      "Administrateur crédit",
+  "team.creditAdminNote":      "Les administrateurs crédit peuvent modifier les seuils de notation de l'organisation.",
+  "team.setRoleError":         "Impossible de modifier le rôle. Veuillez réessayer.",
 
   // Billing page
   "billing.title":             "Facturation",
