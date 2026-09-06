@@ -214,6 +214,8 @@ export async function persistEngineResult(
   if (dErr) console.error("[score-deal] deals.ai_score update (engine) error:", dErr);
 
   // 3) per-metric rationale → score_metric_results (drives the explain bubbles)
+  //    Upsert current metrics first, then remove stale rows (disabled / no longer
+  //    applicable) so the table always matches exactly what the engine processed.
   for (const m of engine.metrics) {
     const { error: smErr } = await supabase.from("score_metric_results").upsert(
       {
@@ -236,5 +238,25 @@ export async function persistEngineResult(
       { onConflict: "deal_id,metric_id" }
     );
     if (smErr) console.error(`[score-deal] score_metric_results upsert error (${m.name}):`, smErr);
+  }
+
+  // 4) Remove stale rows — metrics disabled or no longer in this industry's framework.
+  //    Guard: if the engine returned no metrics at all, skip the delete and log an error
+  //    rather than wiping every row for the deal.
+  if (engine.metrics.length === 0) {
+    console.error(`[score-deal] persistEngineResult: engine returned 0 metrics for deal ${deal_id} — skipping stale-row cleanup to avoid data loss`);
+  } else {
+    const currentMetricIds = engine.metrics.map((m) => m.metric_id);
+    const { data: deleted, error: delErr } = await supabase
+      .from("score_metric_results")
+      .delete()
+      .eq("deal_id", deal_id)
+      .not("metric_id", "in", `(${currentMetricIds.join(",")})`)
+      .select("metric_id");
+    if (delErr) {
+      console.error(`[score-deal] score_metric_results stale-row delete error for deal ${deal_id}:`, delErr);
+    } else if (deleted && deleted.length > 0) {
+      console.log(`[score-deal] removed ${deleted.length} stale score_metric_results row(s) for deal ${deal_id}:`, deleted.map((r: any) => r.metric_id));
+    }
   }
 }
