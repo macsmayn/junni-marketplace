@@ -179,8 +179,12 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      // One query for metrics + canonical bands, one for org overrides.
-      const [{ data: metricRows, error: mErr }, { data: overrideRows, error: oErr }] = await Promise.all([
+      // One query for metrics + canonical bands, one for threshold overrides, one for policy overrides.
+      const [
+        { data: metricRows, error: mErr },
+        { data: overrideRows, error: oErr },
+        { data: policyRows, error: pErr },
+      ] = await Promise.all([
         supabase
           .from("metrics")
           .select("id, metric_name, importance_tier, unit, metric_threshold_bands ( strong, adequate, weak, very_strong, very_weak )")
@@ -188,6 +192,10 @@ Deno.serve(async (req: Request) => {
         supabase
           .from("lender_threshold_overrides")
           .select("metric_id, strong, adequate, weak, very_strong, very_weak, version")
+          .eq("org_id", orgId),
+        supabase
+          .from("lender_metric_overrides")
+          .select("metric_id, importance_tier_override, enabled")
           .eq("org_id", orgId),
       ]);
 
@@ -205,11 +213,22 @@ Deno.serve(async (req: Request) => {
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
         });
       }
+      if (pErr) {
+        console.error("[set-threshold] list: lender_metric_overrides query failed:", pErr);
+        return new Response(JSON.stringify({ error: "Internal error" }), {
+          status: 500,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
 
       // Index overrides by metric_id for O(1) join.
       const overrideByMetricId = new Map<string, any>();
       for (const o of overrideRows ?? []) {
         overrideByMetricId.set(o.metric_id, o);
+      }
+      const policyByMetricId = new Map<string, any>();
+      for (const p of policyRows ?? []) {
+        policyByMetricId.set(p.metric_id, p);
       }
 
       const metrics = (metricRows ?? []).map((m: any) => {
@@ -217,11 +236,14 @@ Deno.serve(async (req: Request) => {
           ? m.metric_threshold_bands[0]
           : m.metric_threshold_bands;
         const override = overrideByMetricId.get(m.id) ?? null;
+        const policy   = policyByMetricId.get(m.id)   ?? null;
         return {
-          metric_id:       m.id,
-          metric_name:     m.metric_name,
-          importance_tier: m.importance_tier,
-          unit:            m.unit ?? null,
+          metric_id:                m.id,
+          metric_name:              m.metric_name,
+          importance_tier:          m.importance_tier,
+          importance_tier_override: policy?.importance_tier_override ?? null,
+          enabled:                  policy?.enabled ?? true,
+          unit:                     m.unit ?? null,
           canonical: {
             strong:      canon?.strong      ?? null,
             adequate:    canon?.adequate    ?? null,
@@ -532,9 +554,286 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // ACTION: set_metric
+    // OWNER or CREDIT_ADMIN only. Upserts a lender_metric_overrides row
+    // (tier re-grade + enable/disable) and writes to metric_override_log.
+    // ══════════════════════════════════════════════════════════════════════════
+    if (action === "set_metric") {
+      if (callerOrgRole !== "owner" && callerOrgRole !== "credit_admin") {
+        return new Response(JSON.stringify({ error: "Only an owner or credit admin can set metric policy overrides." }), {
+          status: 403,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      const metricId = typeof body.metric_id === "string" ? body.metric_id.trim() : "";
+      if (!metricId) {
+        return new Response(JSON.stringify({ error: "metric_id is required." }), {
+          status: 400,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+      if (reason.length < 10) {
+        return new Response(JSON.stringify({
+          error: "A written justification is required and is kept permanently. Please provide at least 10 characters.",
+        }), {
+          status: 400,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      // tier: null/undefined → inherit canonical; valid string → override.
+      let newTier: string | null;
+      if (body.tier === null || body.tier === undefined) {
+        newTier = null;
+      } else if (
+        typeof body.tier === "string" &&
+        ["Critical", "Important", "Supplementary", "Optional"].includes(body.tier.trim())
+      ) {
+        newTier = body.tier.trim();
+      } else {
+        return new Response(JSON.stringify({
+          error: "'tier' must be one of 'Critical', 'Important', 'Supplementary', 'Optional', or null.",
+        }), {
+          status: 400,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      if (typeof body.enabled !== "boolean") {
+        return new Response(JSON.stringify({ error: "'enabled' must be a boolean." }), {
+          status: 400,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+      const newEnabled: boolean = body.enabled as boolean;
+
+      // Read existing override to capture old values for the log and the next version.
+      const { data: existingOverride, error: existingErr } = await supabase
+        .from("lender_metric_overrides")
+        .select("importance_tier_override, enabled, version")
+        .eq("org_id", orgId)
+        .eq("metric_id", metricId)
+        .maybeSingle();
+
+      if (existingErr) {
+        console.error("[set-threshold] set_metric: existing override lookup failed:", existingErr);
+        return new Response(JSON.stringify({ error: "Internal error" }), {
+          status: 500,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      // No existing row → read canonical tier from metrics for the log's old_tier.
+      let oldTier: string | null = null;
+      let oldEnabled: boolean = true;
+
+      if (existingOverride) {
+        oldTier    = existingOverride.importance_tier_override ?? null;
+        oldEnabled = existingOverride.enabled;
+      } else {
+        const { data: canonRow, error: canonErr } = await supabase
+          .from("metrics")
+          .select("importance_tier")
+          .eq("id", metricId)
+          .maybeSingle();
+        if (canonErr) {
+          console.error("[set-threshold] set_metric: canonical tier lookup failed:", canonErr);
+          return new Response(JSON.stringify({ error: "Internal error" }), {
+            status: 500,
+            headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+          });
+        }
+        oldTier    = canonRow?.importance_tier ?? null;
+        oldEnabled = true;
+      }
+
+      const nextVersion = (existingOverride?.version ?? 0) + 1;
+
+      // Upsert the policy override row.
+      const { error: upsertErr } = await supabase
+        .from("lender_metric_overrides")
+        .upsert(
+          {
+            org_id:                   orgId,
+            metric_id:                metricId,
+            importance_tier_override: newTier,
+            enabled:                  newEnabled,
+            version:                  nextVersion,
+            created_by:               userId,
+          },
+          { onConflict: "org_id,metric_id" }
+        );
+
+      if (upsertErr) {
+        console.error("[set-threshold] set_metric: upsert failed:", upsertErr);
+        return new Response(JSON.stringify({ error: "Internal error" }), {
+          status: 500,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      // Write the audit log only after the upsert succeeded.
+      const { error: logErr } = await supabase
+        .from("metric_override_log")
+        .insert({
+          org_id:      orgId,
+          metric_id:   metricId,
+          old_tier:    oldTier,
+          new_tier:    newTier,
+          old_enabled: oldEnabled,
+          new_enabled: newEnabled,
+          changed_by:  userId,
+          changed_at:  new Date().toISOString(),
+          reason,
+        });
+
+      if (logErr) {
+        console.error(`[set-threshold] set_metric: audit log insert failed for org ${orgId} metric ${metricId}:`, logErr);
+        // Roll back: restore the previous state.
+        if (existingOverride) {
+          await supabase.from("lender_metric_overrides").upsert(
+            {
+              org_id:                   orgId,
+              metric_id:                metricId,
+              importance_tier_override: existingOverride.importance_tier_override ?? null,
+              enabled:                  existingOverride.enabled,
+              version:                  existingOverride.version,
+              created_by:               userId,
+            },
+            { onConflict: "org_id,metric_id" }
+          );
+        } else {
+          await supabase.from("lender_metric_overrides").delete()
+            .eq("org_id", orgId).eq("metric_id", metricId);
+        }
+        return new Response(
+          JSON.stringify({ error: "The change could not be recorded and was not applied." }),
+          { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+        );
+      }
+
+      console.log(`[set-threshold] set_metric: metric ${metricId} → tier=${newTier} enabled=${newEnabled} v${nextVersion} for org ${orgId} by user ${userId}`);
+      return new Response(
+        JSON.stringify({ updated: true, version: nextVersion }),
+        { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // ACTION: reset_metric
+    // OWNER or CREDIT_ADMIN only. Deletes the policy override row and logs.
+    // ══════════════════════════════════════════════════════════════════════════
+    if (action === "reset_metric") {
+      if (callerOrgRole !== "owner" && callerOrgRole !== "credit_admin") {
+        return new Response(JSON.stringify({ error: "Only an owner or credit admin can reset metric policy overrides." }), {
+          status: 403,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      const metricId = typeof body.metric_id === "string" ? body.metric_id.trim() : "";
+      if (!metricId) {
+        return new Response(JSON.stringify({ error: "metric_id is required." }), {
+          status: 400,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+      if (reason.length < 10) {
+        return new Response(JSON.stringify({
+          error: "A written justification is required and is kept permanently. Please provide at least 10 characters.",
+        }), {
+          status: 400,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      // Read existing override before deleting so we can log the old values.
+      const { data: existingOverride, error: existingErr } = await supabase
+        .from("lender_metric_overrides")
+        .select("importance_tier_override, enabled")
+        .eq("org_id", orgId)
+        .eq("metric_id", metricId)
+        .maybeSingle();
+
+      if (existingErr) {
+        console.error("[set-threshold] reset_metric: existing override lookup failed:", existingErr);
+        return new Response(JSON.stringify({ error: "Internal error" }), {
+          status: 500,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!existingOverride) {
+        // Nothing to delete — return reset: false without touching the log.
+        return new Response(
+          JSON.stringify({ reset: false }),
+          { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+        );
+      }
+
+      // Delete the override row.
+      const { error: deleteErr } = await supabase
+        .from("lender_metric_overrides")
+        .delete()
+        .eq("org_id", orgId)
+        .eq("metric_id", metricId);
+
+      if (deleteErr) {
+        console.error("[set-threshold] reset_metric: delete failed:", deleteErr);
+        return new Response(JSON.stringify({ error: "Internal error" }), {
+          status: 500,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
+
+      // Write the audit log only after the delete succeeded.
+      // new_tier = null and new_enabled = true represent the canonical (unoverridden) state.
+      const { error: logErr } = await supabase
+        .from("metric_override_log")
+        .insert({
+          org_id:      orgId,
+          metric_id:   metricId,
+          old_tier:    existingOverride.importance_tier_override ?? null,
+          new_tier:    null,
+          old_enabled: existingOverride.enabled,
+          new_enabled: true,
+          changed_by:  userId,
+          changed_at:  new Date().toISOString(),
+          reason,
+        });
+
+      if (logErr) {
+        console.error(`[set-threshold] reset_metric: audit log insert failed for org ${orgId} metric ${metricId}:`, logErr);
+        // Roll back: re-insert the deleted row.
+        await supabase.from("lender_metric_overrides").insert({
+          org_id:                   orgId,
+          metric_id:                metricId,
+          importance_tier_override: existingOverride.importance_tier_override ?? null,
+          enabled:                  existingOverride.enabled,
+          created_by:               userId,
+        });
+        return new Response(
+          JSON.stringify({ error: "The change could not be recorded and was not applied." }),
+          { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+        );
+      }
+
+      console.log(`[set-threshold] reset_metric: metric ${metricId} removed for org ${orgId} by user ${userId}`);
+      return new Response(
+        JSON.stringify({ reset: true }),
+        { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+      );
+    }
+
     // ── Unknown action ─────────────────────────────────────────────────────────
     return new Response(
-      JSON.stringify({ error: `Unknown action "${action}". Valid actions: list, set, reset.` }),
+      JSON.stringify({ error: `Unknown action "${action}". Valid actions: list, set, reset, set_metric, reset_metric.` }),
       { status: 400, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
     );
 
