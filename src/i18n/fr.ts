@@ -961,6 +961,17 @@ const fr: Record<string, string> = {
   "thresholds.tierOptional":      "Optionnel",
   "thresholds.defaultPlaceholder": "Défaut Junni",
   "thresholds.bandFormatHint":    "Formats acceptés : une comparaison (p. ex. \"≤ 1,5x\" ou \"> 4,0 %\") ou une plage (p. ex. \"1,6x – 4,0x\"). Le texte sans chiffres est aussi accepté.",
+  "thresholds.colTier":           "Niveau",
+  "thresholds.colEnabled":        "Noté",
+  "thresholds.tierJunniDefault":  "Par défaut Junni",
+  "thresholds.customTier":        "Niveau personnalisé",
+  "thresholds.resetBands":        "Réinitialiser les seuils",
+  "thresholds.resetTier":         "Réinitialiser le niveau",
+  "thresholds.resetBoth":         "Tout réinitialiser",
+  "thresholds.setMetricError":    "Impossible d'enregistrer les paramètres. Veuillez réessayer.",
+  "thresholds.enabledTitle":      "Cet indicateur est inclus dans le calcul",
+  "thresholds.disabledTitle":     "Cet indicateur est exclu du calcul",
+  "thresholds.tierInfo":          "Le niveau d'un indicateur détermine son influence sur la note — Critique a le plus grand poids, Optionnel le moins. Désactiver un indicateur le retire du calcul, du taux de couverture et du récit de l'analyste.",
 
   // Custom threshold override indicators
   "metric.customThreshold":           "Seuil personnalisé",

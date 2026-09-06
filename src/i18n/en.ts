@@ -961,6 +961,17 @@ const en: Record<string, string> = {
   "thresholds.tierOptional":      "Optional",
   "thresholds.defaultPlaceholder": "Junni default",
   "thresholds.bandFormatHint":    "Accepted formats: a comparison (e.g. \"≤ 1.5x\" or \"> 4.0%\") or a range (e.g. \"1.6x – 4.0x\"). Text without digits is also accepted.",
+  "thresholds.colTier":           "Tier",
+  "thresholds.colEnabled":        "Scored",
+  "thresholds.tierJunniDefault":  "Junni default",
+  "thresholds.customTier":        "Custom tier",
+  "thresholds.resetBands":        "Reset bands",
+  "thresholds.resetTier":         "Reset tier",
+  "thresholds.resetBoth":         "Reset all",
+  "thresholds.setMetricError":    "Could not save metric settings. Please try again.",
+  "thresholds.enabledTitle":      "This metric is included in scoring",
+  "thresholds.disabledTitle":     "This metric is excluded from scoring",
+  "thresholds.tierInfo":          "A metric's tier controls how much it influences the score — Critical carries the most weight, Optional the least. Disabling a metric removes it from scoring, the coverage percentage, and the analyst narrative.",
 
   // Custom threshold override indicators
   "metric.customThreshold":           "Custom threshold",
