@@ -84,6 +84,11 @@ export default function Thresholds() {
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
 
+  // rowErrors values are either i18n keys ("thresholds.*") or raw server messages.
+  function displayRowError(err: string): string {
+    return err.startsWith("thresholds.") ? t(err) : err;
+  }
+
   // Reason modal
   const [reasonModal, setReasonModal]   = useState<{ metricId: string; action: "set" | "reset" } | null>(null);
   const [reasonText, setReasonText]     = useState("");
@@ -256,7 +261,7 @@ export default function Thresholds() {
       setSaving(prev => { const s = new Set(prev); s.add(metricId); return s; });
       closeReason();
 
-      const { httpStatus } = await invokeFunctionWithDetails("set-threshold", {
+      const { data, httpStatus } = await invokeFunctionWithDetails("set-threshold", {
         action: "set",
         metric_id: metricId,
         strong:   edit.strong   || null,
@@ -269,7 +274,8 @@ export default function Thresholds() {
       setReasonSaving(false);
 
       if (httpStatus >= 400) {
-        setRowErrors(prev => ({ ...prev, [metricId]: "thresholds.saveError" }));
+        const errMsg = httpStatus === 400 && data?.error ? data.error : "thresholds.saveError";
+        setRowErrors(prev => ({ ...prev, [metricId]: errMsg }));
         return;
       }
       await refreshMetric(metricId, selectedIndustry);
@@ -277,7 +283,7 @@ export default function Thresholds() {
       setSaving(prev => { const s = new Set(prev); s.add(metricId); return s; });
       closeReason();
 
-      const { httpStatus } = await invokeFunctionWithDetails("set-threshold", {
+      const { data, httpStatus } = await invokeFunctionWithDetails("set-threshold", {
         action: "reset",
         metric_id: metricId,
         reason: reasonText.trim(),
@@ -287,7 +293,8 @@ export default function Thresholds() {
       setReasonSaving(false);
 
       if (httpStatus >= 400) {
-        setRowErrors(prev => ({ ...prev, [metricId]: "thresholds.resetError" }));
+        const errMsg = httpStatus === 400 && data?.error ? data.error : "thresholds.resetError";
+        setRowErrors(prev => ({ ...prev, [metricId]: errMsg }));
         return;
       }
       await refreshMetric(metricId, selectedIndustry);
@@ -409,6 +416,12 @@ export default function Thresholds() {
         </div>
 
         {/* ── Metrics ───────────────────────────────────────────────────── */}
+        {canEdit && !metricsLoading && metrics.length > 0 && (
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 16 }}>
+            {t("thresholds.bandFormatHint")}
+          </div>
+        )}
+
         {metricsLoading ? (
           <div style={{ color: MUTED, fontSize: 14, padding: "40px 0" }}>{t("thresholds.loading")}</div>
         ) : metrics.length === 0 ? (
@@ -573,7 +586,7 @@ export default function Thresholds() {
                           {rowError && (
                             <tr key={`${m.metric_id}-err`}>
                               <td colSpan={5} style={{ padding: "4px 14px 12px", borderBottom: rowBorderStyle }}>
-                                <span style={{ fontSize: 12, color: RED }}>{t(rowError)}</span>
+                                <span style={{ fontSize: 12, color: RED }}>{displayRowError(rowError)}</span>
                               </td>
                             </tr>
                           )}

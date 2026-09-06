@@ -1,5 +1,39 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// ── Band format validator ───────────────────────────────────────────────────
+// Ported from score-deal/bandParser.ts so validation and scoring agree exactly.
+// Returns "qualitative" | "op" | "range" | "bare" | null (null = empty/inherit).
+// "bare" (a lone number with no operator) is the only shape the engine cannot grade.
+function parseBandKind(bandText: string | null | undefined): string | null {
+  if (!bandText || typeof bandText !== "string") return null;
+  const t = bandText.trim();
+  if (!/\d/.test(t)) return "qualitative";
+
+  const s = t
+    .replace(/≤/g, "<=").replace(/≥/g, ">=").replace(/[–—]/g, "-")
+    .replace(/\([^)]*\)/g, "").replace(/%/g, "")
+    .replace(/\b(days|months|day|mo|yrs?|years?|pts|bps)\b/gi, "")
+    .replace(/(\d)\s*x\b/gi, "$1").trim();
+
+  const nums = (s.match(/-?\d+\.?\d*/g) || []).map(Number);
+  if (nums.length === 0) return "qualitative";
+
+  // Range: two numbers with a dash following a digit (lookbehind prevents "-5" from matching).
+  const rangeMatch = s.match(/(-?\d+\.?\d*)\s*(?<=\d)\s*-\s*(\d+\.?\d*)/);
+  if (rangeMatch && nums.length >= 2) return "range";
+
+  // Single comparison operator.
+  const opMatch = s.match(/(<=|>=|<|>)\s*(-?\d+\.?\d*)/);
+  if (opMatch) return "op";
+
+  // Bare number — ambiguous; engine produces Unparseable.
+  return "bare";
+}
+
+const BAND_FORMAT_MSG =
+  `Accepted formats: a comparison such as "≤ 1.5x" or "> 4.0%", ` +
+  `or a range such as "1.6x – 4.0x". Text with no digits (e.g. "Positive") is also accepted.`;
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-auth0-token",
@@ -253,6 +287,19 @@ Deno.serve(async (req: Request) => {
           status: 400,
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
         });
+      }
+
+      // Validate band format: the engine cannot grade bare numbers (no operator, no range).
+      // Port of parseBandValue from score-deal/bandParser.ts — must stay in sync.
+      for (const [label, val] of [["strong", newStrong], ["adequate", newAdequate], ["weak", newWeak]] as [string, string | null][]) {
+        if (val !== null && parseBandKind(val) === "bare") {
+          return new Response(JSON.stringify({
+            error: `'${label}' band "${val}" cannot be parsed by the scoring engine. ${BAND_FORMAT_MSG}`,
+          }), {
+            status: 400,
+            headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+          });
+        }
       }
 
       // Read the existing override (if any) to capture old values for the log,

@@ -960,6 +960,7 @@ const en: Record<string, string> = {
   "thresholds.tierSupplementary": "Supplementary",
   "thresholds.tierOptional":      "Optional",
   "thresholds.defaultPlaceholder": "Junni default",
+  "thresholds.bandFormatHint":    "Accepted formats: a comparison (e.g. \"≤ 1.5x\" or \"> 4.0%\") or a range (e.g. \"1.6x – 4.0x\"). Text without digits is also accepted.",
 
   // Custom threshold override indicators
   "metric.customThreshold":           "Custom threshold",
