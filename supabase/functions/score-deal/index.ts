@@ -1189,6 +1189,18 @@ ${translationQueue.map((q, i) => `${i + 1}. ${q.text}`).join("\n")}`;
         }
       }
 
+      // Current facility figures: lender-entered authoritative values shared by
+      // Phase 2d Job B and the main scoring prompt.
+      const fmtN = (n: number | null) => n != null ? `$${Number(n).toLocaleString()}` : "N/A";
+      const currentFacilityLines: string[] = [];
+      if (deal.revolver_limit        != null) currentFacilityLines.push(`- Revolver limit: ${fmtN(deal.revolver_limit)}`);
+      if (deal.revolver_drawn        != null) currentFacilityLines.push(`- Revolver drawn: ${fmtN(deal.revolver_drawn)}`);
+      if (deal.existing_debt         != null) currentFacilityLines.push(`- Existing debt (total): ${fmtN(deal.existing_debt)}`);
+      if (deal.existing_debt_service != null) currentFacilityLines.push(`- Existing annual debt service: ${fmtN(deal.existing_debt_service)}`);
+      const currentFacilitiesSection = currentFacilityLines.length > 0
+        ? `CURRENT FACILITIES AS ENTERED AND CONFIRMED BY THE LENDER (authoritative):\n${currentFacilityLines.join("\n")}`
+        : "";
+
       // ── Phase 2d Job B — AI qualitative notes analysis
       const hasNotes = confirmedFinancials.some(row =>
         (row.notes_summary && String(row.notes_summary).trim()) ||
@@ -1200,16 +1212,7 @@ ${translationQueue.map((q, i) => `${i + 1}. ${q.text}`).join("\n")}`;
         console.log("[score-deal] Phase 2d Job B skipped (no notes to analyze).");
       } else {
         try {
-          // Build current-facility context from lender-entered deal columns (authoritative source)
-          const fmtN = (n: number | null) => n != null ? `$${Number(n).toLocaleString()}` : "N/A";
-          const currentFacilityLines: string[] = [];
-          if (deal.revolver_limit        != null) currentFacilityLines.push(`- Revolver limit: ${fmtN(deal.revolver_limit)}`);
-          if (deal.revolver_drawn        != null) currentFacilityLines.push(`- Revolver drawn: ${fmtN(deal.revolver_drawn)}`);
-          if (deal.existing_debt         != null) currentFacilityLines.push(`- Existing debt (total): ${fmtN(deal.existing_debt)}`);
-          if (deal.existing_debt_service != null) currentFacilityLines.push(`- Existing annual debt service: ${fmtN(deal.existing_debt_service)}`);
-          const currentFacilitiesSection = currentFacilityLines.length > 0
-            ? `CURRENT FACILITIES AS ENTERED AND CONFIRMED BY THE LENDER (authoritative):\n${currentFacilityLines.join("\n")}`
-            : "";
+          // fmtN and currentFacilitiesSection are built at outer scope above Phase 2d Job B.
 
           // Build historical financial context across all confirmed years
           let financialContext = "";
@@ -1485,7 +1488,7 @@ DEAL DETAILS:
 - Annual Revenue: $${Number(deal.annual_revenue ?? 0).toLocaleString()} CAD
 - EBITDA: $${Number(deal.ebitda ?? 0).toLocaleString()} CAD
 - Use of Funds: ${deal.use_of_funds?.trim() ? deal.use_of_funds : "Not specified by the applicant."}
-If Use of Funds is 'Not specified by the applicant', you MUST include the unspecified use of funds as one of the risks.${collateralLine}${sourcesUsesLine || capLine ? `\n\nIMPORTANT FRAMING NOTE: The capitalization and sources-&-uses figures below are LENDER-ENTERED PRO-FORMA deal structure for the proposed transaction. They are NOT from the borrower's historical statements and are EXPECTED to differ from the computed historical ratios. Do NOT treat differences between pro-forma capitalization and historical computed leverage as a discrepancy, red flag, or reconciliation item. Do NOT flag the requested loan amount differing from total sources & uses as an inconsistency — a facility may fund only part of a transaction.` : ""}${sourcesUsesLine}${capLine}
+If Use of Funds is 'Not specified by the applicant', you MUST include the unspecified use of funds as one of the risks.${collateralLine}${sourcesUsesLine || capLine ? `\n\nIMPORTANT FRAMING NOTE: The capitalization and sources-&-uses figures below are LENDER-ENTERED PRO-FORMA deal structure for the proposed transaction. They are NOT from the borrower's historical statements and are EXPECTED to differ from the computed historical ratios. Do NOT treat differences between pro-forma capitalization and historical computed leverage as a discrepancy, red flag, or reconciliation item. Do NOT flag the requested loan amount differing from total sources & uses as an inconsistency — a facility may fund only part of a transaction.` : ""}${sourcesUsesLine}${capLine}${currentFacilityLines.length > 0 ? `\n\nCURRENT POSITION — LENDER-CONFIRMED FIGURES (AUTHORITATIVE):\n${currentFacilityLines.join("\n")}\n\nThe figures above are the authoritative source for the borrower's CURRENT facility position as entered and confirmed by the lender. Do NOT state any conflicting figure from the historical financial statements, extraction notes, or MD&A as the current fact — those reflect historical or unverified extracted positions only. If a figure in the historical data appears to conflict with a lender-entered figure, you may raise the conflict as a risk but MUST phrase it as a discrepancy to reconcile: cite both figures and their sources explicitly (e.g. "The lender-entered revolver limit is $X, but the FY20XX statements show $Y — this should be reconciled before closing"). Never assert the extracted figure as the current authoritative amount.` : ""}
 
 ${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}${mdaBlock}${disabledMetricConstraint ? "\n\n" + disabledMetricConstraint : ""}\n\nAlso provide French translations of the summary, strengths, and risks. The French arrays MUST have exactly the same number of elements in the same order as their English counterparts, each element being the translation of the corresponding English element. Write proper standard French suitable for a credit professional in both Quebec and France. Do not use "courriel". Keep established finance terms that are used in English in French-language finance (EBITDA, DSCR, SAFE, ARR) as-is rather than translating them.\n\nReturn ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
 
