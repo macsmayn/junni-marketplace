@@ -361,6 +361,19 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // Current facility figures: lender-entered authoritative values used in
+    // multiple prompts (Job B diligence questions + main scoring prompt).
+    // Declared here — after deal is loaded — so they are in scope everywhere below.
+    const fmtN = (n: number | null) => n != null ? `$${Number(n).toLocaleString()}` : "N/A";
+    const currentFacilityLines: string[] = [];
+    if (deal.revolver_limit        != null) currentFacilityLines.push(`- Revolver limit: ${fmtN(deal.revolver_limit)}`);
+    if (deal.revolver_drawn        != null) currentFacilityLines.push(`- Revolver drawn: ${fmtN(deal.revolver_drawn)}`);
+    if (deal.existing_debt         != null) currentFacilityLines.push(`- Existing debt (total): ${fmtN(deal.existing_debt)}`);
+    if (deal.existing_debt_service != null) currentFacilityLines.push(`- Existing annual debt service: ${fmtN(deal.existing_debt_service)}`);
+    const currentFacilitiesSection = currentFacilityLines.length > 0
+      ? `CURRENT FACILITIES AS ENTERED AND CONFIRMED BY THE LENDER (authoritative):\n${currentFacilityLines.join("\n")}`
+      : "";
+
     // ─────────────────────────────────────────────────────────────
     // PHASE 2a: Financial statement document extraction
     // ─────────────────────────────────────────────────────────────
@@ -1189,19 +1202,9 @@ ${translationQueue.map((q, i) => `${i + 1}. ${q.text}`).join("\n")}`;
         }
       }
 
-      // Current facility figures: lender-entered authoritative values shared by
-      // Phase 2d Job B and the main scoring prompt.
-      const fmtN = (n: number | null) => n != null ? `$${Number(n).toLocaleString()}` : "N/A";
-      const currentFacilityLines: string[] = [];
-      if (deal.revolver_limit        != null) currentFacilityLines.push(`- Revolver limit: ${fmtN(deal.revolver_limit)}`);
-      if (deal.revolver_drawn        != null) currentFacilityLines.push(`- Revolver drawn: ${fmtN(deal.revolver_drawn)}`);
-      if (deal.existing_debt         != null) currentFacilityLines.push(`- Existing debt (total): ${fmtN(deal.existing_debt)}`);
-      if (deal.existing_debt_service != null) currentFacilityLines.push(`- Existing annual debt service: ${fmtN(deal.existing_debt_service)}`);
-      const currentFacilitiesSection = currentFacilityLines.length > 0
-        ? `CURRENT FACILITIES AS ENTERED AND CONFIRMED BY THE LENDER (authoritative):\n${currentFacilityLines.join("\n")}`
-        : "";
-
       // ── Phase 2d Job B — AI qualitative notes analysis
+      // fmtN, currentFacilityLines, and currentFacilitiesSection are declared
+      // at function scope above Phase 2a.
       const hasNotes = confirmedFinancials.some(row =>
         (row.notes_summary && String(row.notes_summary).trim()) ||
         (row.debt_detail && typeof row.debt_detail === "object" && Object.keys(row.debt_detail).length > 0) ||
