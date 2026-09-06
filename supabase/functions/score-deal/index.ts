@@ -1448,6 +1448,29 @@ HISTORICAL FINANCIAL STATEMENTS AND NOTES:${financialContext}`;
       ? `MANAGEMENT DISCUSSION CONTEXT (qualitative, from the borrower's MD&A/management commentary): ${mdaDigest}\nUse this to inform Strengths and Risks and add color to the narrative — it may surface risks the ratios cannot show (customer concentration, litigation, guidance). However, the computed financial ratios remain the sole source of truth for all financial assessments and numbers — do NOT let the MD&A override, contradict, or restate the computed figures.`
       : `No management discussion (MD&A) or qualitative document was provided. Base the narrative on the financial statements and computed ratios, and note briefly that qualitative business context (MD&A/management commentary) was not available and would strengthen the assessment.`;
 
+    // Query disabled metric names for this org so narrative prompts can exclude them.
+    const disabledMetricNames: string[] = [];
+    if (deal.org_id) {
+      const { data: disabledIdRows } = await supabase
+        .from("lender_metric_overrides")
+        .select("metric_id")
+        .eq("org_id", deal.org_id)
+        .eq("enabled", false);
+      const disabledIds = (disabledIdRows ?? []).map((r: any) => r.metric_id);
+      if (disabledIds.length > 0) {
+        const { data: metricNameRows } = await supabase
+          .from("metrics")
+          .select("metric_name")
+          .in("id", disabledIds);
+        for (const m of metricNameRows ?? []) {
+          if (m.metric_name) disabledMetricNames.push(m.metric_name);
+        }
+      }
+    }
+    const disabledMetricConstraint = disabledMetricNames.length > 0
+      ? `OUT-OF-POLICY METRICS — DO NOT DISCUSS:\nThe following metrics are outside this lender's credit policy and must not be discussed, cited, or included in strengths or risks:\n${disabledMetricNames.map(n => `- ${n}`).join("\n")}`
+      : "";
+
     // Build the credit scoring prompt
     const prompt = `You are a senior SME credit analyst at a Canadian debt marketplace. Score the following deal using the structured financial data provided.
 
@@ -1464,7 +1487,7 @@ DEAL DETAILS:
 - Use of Funds: ${deal.use_of_funds?.trim() ? deal.use_of_funds : "Not specified by the applicant."}
 If Use of Funds is 'Not specified by the applicant', you MUST include the unspecified use of funds as one of the risks.${collateralLine}${sourcesUsesLine || capLine ? `\n\nIMPORTANT FRAMING NOTE: The capitalization and sources-&-uses figures below are LENDER-ENTERED PRO-FORMA deal structure for the proposed transaction. They are NOT from the borrower's historical statements and are EXPECTED to differ from the computed historical ratios. Do NOT treat differences between pro-forma capitalization and historical computed leverage as a discrepancy, red flag, or reconciliation item. Do NOT flag the requested loan amount differing from total sources & uses as an inconsistency — a facility may fund only part of a transaction.` : ""}${sourcesUsesLine}${capLine}
 
-${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}${mdaBlock}\n\nAlso provide French translations of the summary, strengths, and risks. The French arrays MUST have exactly the same number of elements in the same order as their English counterparts, each element being the translation of the corresponding English element. Write proper standard French suitable for a credit professional in both Quebec and France. Do not use "courriel". Keep established finance terms that are used in English in French-language finance (EBITDA, DSCR, SAFE, ARR) as-is rather than translating them.\n\nReturn ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
+${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}${mdaBlock}${disabledMetricConstraint ? "\n\n" + disabledMetricConstraint : ""}\n\nAlso provide French translations of the summary, strengths, and risks. The French arrays MUST have exactly the same number of elements in the same order as their English counterparts, each element being the translation of the corresponding English element. Write proper standard French suitable for a credit professional in both Quebec and France. Do not use "courriel". Keep established finance terms that are used in English in French-language finance (EBITDA, DSCR, SAFE, ARR) as-is rather than translating them.\n\nReturn ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
 
 {
   "summary": "<Quantitative analyst narrative — 4-8 sentences. Walk through the key computed ratios and state what each indicates (e.g. 'DSCR of 1.42x sits in the Adequate band, providing moderate but not comfortable debt-service headroom'). Explain year-over-year movements and their drivers (e.g. whether EBITDA growth came from revenue expansion or margin improvement). Identify diagnostically significant divergences between ratios (e.g. strong gross margin alongside thin net margin points to cost pressure below the gross line). Comment on trend direction across the fiscal years available. Note where a ratio sits relative to its threshold band and what that means practically for credit risk. Do NOT restate who the company is, describe the transaction purpose, or give an overall approval verdict — a separate executive summary covers those. Do NOT cite any ratio or figure not present in the data provided to you; describe qualitatively if the figure is unavailable.>",
@@ -1722,7 +1745,7 @@ Paragraph 2: Explain what the company is asking for and why. Read and interpret 
 Paragraph 3: Summarize the credit position at a high level — leverage, debt-service coverage, and the overall assessment. Close by summarising the credit position and noting the score and risk label as an assessment output — nothing more.
 
 Rules: Write for a credit officer. No bullet points. No headings. No marketing language. No invented facts. If a data point is missing, write around it naturally — do not note its absence. Output only the paragraphs, nothing else. Do NOT recommend approval, decline, or any credit decision. Do not use phrases like "recommended for approval", "we recommend", or "this credit is approved". The lender makes the decision, not this analysis. Only cite specific ratios or figures that appear explicitly in the DEAL DATA provided. Do not calculate, derive, or estimate any ratio yourself — if a ratio is not in the data given to you, describe the position qualitatively instead. When referring to metric coverage, describe it as the proportion of the analytical framework that could be computed from the financial statements provided. Never call it "policy coverage" or imply it measures compliance with any credit policy.
-
+${disabledMetricConstraint ? "\n" + disabledMetricConstraint + "\n" : ""}
 DEAL DATA:
 ${execParts.join("\n\n")}`;
 
@@ -1778,7 +1801,7 @@ Paragraph 2: Explain what the company is asking for and why. Read and interpret 
 Paragraph 3: Summarize the credit position at a high level — leverage, debt-service coverage, and the overall assessment. Close by summarising the credit position and noting the score and risk label as an assessment output — nothing more.
 
 Rules: Write for a credit officer. Write proper standard French suitable for a credit professional in both Quebec and France. Do not use "courriel". Keep established finance terms used in English in French-language finance (EBITDA, DSCR, SAFE, ARR) as-is. No bullet points. No headings. No marketing language. No invented facts. If a data point is missing, write around it naturally — do not note its absence. Output only the paragraphs, nothing else. Do NOT recommend approval, decline, or any credit decision. The lender makes the decision, not this analysis. Only cite specific ratios or figures that appear explicitly in the DEAL DATA provided. Do not calculate, derive, or estimate any ratio yourself. When referring to metric coverage, describe it as the proportion of the analytical framework that could be computed from the financial statements provided. Never call it "policy coverage" or imply it measures compliance with any credit policy.
-
+${disabledMetricConstraint ? "\n" + disabledMetricConstraint + "\n" : ""}
 DEAL DATA:
 ${execParts.join("\n\n")}`;
 
