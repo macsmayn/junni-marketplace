@@ -27,6 +27,7 @@ import NewAnalysis from "./pages/NewAnalysis";
 import MyAnalyses from "./pages/MyAnalyses";
 import Billing from "./pages/Billing";
 import Team from "./pages/Team";
+import Thresholds from "./pages/Thresholds";
 import CompleteProfile from "./pages/CompleteProfile";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
@@ -100,6 +101,11 @@ function Router() {
       <Route path={"/team"}>
         <ProtectedRoute>
           <Team />
+        </ProtectedRoute>
+      </Route>
+      <Route path={"/thresholds"}>
+        <ProtectedRoute>
+          <Thresholds />
         </ProtectedRoute>
       </Route>
       <Route path={"/complete-profile"}>

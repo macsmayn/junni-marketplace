@@ -324,6 +324,9 @@ export default function LenderDashboard() {
           <a className="sb-item" href="#" onClick={(e) => { e.preventDefault(); setSidebarOpen(false); setLocation('/team'); }}>
             <span>👥</span>{t('lenderDashboard.sidebarTeam')}
           </a>
+          <a className="sb-item" href="#" onClick={(e) => { e.preventDefault(); setSidebarOpen(false); setLocation('/thresholds'); }}>
+            <span>⚖️</span>{t('lenderDashboard.sidebarThresholds')}
+          </a>
           {isOwner && (
             <a className="sb-item" href="#" onClick={(e) => { e.preventDefault(); setSidebarOpen(false); setLocation('/billing'); }}>
               <span>💳</span>{t('lenderDashboard.sidebarBilling')}
@@ -460,6 +463,9 @@ export default function LenderDashboard() {
         </button>
         <button className="d-sb-item" onClick={() => setLocation('/team')}>
           <span>👥</span>{t('lenderDashboard.sidebarTeam')}
+        </button>
+        <button className="d-sb-item" onClick={() => setLocation('/thresholds')}>
+          <span>⚖️</span>{t('lenderDashboard.sidebarThresholds')}
         </button>
         {isOwner && (
           <button className="d-sb-item" onClick={() => setLocation('/billing')}>
