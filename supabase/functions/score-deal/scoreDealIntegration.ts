@@ -231,6 +231,7 @@ export async function persistEngineResult(
         adequate_band: m.bands.adequate,
         weak_band: m.bands.weak,
         band_is_override: m.bands.band_is_override,
+        tier_is_override: m.tier_is_override ?? false,
       },
       { onConflict: "deal_id,metric_id" }
     );

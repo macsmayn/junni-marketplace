@@ -49,6 +49,7 @@ export interface FrameworkMetric {
   weak_band: string | null;
   enabled?: boolean;               // false if a lender disabled this metric
   band_is_override?: boolean;      // true if any band came from an org threshold override
+  tier_is_override?: boolean;      // true if importance_tier came from an org metric override
 }
 
 /** What the engine needs to score a deal — supplied by the caller. */
@@ -79,6 +80,7 @@ export interface EngineMetricResult {
   compute_detail: string;        // how the value was derived ("NetDebt / EBITDA")
   grade_reason: string;          // why this grade ("1.8 satisfies Strong band \"< 2.5x\"")
   bands: { strong: string | null; adequate: string | null; weak: string | null; band_is_override: boolean };
+  tier_is_override: boolean;      // true if the tier was supplied by an org metric override
 }
 
 export interface EngineResult {
@@ -126,6 +128,7 @@ export async function runScoreEngine(
         compute_detail: `primary_resolution=${m.primary_resolution} — requires document or external source`,
         grade_reason: `Excluded from formula scoring (source: ${m.primary_resolution})`,
         bands: { strong: m.strong_band, adequate: m.adequate_band, weak: m.weak_band, band_is_override: m.band_is_override ?? false },
+        tier_is_override: m.tier_is_override ?? false,
       });
       continue;
     }
@@ -176,6 +179,7 @@ export async function runScoreEngine(
       compute_detail: resolved.detail,
       grade_reason: gradeReason,
       bands: { strong: m.strong_band, adequate: m.adequate_band, weak: m.weak_band, band_is_override: m.band_is_override ?? false },
+      tier_is_override: m.tier_is_override ?? false,
     });
   }
 

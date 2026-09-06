@@ -96,23 +96,21 @@ export function makeSupabaseLoader(
         }
       }
 
-      if (opts.lenderId && metricIds.length > 0) {
-        // lender_metric_overrides is the policy-level table (tier re-grade + enable/disable).
-        // Guarded: if the table isn't present yet, ignore overrides rather than fail.
-        try {
-          const { data: pol } = await supabase
-            .from("lender_metric_overrides")
-            .select("metric_id, importance_tier_override, enabled")
-            .eq("lender_id", opts.lenderId)
-            .in("metric_id", metricIds);
-          for (const o of pol ?? []) {
-            policyOverrides.set(o.metric_id, {
-              tier: o.importance_tier_override,
-              enabled: o.enabled,
-            });
-          }
-        } catch {
-          /* table may not exist yet — canonical tiers/enabled apply */
+      // Per-org metric policy (lender_metric_overrides.org_id): tier re-grade + enable/disable.
+      if (opts.orgId && metricIds.length > 0) {
+        const { data: pol, error: polErr } = await supabase
+          .from("lender_metric_overrides")
+          .select("metric_id, importance_tier_override, enabled")
+          .eq("org_id", opts.orgId)
+          .in("metric_id", metricIds);
+        if (polErr) {
+          console.error("[supabaseLoader] lender_metric_overrides query failed:", polErr.message);
+        }
+        for (const o of pol ?? []) {
+          policyOverrides.set(o.metric_id, {
+            tier: o.importance_tier_override,
+            enabled: o.enabled,
+          });
         }
       }
 
@@ -126,15 +124,17 @@ export function makeSupabaseLoader(
         const thr = thresholdOverrides.get(row.id);
         const pol = policyOverrides.get(row.id);
 
-        // tier: lender override else canonical
-        const tier = asTier(pol?.tier ?? row.importance_tier);
+        // tier: org override else canonical; track whether the override supplied it
+        const tierOverride = (pol?.tier ?? null) !== null ? (pol!.tier as string) : null;
+        const tier = asTier(tierOverride ?? row.importance_tier);
+        const tier_is_override = tierOverride !== null;
 
         // bands: lender threshold override else canonical
         const strong = thr?.strong ?? canonBands?.strong ?? null;
         const adequate = thr?.adequate ?? canonBands?.adequate ?? null;
         const weak = thr?.weak ?? canonBands?.weak ?? null;
 
-        // enabled: default true unless a lender explicitly disabled it
+        // enabled: default true unless the org explicitly disabled it
         const enabled = pol?.enabled === false ? false : true;
 
         return {
@@ -147,6 +147,7 @@ export function makeSupabaseLoader(
           weak_band: weak,
           enabled,
           band_is_override: thresholdOverrides.has(row.id),
+          tier_is_override,
         };
       });
     },
