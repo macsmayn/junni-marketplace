@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase, invokeFunction } from "../lib/supabase";
+import { supabase, invokeFunction, invokeFunctionWithDetails } from "../lib/supabase";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { tRiskLabel } from "../lib/riskLabel";
@@ -776,6 +776,44 @@ export default function DealAnalysis() {
             {rescoreError}
           </div>
         )}
+
+        {/* TEMPORARY TEST BUTTON — REMOVE AFTER PREVIEW PANEL IS BUILT */}
+        <div style={{ marginBottom: 16 }}>
+          <button
+            onClick={async () => {
+              // Call 1: no overrides
+              const res1 = await invokeFunctionWithDetails("preview-score", { deal_id: dealId });
+              console.log("[TEST preview-score] no overrides:", res1);
+
+              // Call 2: override the first counted metric's strong band to "≤ 99x"
+              const firstCounted = scored[0];
+              const res2 = await invokeFunctionWithDetails("preview-score", {
+                deal_id: dealId,
+                threshold_overrides: firstCounted
+                  ? [{ metric_id: firstCounted.id, strong: "≤ 99x", adequate: null, weak: null }]
+                  : [],
+              });
+              console.log("[TEST preview-score] with override on", firstCounted?.metric_name, ":", res2);
+
+              const score1 = res1.data?.overall_score ?? "N/A";
+              const score2 = res2.data?.overall_score ?? "N/A";
+              const metricLabel = firstCounted?.metric_name ?? "(no scored metric)";
+              alert(
+                `preview-score results:\n\nNo overrides → score: ${score1}\n` +
+                `Override ${metricLabel} strong="≤ 99x" → score: ${score2}`
+              );
+            }}
+            style={{
+              padding: "6px 14px", borderRadius: 6,
+              border: "2px dashed #F59E0B", background: "#FFFBEB",
+              color: "#92400E", fontSize: 12, fontWeight: 700,
+              cursor: "pointer", fontFamily: "Inter, sans-serif",
+            }}
+          >
+            TEST preview
+          </button>
+        </div>
+        {/* END TEMPORARY TEST BUTTON */}
 
         {/* ── 2. Score card ── */}
         {score ? (
