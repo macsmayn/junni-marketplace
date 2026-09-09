@@ -36,6 +36,17 @@ function asTier(t: string | null | undefined, fallback: MetricTier = "Important"
   return (VALID_TIERS as readonly string[]).includes(t ?? "") ? (t as MetricTier) : fallback;
 }
 
+export interface TempThresholdOverride {
+  strong: string | null;
+  adequate: string | null;
+  weak: string | null;
+}
+
+export interface TempTierOverride {
+  tier: string | null;   // null means inherit (remove existing override)
+  enabled: boolean;
+}
+
 export interface LoaderOptions {
   /** Framework version to score against. If omitted, the loader resolves the active version. */
   versionId?: string;
@@ -43,6 +54,16 @@ export interface LoaderOptions {
   lenderId?: string | null;
   /** Organisation whose threshold overrides apply (lender_threshold_overrides.org_id). */
   orgId?: string | null;
+  /**
+   * Temporary threshold overrides keyed by metric_id. Applied AFTER database overrides —
+   * a temporary entry wins over whatever the database says for the same metric.
+   * Used by preview-score only; score-deal never sets this, so its behaviour is unchanged.
+   */
+  tempThresholdOverrides?: Map<string, TempThresholdOverride>;
+  /**
+   * Temporary tier/enabled overrides keyed by metric_id. Same merge semantics as above.
+   */
+  tempTierOverrides?: Map<string, TempTierOverride>;
 }
 
 /**
@@ -111,6 +132,20 @@ export function makeSupabaseLoader(
             tier: o.importance_tier_override,
             enabled: o.enabled,
           });
+        }
+      }
+
+      // 3b) Apply temporary overrides on top of database ones (preview-score use only).
+      //     A temp entry wins over the stored DB override for the same metric_id.
+      if (opts.tempThresholdOverrides) {
+        for (const [metricId, o] of opts.tempThresholdOverrides) {
+          thresholdOverrides.set(metricId, { strong: o.strong, adequate: o.adequate, weak: o.weak });
+        }
+      }
+      if (opts.tempTierOverrides) {
+        for (const [metricId, o] of opts.tempTierOverrides) {
+          const existing = policyOverrides.get(metricId) ?? {};
+          policyOverrides.set(metricId, { ...existing, tier: o.tier, enabled: o.enabled });
         }
       }
 
