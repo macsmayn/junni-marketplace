@@ -79,6 +79,14 @@ interface MetricRow {
   band_is_override?: boolean;
 }
 
+interface WiEditState {
+  strong:   string;
+  adequate: string;
+  weak:     string;
+  tier:     string;
+  enabled:  boolean;
+}
+
 function DefContent({ def, lang }: { def: any; lang: "en" | "fr" }) {
   const fr = lang === "fr";
   const tDef = (enVal: string | null, frVal: string | null) => (fr && frVal) ? frVal : enVal;
@@ -120,7 +128,7 @@ export default function DealAnalysis() {
   const { isAuthenticated, isLoading: auth0Loading, user } = useAuth0();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
   const [deal, setDeal] = useState<any>(null);
-  const [currentUser, setCurrentUser] = useState<{ id: string; role: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; role: string; active_org_id?: string | null } | null>(null);
   const [score, setScore] = useState<any>(null);
   const [metrics, setMetrics] = useState<MetricRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,6 +199,19 @@ export default function DealAnalysis() {
   const [latestFinUpdatedAt, setLatestFinUpdatedAt] = useState<string | null>(null);
   const [docViewError, setDocViewError] = useState<string | null>(null);
 
+  const [orgRole, setOrgRole] = useState<string | null>(null);
+  const [whatIfOpen, setWhatIfOpen] = useState(false);
+  const [wiEdits, setWiEdits] = useState<Record<string, WiEditState>>({});
+  const [wiPreview, setWiPreview] = useState<any>(null);
+  const [wiPreviewing, setWiPreviewing] = useState(false);
+  const [wiPreviewError, setWiPreviewError] = useState<string | null>(null);
+  const [wiReasonOpen, setWiReasonOpen] = useState(false);
+  const [wiReasonText, setWiReasonText] = useState("");
+  const [wiReasonError, setWiReasonError] = useState<string | null>(null);
+  const [wiApplying, setWiApplying] = useState(false);
+  const [wiApplyError, setWiApplyError] = useState<string | null>(null);
+  const wiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 900);
     window.addEventListener("resize", onResize);
@@ -227,7 +248,7 @@ export default function DealAnalysis() {
         supabase.from("deals").select("title,deal_label,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,created_by,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr,updated_at").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source,summary_fr,strengths_fr,risks_fr,generated_at").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
-        supabase.from("users").select("id,role").eq("auth0_id", user?.sub ?? "").maybeSingle(),
+        supabase.from("users").select("id,role,active_org_id").eq("auth0_id", user?.sub ?? "").maybeSingle(),
         supabase.from("sources_uses_entries").select("side,label,amount,sort_order").eq("deal_id", dealId).order("sort_order"),
         supabase.from("capitalization_items").select("category,label,amount,rate,notes,sort_order").eq("deal_id", dealId).order("sort_order"),
         supabase.from("collateral_assets").select("asset_type,description,market_value,advance_rate,lending_value").eq("deal_id", dealId),
@@ -239,6 +260,15 @@ export default function DealAnalysis() {
       if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
       setCurrentUser(cu ?? null);
+      if (cu?.id && cu?.active_org_id) {
+        const { data: memberRow } = await supabase
+          .from("organization_members")
+          .select("org_role")
+          .eq("org_id", cu.active_org_id)
+          .eq("user_id", cu.id)
+          .maybeSingle();
+        setOrgRole(memberRow?.org_role ?? null);
+      }
       setScore(s);
       setSourcesUses(su ?? []);
       setCapItems(ci ?? []);
@@ -446,6 +476,120 @@ export default function DealAnalysis() {
       setBubbleRect(rect);
     }
   };
+
+  // ── What-if sensitivity helpers ──
+  function buildWiOverrides(scoredMetrics: MetricRow[], edits: Record<string, WiEditState>) {
+    const threshold_overrides: Array<{ metric_id: string; strong: string | null; adequate: string | null; weak: string | null }> = [];
+    const tier_overrides: Array<{ metric_id: string; tier: string | null; enabled: boolean }> = [];
+    for (const m of scoredMetrics) {
+      const edit = edits[m.metric_id];
+      if (!edit) continue;
+      const bandsChanged =
+        (edit.strong   || null) !== (m.strong_band   ?? null) ||
+        (edit.adequate || null) !== (m.adequate_band ?? null) ||
+        (edit.weak     || null) !== (m.weak_band     ?? null);
+      const tierChanged   = (edit.tier || null) !== (m.tier || null);
+      const enabledChanged = !edit.enabled;
+      if (bandsChanged) {
+        threshold_overrides.push({ metric_id: m.metric_id, strong: edit.strong || null, adequate: edit.adequate || null, weak: edit.weak || null });
+      }
+      if (tierChanged || enabledChanged) {
+        tier_overrides.push({ metric_id: m.metric_id, tier: edit.tier || null, enabled: edit.enabled });
+      }
+    }
+    return { threshold_overrides, tier_overrides };
+  }
+
+  function triggerWiPreview(edits: Record<string, WiEditState>, currentScored: MetricRow[]) {
+    if (wiDebounceRef.current) clearTimeout(wiDebounceRef.current);
+    wiDebounceRef.current = setTimeout(async () => {
+      setWiPreviewing(true);
+      setWiPreviewError(null);
+      const { threshold_overrides, tier_overrides } = buildWiOverrides(currentScored, edits);
+      const { data, httpStatus } = await invokeFunctionWithDetails("preview-score", {
+        deal_id: dealId,
+        threshold_overrides,
+        tier_overrides,
+      });
+      setWiPreviewing(false);
+      if (!data || httpStatus >= 400) {
+        setWiPreviewError(t("analysis.whatIfPreviewError"));
+        return;
+      }
+      setWiPreview(data);
+    }, 600);
+  }
+
+  function handleWiEdit(metricId: string, field: keyof WiEditState, value: string | boolean, currentScored: MetricRow[]) {
+    const blank: WiEditState = { strong: "", adequate: "", weak: "", tier: "", enabled: true };
+    const newEdits = { ...wiEdits, [metricId]: { ...(wiEdits[metricId] ?? blank), [field]: value } };
+    setWiEdits(newEdits);
+    triggerWiPreview(newEdits, currentScored);
+  }
+
+  function openWhatIf(currentScored: MetricRow[]) {
+    if (!whatIfOpen) {
+      const initEdits: Record<string, WiEditState> = {};
+      for (const m of currentScored) {
+        initEdits[m.metric_id] = {
+          strong:   m.strong_band   ?? "",
+          adequate: m.adequate_band ?? "",
+          weak:     m.weak_band     ?? "",
+          tier:     m.tier          ?? "",
+          enabled:  true,
+        };
+      }
+      setWiEdits(initEdits);
+      setWiPreview(null);
+      setWiPreviewError(null);
+      setWiApplyError(null);
+      triggerWiPreview(initEdits, currentScored);
+    }
+    setWhatIfOpen(o => !o);
+  }
+
+  async function handleWiApply(currentScored: MetricRow[]) {
+    if (wiReasonText.trim().length < 10) {
+      setWiReasonError(t("analysis.whatIfReasonMin"));
+      return;
+    }
+    setWiApplying(true);
+    setWiApplyError(null);
+    setWiReasonOpen(false);
+    const reason = wiReasonText.trim();
+    try {
+      for (const m of currentScored) {
+        const edit = wiEdits[m.metric_id];
+        if (!edit) continue;
+        const bandsChanged =
+          (edit.strong   || null) !== (m.strong_band   ?? null) ||
+          (edit.adequate || null) !== (m.adequate_band ?? null) ||
+          (edit.weak     || null) !== (m.weak_band     ?? null);
+        const tierChanged   = (edit.tier || null) !== (m.tier || null);
+        const enabledChanged = !edit.enabled;
+        if (bandsChanged) {
+          await invokeFunctionWithDetails("set-threshold", {
+            action: "set", metric_id: m.metric_id,
+            strong: edit.strong || null, adequate: edit.adequate || null, weak: edit.weak || null,
+            reason,
+          });
+        }
+        if (tierChanged || enabledChanged) {
+          await invokeFunctionWithDetails("set-threshold", {
+            action: "set_metric", metric_id: m.metric_id,
+            tier: edit.tier || null, enabled: edit.enabled,
+            reason,
+          });
+        }
+      }
+      setWiApplying(false);
+      setWhatIfOpen(false);
+      handleRescore();
+    } catch {
+      setWiApplying(false);
+      setWiApplyError(t("analysis.whatIfApplyError"));
+    }
+  }
 
   const handleQuestionStatusChange = async (id: string, newStatus: string) => {
     setSavingStatus(id);
@@ -778,68 +922,6 @@ export default function DealAnalysis() {
           </div>
         )}
 
-        {/* TEMPORARY TEST BUTTON — REMOVE AFTER PREVIEW PANEL IS BUILT */}
-        <div style={{ marginBottom: 16 }}>
-          <button
-            onClick={async () => {
-              // Call 1: no overrides — baseline
-              const res1 = await invokeFunctionWithDetails("preview-score", { deal_id: dealId });
-              console.log("[TEST preview-score] no overrides:", res1);
-
-              // Pick the first counted metric currently graded Adequate (direction is unambiguous:
-              // overriding strong = adequate_band means the value already satisfies it → upgrades
-              // the metric from Adequate to Strong → score can only go up or stay the same).
-              // Fall back to the first counted metric if none is Adequate.
-              const adequateMetric = scored.find(m => m.grade === "Adequate");
-              const target = adequateMetric ?? scored[0];
-              const usedFallback = !adequateMetric;
-
-              if (usedFallback) {
-                console.log("[TEST preview-score] No Adequate metric found — falling back to first counted metric:", target?.metric_name);
-              }
-
-              // For the override: set strong = the metric's current adequate_band so its current
-              // value (which already satisfies adequate) will now satisfy strong.
-              const overrideBand = target?.adequate_band ?? "≥ 0";
-
-              console.log(
-                `[TEST preview-score] target metric: "${target?.metric_name}"`,
-                `| metric_id: ${target?.metric_id}`,
-                `| current grade: ${target?.grade}`,
-                `| current value: ${target?.value}`,
-                `| applying strong band: "${overrideBand}"`
-              );
-
-              const res2 = await invokeFunctionWithDetails("preview-score", {
-                deal_id: dealId,
-                threshold_overrides: target
-                  ? [{ metric_id: target.metric_id, strong: overrideBand, adequate: null, weak: null }]
-                  : [],
-              });
-              console.log("[TEST preview-score] with override:", res2);
-
-              const score1 = res1.data?.overall_score ?? "N/A";
-              const score2 = res2.data?.overall_score ?? "N/A";
-              const metricLabel = target?.metric_name ?? "(no scored metric)";
-              alert(
-                `preview-score results:\n\n` +
-                `No overrides → score: ${score1}\n` +
-                `Override "${metricLabel}" strong="${overrideBand}" → score: ${score2}\n\n` +
-                (usedFallback ? "(fallback: no Adequate metric found)" : "(metric was Adequate → now Strong)")
-              );
-            }}
-            style={{
-              padding: "6px 14px", borderRadius: 6,
-              border: "2px dashed #F59E0B", background: "#FFFBEB",
-              color: "#92400E", fontSize: 12, fontWeight: 700,
-              cursor: "pointer", fontFamily: "Inter, sans-serif",
-            }}
-          >
-            TEST preview
-          </button>
-        </div>
-        {/* END TEMPORARY TEST BUTTON */}
-
         {/* ── 2. Score card ── */}
         {score ? (
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginBottom: 28, display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", gap: isMobile ? 16 : 32 }}>
@@ -903,7 +985,205 @@ export default function DealAnalysis() {
           </div>
         )}
 
-        {/* ── 2b. Executive Summary ── */}
+        {/* ── 2b. What-if sensitivity panel ── */}
+        {score && scored.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <button
+              onClick={() => openWhatIf(scored)}
+              style={{
+                padding: "6px 16px", borderRadius: 8,
+                border: `1px solid ${NAVY}40`,
+                background: whatIfOpen ? NAVY : "transparent",
+                color: whatIfOpen ? "#fff" : NAVY,
+                fontSize: 12, fontWeight: 700, cursor: "pointer",
+                fontFamily: "Inter, sans-serif", letterSpacing: "0.04em",
+              }}
+            >
+              {t("analysis.whatIf")} {whatIfOpen ? "▲" : "▼"}
+            </button>
+
+            {whatIfOpen && (
+              <div style={{ marginTop: 12, background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "20px 16px" : "28px 32px" }}>
+
+                {/* Panel header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+                  <div>
+                    <h3 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 17, color: NAVY, margin: "0 0 6px" }}>
+                      {t("analysis.whatIfPanelTitle")}
+                    </h3>
+                    <span style={{ fontSize: 11, color: "#059669", fontWeight: 600, border: "1px solid #059669", borderRadius: 99, padding: "2px 10px", display: "inline-block" }}>
+                      {t("analysis.whatIfNotice")}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setWhatIfOpen(false)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 22, padding: 0, lineHeight: 1, flexShrink: 0 }}
+                  >×</button>
+                </div>
+
+                {/* Unavailable state */}
+                {wiPreview?.available === false ? (
+                  <div style={{ background: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 8, padding: "12px 16px", fontSize: 13, color: "#B71C1C" }}>
+                    <strong>{t("analysis.whatIfNotAvailable")}:</strong> {wiPreview.reason}
+                  </div>
+                ) : (
+                  <>
+                    {/* Before / After comparison */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
+                      <div style={{ background: "#F8F6F2", borderRadius: 10, padding: "14px 16px" }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
+                          {t("analysis.whatIfBefore")}
+                        </div>
+                        <div style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 38, color: NAVY, lineHeight: 1 }}>{score.overall_score ?? "—"}</div>
+                        <div style={{ marginTop: 8 }}>{riskChip(score.risk_label ?? "—", t)}</div>
+                        <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>{score.coverage_pct}% {t("analysis.coveragePct")}</div>
+                        <div style={{ fontSize: 11, marginTop: 4, fontWeight: 600, color: score.critical_floor_applied ? RED : "#059669" }}>
+                          {t("analysis.whatIfCriticalFloor")}: {score.critical_floor_applied ? t("analysis.whatIfApplied") : t("analysis.whatIfNotApplied")}
+                        </div>
+                      </div>
+                      <div style={{ background: wiPreviewing ? "#F8F6F2" : "#EDFAF5", borderRadius: 10, padding: "14px 16px", transition: "background 0.2s" }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10, display: "flex", gap: 8, alignItems: "center" }}>
+                          {t("analysis.whatIfAfter")}
+                          {wiPreviewing && <span style={{ fontSize: 10, color: GOLD, fontWeight: 600 }}>{t("analysis.whatIfPreviewing")}</span>}
+                        </div>
+                        {wiPreview?.available !== false && wiPreview ? (
+                          <>
+                            <div style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 38, color: NAVY, lineHeight: 1 }}>{wiPreview.overall_score ?? "—"}</div>
+                            <div style={{ marginTop: 8 }}>{riskChip(wiPreview.risk_label ?? "—", t)}</div>
+                            <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>{wiPreview.coverage_pct}% {t("analysis.coveragePct")}</div>
+                            <div style={{ fontSize: 11, marginTop: 4, fontWeight: 600, color: wiPreview.critical_floor_applied ? RED : "#059669" }}>
+                              {t("analysis.whatIfCriticalFloor")}: {wiPreview.critical_floor_applied ? t("analysis.whatIfApplied") : t("analysis.whatIfNotApplied")}
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: 13, color: MUTED, marginTop: 8 }}>—</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {wiPreviewError && (
+                      <div style={{ fontSize: 12, color: RED, marginBottom: 12 }}>{wiPreviewError}</div>
+                    )}
+
+                    {/* Metric table */}
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 680 }}>
+                        <thead>
+                          <tr style={{ borderBottom: "2px solid #E8E2D9" }}>
+                            <th style={{ textAlign: "left", padding: "6px 8px 8px", color: MUTED, fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" }}>{t("analysis.whatIfMetricCol")}</th>
+                            <th style={{ textAlign: "right", padding: "6px 8px 8px", color: MUTED, fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" }}>{t("analysis.whatIfCurrentValue")}</th>
+                            <th style={{ textAlign: "center", padding: "6px 8px 8px", color: MUTED, fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" }}>{t("analysis.whatIfGrade")}</th>
+                            <th style={{ textAlign: "center", padding: "6px 8px 8px", color: MUTED, fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" }}>{t("analysis.whatIfStrong")}</th>
+                            <th style={{ textAlign: "center", padding: "6px 8px 8px", color: MUTED, fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" }}>{t("analysis.whatIfAdequate")}</th>
+                            <th style={{ textAlign: "center", padding: "6px 8px 8px", color: MUTED, fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" }}>{t("analysis.whatIfWeak")}</th>
+                            <th style={{ textAlign: "center", padding: "6px 8px 8px", color: MUTED, fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" }}>{t("analysis.whatIfTier")}</th>
+                            <th style={{ textAlign: "center", padding: "6px 8px 8px", color: MUTED, fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" }}>{t("analysis.whatIfEnabled")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {scored.map(m => {
+                            const edit: WiEditState = wiEdits[m.metric_id] ?? { strong: m.strong_band ?? "", adequate: m.adequate_band ?? "", weak: m.weak_band ?? "", tier: m.tier ?? "", enabled: true };
+                            const previewMetric = wiPreview?.metrics?.find((pm: any) => pm.metric_id === m.metric_id);
+                            const gradeChanged = !!(previewMetric && previewMetric.grade !== m.grade);
+                            return (
+                              <tr key={m.metric_id} style={{ borderBottom: "1px solid #F0EDE8", background: gradeChanged ? "#FFFBEB" : undefined }}>
+                                <td style={{ padding: "8px 8px", color: NAVY, fontWeight: 500, minWidth: 130 }}>
+                                  <div>{mName(m.metric_name)}</div>
+                                  <div style={{ fontSize: 10, color: MUTED }}>{m.tier}</div>
+                                </td>
+                                <td style={{ padding: "8px 8px", textAlign: "right", color: MUTED, whiteSpace: "nowrap" }}>
+                                  {fmtValue(m.value, m.metric_name)}
+                                </td>
+                                <td style={{ padding: "8px 8px", textAlign: "center" }}>
+                                  {gradeChip(m.grade, t)}
+                                  {gradeChanged && previewMetric && (
+                                    <div style={{ marginTop: 4 }}>
+                                      <span style={{ fontSize: 9, color: MUTED, display: "block", lineHeight: 1, marginBottom: 3 }}>↓</span>
+                                      {gradeChip(previewMetric.grade, t)}
+                                    </div>
+                                  )}
+                                </td>
+                                <td style={{ padding: "6px 8px" }}>
+                                  <input
+                                    type="text"
+                                    value={edit.strong}
+                                    onChange={e => handleWiEdit(m.metric_id, "strong", e.target.value, scored)}
+                                    placeholder={m.strong_band ?? ""}
+                                    style={{ width: 76, padding: "3px 6px", border: "1px solid #D8D2C8", borderRadius: 4, fontSize: 11, fontFamily: "Inter, sans-serif" }}
+                                  />
+                                </td>
+                                <td style={{ padding: "6px 8px" }}>
+                                  <input
+                                    type="text"
+                                    value={edit.adequate}
+                                    onChange={e => handleWiEdit(m.metric_id, "adequate", e.target.value, scored)}
+                                    placeholder={m.adequate_band ?? ""}
+                                    style={{ width: 76, padding: "3px 6px", border: "1px solid #D8D2C8", borderRadius: 4, fontSize: 11, fontFamily: "Inter, sans-serif" }}
+                                  />
+                                </td>
+                                <td style={{ padding: "6px 8px" }}>
+                                  <input
+                                    type="text"
+                                    value={edit.weak}
+                                    onChange={e => handleWiEdit(m.metric_id, "weak", e.target.value, scored)}
+                                    placeholder={m.weak_band ?? ""}
+                                    style={{ width: 76, padding: "3px 6px", border: "1px solid #D8D2C8", borderRadius: 4, fontSize: 11, fontFamily: "Inter, sans-serif" }}
+                                  />
+                                </td>
+                                <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                                  <select
+                                    value={edit.tier}
+                                    onChange={e => handleWiEdit(m.metric_id, "tier", e.target.value, scored)}
+                                    style={{ padding: "3px 4px", border: "1px solid #D8D2C8", borderRadius: 4, fontSize: 11, fontFamily: "Inter, sans-serif", maxWidth: 110 }}
+                                  >
+                                    <option value="">{t("analysis.tierInherit")}</option>
+                                    <option value="Critical">{t("analysis.tierCritical")}</option>
+                                    <option value="Important">{t("analysis.tierImportant")}</option>
+                                    <option value="Supplementary">{t("analysis.tierSupplementary")}</option>
+                                    <option value="Optional">{t("analysis.tierOptional")}</option>
+                                  </select>
+                                </td>
+                                <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={edit.enabled}
+                                    onChange={e => handleWiEdit(m.metric_id, "enabled", e.target.checked, scored)}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Footer */}
+                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20, alignItems: "center", flexWrap: "wrap" }}>
+                      {wiApplyError && <span style={{ fontSize: 12, color: RED, flex: 1 }}>{wiApplyError}</span>}
+                      <button
+                        onClick={() => { setWhatIfOpen(false); setWiPreview(null); }}
+                        style={{ padding: "7px 18px", borderRadius: 8, border: "1px solid #D8D2C8", background: "transparent", color: MUTED, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
+                      >
+                        {t("analysis.whatIfDiscard")}
+                      </button>
+                      {(orgRole === "owner" || orgRole === "credit_admin") && (
+                        <button
+                          onClick={() => { setWiReasonText(""); setWiReasonError(null); setWiReasonOpen(true); }}
+                          disabled={wiApplying}
+                          style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: NAVY, color: "#fff", fontSize: 12, fontWeight: 700, cursor: wiApplying ? "wait" : "pointer", fontFamily: "Inter, sans-serif", opacity: wiApplying ? 0.7 : 1 }}
+                        >
+                          {wiApplying ? t("analysis.whatIfApplying") : t("analysis.whatIfApply")}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── 2c. Executive Summary ── */}
         {displayExecSummary?.trim() && (
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginBottom: 24 }}>
             <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 16px" }}>
@@ -1931,6 +2211,53 @@ export default function DealAnalysis() {
           </div>
         )}
       </div>
+
+      {/* ── What-if reason modal ── */}
+      {wiReasonOpen && (
+        <>
+          <div
+            onClick={() => setWiReasonOpen(false)}
+            style={{ position: "fixed", inset: 0, background: "rgba(27,43,75,0.35)", zIndex: 900 }}
+          />
+          <div style={{
+            position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+            background: "#fff", borderRadius: 14, padding: "28px 28px 24px",
+            minWidth: 360, maxWidth: 480, width: "90vw", zIndex: 901,
+            boxShadow: "0 8px 32px rgba(27,43,75,0.18)", fontFamily: "Inter, sans-serif",
+          }}>
+            <div style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 17, color: NAVY, marginBottom: 8 }}>
+              {t("analysis.whatIfReasonTitle")}
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, marginBottom: 14, lineHeight: 1.6 }}>
+              {t("analysis.whatIfReasonDesc")}
+            </div>
+            <textarea
+              value={wiReasonText}
+              onChange={e => { setWiReasonText(e.target.value); setWiReasonError(null); }}
+              placeholder={t("analysis.whatIfReasonPlaceholder")}
+              rows={4}
+              style={{ width: "100%", padding: "10px 12px", border: "1px solid #D8D2C8", borderRadius: 8, fontSize: 13, fontFamily: "Inter, sans-serif", resize: "vertical", boxSizing: "border-box" }}
+            />
+            {wiReasonError && (
+              <div style={{ fontSize: 12, color: RED, marginTop: 6 }}>{wiReasonError}</div>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+              <button
+                onClick={() => setWiReasonOpen(false)}
+                style={{ padding: "7px 18px", borderRadius: 8, border: "1px solid #D8D2C8", background: "transparent", color: MUTED, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                onClick={() => handleWiApply(scored)}
+                style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: NAVY, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
+              >
+                {t("analysis.whatIfReasonConfirm")}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── Definition bubble — desktop ── */}
       {definitionBubble && !isMobile && bubbleRect && definitions[definitionBubble] && (
