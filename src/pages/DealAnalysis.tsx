@@ -64,6 +64,7 @@ function statusLabelKey(status: string): { key: string; color: string } {
 
 interface MetricRow {
   id: string;
+  metric_id: string;
   metric_name: string;
   tier: string;
   value: number | null;
@@ -781,26 +782,50 @@ export default function DealAnalysis() {
         <div style={{ marginBottom: 16 }}>
           <button
             onClick={async () => {
-              // Call 1: no overrides
+              // Call 1: no overrides — baseline
               const res1 = await invokeFunctionWithDetails("preview-score", { deal_id: dealId });
               console.log("[TEST preview-score] no overrides:", res1);
 
-              // Call 2: override the first counted metric's strong band to "≤ 99x"
-              const firstCounted = scored[0];
+              // Pick the first counted metric currently graded Adequate (direction is unambiguous:
+              // overriding strong = adequate_band means the value already satisfies it → upgrades
+              // the metric from Adequate to Strong → score can only go up or stay the same).
+              // Fall back to the first counted metric if none is Adequate.
+              const adequateMetric = scored.find(m => m.grade === "Adequate");
+              const target = adequateMetric ?? scored[0];
+              const usedFallback = !adequateMetric;
+
+              if (usedFallback) {
+                console.log("[TEST preview-score] No Adequate metric found — falling back to first counted metric:", target?.metric_name);
+              }
+
+              // For the override: set strong = the metric's current adequate_band so its current
+              // value (which already satisfies adequate) will now satisfy strong.
+              const overrideBand = target?.adequate_band ?? "≥ 0";
+
+              console.log(
+                `[TEST preview-score] target metric: "${target?.metric_name}"`,
+                `| metric_id: ${target?.metric_id}`,
+                `| current grade: ${target?.grade}`,
+                `| current value: ${target?.value}`,
+                `| applying strong band: "${overrideBand}"`
+              );
+
               const res2 = await invokeFunctionWithDetails("preview-score", {
                 deal_id: dealId,
-                threshold_overrides: firstCounted
-                  ? [{ metric_id: firstCounted.id, strong: "≤ 99x", adequate: null, weak: null }]
+                threshold_overrides: target
+                  ? [{ metric_id: target.metric_id, strong: overrideBand, adequate: null, weak: null }]
                   : [],
               });
-              console.log("[TEST preview-score] with override on", firstCounted?.metric_name, ":", res2);
+              console.log("[TEST preview-score] with override:", res2);
 
               const score1 = res1.data?.overall_score ?? "N/A";
               const score2 = res2.data?.overall_score ?? "N/A";
-              const metricLabel = firstCounted?.metric_name ?? "(no scored metric)";
+              const metricLabel = target?.metric_name ?? "(no scored metric)";
               alert(
-                `preview-score results:\n\nNo overrides → score: ${score1}\n` +
-                `Override ${metricLabel} strong="≤ 99x" → score: ${score2}`
+                `preview-score results:\n\n` +
+                `No overrides → score: ${score1}\n` +
+                `Override "${metricLabel}" strong="${overrideBand}" → score: ${score2}\n\n` +
+                (usedFallback ? "(fallback: no Adequate metric found)" : "(metric was Adequate → now Strong)")
               );
             }}
             style={{
