@@ -99,7 +99,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerUser, error: callerErr } = await supabase
       .from("users")
-      .select("id, active_org_id")
+      .select("id, active_org_id, role")
       .eq("auth0_id", callerSub)
       .maybeSingle();
 
@@ -123,7 +123,8 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const orgId: string = callerUser.active_org_id;
+    let orgId: string = callerUser.active_org_id;
+    let isCrossOrgAdmin = false;
     const userId: string = callerUser.id;
 
     // ── Look up caller's role in their active org ──────────────────────────────
@@ -268,12 +269,35 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // ── Resolve effective org for write actions ────────────────────────────────
+    // A platform admin may pass target_org_id to write overrides to a different
+    // organisation (e.g. while viewing another org's deal analysis).
+    // Absent → use caller's own active_org_id (unchanged path for non-admins).
+    {
+      const rawTargetOrgId = typeof body.target_org_id === "string" ? body.target_org_id.trim() : null;
+      const callerPlatformRole: string = (callerUser as any).role ?? "";
+      const isTargetingOtherOrg = !!(rawTargetOrgId && rawTargetOrgId !== callerUser.active_org_id);
+
+      if (isTargetingOtherOrg) {
+        if (callerPlatformRole !== "admin") {
+          console.error(`[set-threshold] non-admin caller ${userId} attempted cross-org write to ${rawTargetOrgId}`);
+          return new Response(JSON.stringify({
+            error: "Only a platform administrator may write overrides to another organisation.",
+          }), { status: 403, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
+        }
+        orgId = rawTargetOrgId!;
+        isCrossOrgAdmin = true;
+        console.log(`[set-threshold] platform admin ${userId} targeting org ${orgId} (own org: ${callerUser.active_org_id})`);
+      }
+    }
+    // ── End effective org resolution ───────────────────────────────────────────
+
     // ══════════════════════════════════════════════════════════════════════════
     // ACTION: set
     // OWNER or CREDIT_ADMIN only. Upserts threshold override and writes log.
     // ══════════════════════════════════════════════════════════════════════════
     if (action === "set") {
-      if (callerOrgRole !== "owner" && callerOrgRole !== "credit_admin") {
+      if (!isCrossOrgAdmin && callerOrgRole !== "owner" && callerOrgRole !== "credit_admin") {
         return new Response(JSON.stringify({ error: "Only an owner or credit admin can set threshold overrides." }), {
           status: 403,
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -449,7 +473,7 @@ Deno.serve(async (req: Request) => {
     // OWNER or CREDIT_ADMIN only. Deletes the override and writes log.
     // ══════════════════════════════════════════════════════════════════════════
     if (action === "reset") {
-      if (callerOrgRole !== "owner" && callerOrgRole !== "credit_admin") {
+      if (!isCrossOrgAdmin && callerOrgRole !== "owner" && callerOrgRole !== "credit_admin") {
         return new Response(JSON.stringify({ error: "Only an owner or credit admin can reset threshold overrides." }), {
           status: 403,
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -560,7 +584,7 @@ Deno.serve(async (req: Request) => {
     // (tier re-grade + enable/disable) and writes to metric_override_log.
     // ══════════════════════════════════════════════════════════════════════════
     if (action === "set_metric") {
-      if (callerOrgRole !== "owner" && callerOrgRole !== "credit_admin") {
+      if (!isCrossOrgAdmin && callerOrgRole !== "owner" && callerOrgRole !== "credit_admin") {
         return new Response(JSON.stringify({ error: "Only an owner or credit admin can set metric policy overrides." }), {
           status: 403,
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -728,7 +752,7 @@ Deno.serve(async (req: Request) => {
     // OWNER or CREDIT_ADMIN only. Deletes the policy override row and logs.
     // ══════════════════════════════════════════════════════════════════════════
     if (action === "reset_metric") {
-      if (callerOrgRole !== "owner" && callerOrgRole !== "credit_admin") {
+      if (!isCrossOrgAdmin && callerOrgRole !== "owner" && callerOrgRole !== "credit_admin") {
         return new Response(JSON.stringify({ error: "Only an owner or credit admin can reset metric policy overrides." }), {
           status: 403,
           headers: { ...CORS_HEADERS, "Content-Type": "application/json" },

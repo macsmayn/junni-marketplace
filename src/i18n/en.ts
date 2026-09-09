@@ -102,6 +102,9 @@ const en: Record<string, string> = {
   "analysis.whatIfReasonPlaceholder":   "Describe the rationale for these threshold changes…",
   "analysis.whatIfReasonMin":           "Reason must be at least 10 characters.",
   "analysis.whatIfReasonConfirm":       "Apply and re-score",
+  "analysis.whatIfAdminOrgWarning":     "This will change the credit policy of {org}. The change will be recorded in their audit log under your name.",
+  "analysis.whatIfAdminOrgAck":         "I understand I am changing the credit policy for {org}",
+  "analysis.whatIfAdminOrgFallback":    "this organization",
 
   // DealAnalysis — scored metrics
   "analysis.scoredMetrics":        "Scored Metrics",

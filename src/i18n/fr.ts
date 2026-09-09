@@ -102,6 +102,9 @@ const fr: Record<string, string> = {
   "analysis.whatIfReasonPlaceholder":   "Décrivez la justification de ces changements de seuils…",
   "analysis.whatIfReasonMin":           "La raison doit comporter au moins 10 caractères.",
   "analysis.whatIfReasonConfirm":       "Appliquer et recalculer",
+  "analysis.whatIfAdminOrgWarning":     "Cela modifiera la politique de crédit de {org}. La modification sera enregistrée dans leur journal d'audit sous votre nom.",
+  "analysis.whatIfAdminOrgAck":         "Je comprends que je modifie la politique de crédit pour {org}",
+  "analysis.whatIfAdminOrgFallback":    "cette organisation",
 
   // DealAnalysis — scored metrics
   "analysis.scoredMetrics":        "Indicateurs cotés",

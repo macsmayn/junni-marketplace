@@ -200,7 +200,10 @@ export default function DealAnalysis() {
   const [docViewError, setDocViewError] = useState<string | null>(null);
 
   const [orgRole, setOrgRole] = useState<string | null>(null);
+  const [dealOrgId, setDealOrgId] = useState<string | null>(null);
+  const [dealOrgName, setDealOrgName] = useState<string | null>(null);
   const [whatIfOpen, setWhatIfOpen] = useState(false);
+  const [wiAdminAck, setWiAdminAck] = useState(false);
   const [wiEdits, setWiEdits] = useState<Record<string, WiEditState>>({});
   const [wiPreview, setWiPreview] = useState<any>(null);
   const [wiPreviewing, setWiPreviewing] = useState(false);
@@ -245,7 +248,7 @@ export default function DealAnalysis() {
     (async () => {
       setLoading(true);
       const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }, { data: qsData }, { data: docsData }, { data: latestFinRow }] = await Promise.all([
-        supabase.from("deals").select("title,deal_label,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,created_by,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr,updated_at").eq("id", dealId).single(),
+        supabase.from("deals").select("title,deal_label,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,created_by,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr,updated_at,org_id").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source,summary_fr,strengths_fr,risks_fr,generated_at").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
         supabase.from("users").select("id,role,active_org_id").eq("auth0_id", user?.sub ?? "").maybeSingle(),
@@ -260,6 +263,15 @@ export default function DealAnalysis() {
       if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
       setCurrentUser(cu ?? null);
+      if (d?.org_id) {
+        setDealOrgId(d.org_id);
+        const { data: orgRow } = await supabase
+          .from("organizations")
+          .select("name")
+          .eq("id", d.org_id)
+          .maybeSingle();
+        setDealOrgName(orgRow?.name ?? null);
+      }
       if (cu?.id && cu?.active_org_id) {
         const { data: memberRow } = await supabase
           .from("organization_members")
@@ -435,6 +447,15 @@ export default function DealAnalysis() {
 
 
   const scored = metrics.filter(m => m.counted);
+
+  // True when a platform admin is viewing a deal that belongs to a different org.
+  // In this case set-threshold calls must carry target_org_id and the UI shows a warning.
+  const isCrossOrgApply = !!(
+    dealOrgId &&
+    currentUser?.active_org_id &&
+    dealOrgId !== currentUser.active_org_id &&
+    currentUser?.role === "admin"
+  );
   const notScored = metrics.filter(m => !m.counted);
   const byTier = TIER_ORDER.map(tier => ({ tier, rows: scored.filter(m => m.tier === tier) })).filter(g => g.rows.length > 0);
   const anyOverride = metrics.some((m: MetricRow) => m.band_is_override);
@@ -543,6 +564,7 @@ export default function DealAnalysis() {
       setWiPreview(null);
       setWiPreviewError(null);
       setWiApplyError(null);
+      setWiAdminAck(false);
       triggerWiPreview(initEdits, currentScored);
     }
     setWhatIfOpen(o => !o);
@@ -572,6 +594,7 @@ export default function DealAnalysis() {
             action: "set", metric_id: m.metric_id,
             strong: edit.strong || null, adequate: edit.adequate || null, weak: edit.weak || null,
             reason,
+            ...(isCrossOrgApply && dealOrgId ? { target_org_id: dealOrgId } : {}),
           });
         }
         if (tierChanged || enabledChanged) {
@@ -579,6 +602,7 @@ export default function DealAnalysis() {
             action: "set_metric", metric_id: m.metric_id,
             tier: edit.tier || null, enabled: edit.enabled,
             reason,
+            ...(isCrossOrgApply && dealOrgId ? { target_org_id: dealOrgId } : {}),
           });
         }
       }
@@ -1157,8 +1181,26 @@ export default function DealAnalysis() {
                       </table>
                     </div>
 
+                    {/* Cross-org admin warning */}
+                    {isCrossOrgApply && (
+                      <div style={{ background: "#FFFBEB", border: "2px solid #F59E0B", borderRadius: 8, padding: "14px 16px", marginTop: 20 }}>
+                        <div style={{ fontSize: 12, color: "#92400E", fontWeight: 700, marginBottom: 10, lineHeight: 1.5 }}>
+                          ⚠ {t("analysis.whatIfAdminOrgWarning").replace("{org}", dealOrgName ?? t("analysis.whatIfAdminOrgFallback"))}
+                        </div>
+                        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: "#92400E", cursor: "pointer", fontFamily: "Inter, sans-serif" }}>
+                          <input
+                            type="checkbox"
+                            checked={wiAdminAck}
+                            onChange={e => setWiAdminAck(e.target.checked)}
+                            style={{ marginTop: 2, flexShrink: 0 }}
+                          />
+                          {t("analysis.whatIfAdminOrgAck").replace("{org}", dealOrgName ?? t("analysis.whatIfAdminOrgFallback"))}
+                        </label>
+                      </div>
+                    )}
+
                     {/* Footer */}
-                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
                       {wiApplyError && <span style={{ fontSize: 12, color: RED, flex: 1 }}>{wiApplyError}</span>}
                       <button
                         onClick={() => { setWhatIfOpen(false); setWiPreview(null); }}
@@ -1166,11 +1208,11 @@ export default function DealAnalysis() {
                       >
                         {t("analysis.whatIfDiscard")}
                       </button>
-                      {(orgRole === "owner" || orgRole === "credit_admin") && (
+                      {(orgRole === "owner" || orgRole === "credit_admin" || isCrossOrgApply) && (
                         <button
                           onClick={() => { setWiReasonText(""); setWiReasonError(null); setWiReasonOpen(true); }}
-                          disabled={wiApplying}
-                          style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: NAVY, color: "#fff", fontSize: 12, fontWeight: 700, cursor: wiApplying ? "wait" : "pointer", fontFamily: "Inter, sans-serif", opacity: wiApplying ? 0.7 : 1 }}
+                          disabled={wiApplying || (isCrossOrgApply && !wiAdminAck)}
+                          style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: NAVY, color: "#fff", fontSize: 12, fontWeight: 700, cursor: (wiApplying || (isCrossOrgApply && !wiAdminAck)) ? "not-allowed" : "pointer", fontFamily: "Inter, sans-serif", opacity: (wiApplying || (isCrossOrgApply && !wiAdminAck)) ? 0.45 : 1 }}
                         >
                           {wiApplying ? t("analysis.whatIfApplying") : t("analysis.whatIfApply")}
                         </button>
