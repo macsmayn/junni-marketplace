@@ -23,6 +23,7 @@ import LenderPortfolio from "./pages/LenderPortfolio";
 import FinancialReview from "./pages/FinancialReview";
 import AdminPanel from "./pages/AdminPanel";
 import DealAnalysis from "./pages/DealAnalysis";
+import DealAnalysisHistory from "./pages/DealAnalysisHistory";
 import NewAnalysis from "./pages/NewAnalysis";
 import MyAnalyses from "./pages/MyAnalyses";
 import Billing from "./pages/Billing";
@@ -116,6 +117,11 @@ function Router() {
       <Route path={"/analysis/:dealId"}>
         <LenderRoute>
           <DealAnalysis />
+        </LenderRoute>
+      </Route>
+      <Route path={"/analysis/:dealId/history/:version"}>
+        <LenderRoute>
+          <DealAnalysisHistory />
         </LenderRoute>
       </Route>
       <Route path={"/404"} component={NotFound} />

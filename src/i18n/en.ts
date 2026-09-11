@@ -1011,6 +1011,26 @@ const en: Record<string, string> = {
   "metric.customThreshold":           "Custom threshold",
   "analysis.customThresholdCardNote": "Some metrics were graded against this organization's own thresholds rather than Junni's defaults.",
   "memo.customThresholdFootnote":     "† Metrics marked as custom were graded against thresholds set by the lender rather than Junni's defaults.",
+
+  // Version history — DealAnalysis previous-versions table
+  "analysis.previousVersions":   "Previous Versions",
+  "analysis.prevVerVersion":     "Version",
+  "analysis.prevVerDate":        "Archived",
+  "analysis.prevVerScore":       "Score",
+  "analysis.prevVerChange":      "Change",
+  "analysis.prevVerReason":      "Reason",
+  "analysis.prevVerView":        "View",
+
+  // DealAnalysisHistory page
+  "history.loading":         "Loading archived version…",
+  "history.notFound":        "Archived version not found.",
+  "history.banner":          "ARCHIVED VERSION — NOT CURRENT",
+  "history.bannerDetail":    "Version {v} · Archived on {date}",
+  "history.bannerWarning":   "This is not the current analysis. The live deal may reflect changes made since this version was archived.",
+  "history.backToLive":      "Back to live analysis →",
+  "history.pageTitle":       "Version {v} — Archived",
+  "history.noStructureData": "This section was not captured for this version (predates the archiving feature).",
+  "history.questionsAsOf":   "Diligence questions as they existed at the time this version was archived.",
 };
 
 export default en;

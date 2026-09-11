@@ -1011,6 +1011,26 @@ const fr: Record<string, string> = {
   "metric.customThreshold":           "Seuil personnalisé",
   "analysis.customThresholdCardNote": "Certains indicateurs ont été évalués selon les seuils propres à cette organisation plutôt que les valeurs par défaut de Junni.",
   "memo.customThresholdFootnote":     "† Les indicateurs marqués comme personnalisés ont été évalués selon les seuils fixés par le prêteur plutôt que les valeurs par défaut de Junni.",
+
+  // Version history — DealAnalysis tableau des versions précédentes
+  "analysis.previousVersions":   "Versions précédentes",
+  "analysis.prevVerVersion":     "Version",
+  "analysis.prevVerDate":        "Archivé le",
+  "analysis.prevVerScore":       "Note",
+  "analysis.prevVerChange":      "Variation",
+  "analysis.prevVerReason":      "Motif",
+  "analysis.prevVerView":        "Voir",
+
+  // Page DealAnalysisHistory
+  "history.loading":         "Chargement de la version archivée…",
+  "history.notFound":        "Version archivée introuvable.",
+  "history.banner":          "VERSION ARCHIVÉE — NON ACTUELLE",
+  "history.bannerDetail":    "Version {v} · Archivé le {date}",
+  "history.bannerWarning":   "Ceci n'est pas l'analyse actuelle. L'opération en direct peut refléter des modifications apportées depuis l'archivage de cette version.",
+  "history.backToLive":      "Retour à l'analyse en direct →",
+  "history.pageTitle":       "Version {v} — Archivée",
+  "history.noStructureData": "Cette section n'a pas été capturée pour cette version (antérieure à la fonctionnalité d'archivage).",
+  "history.questionsAsOf":   "Questions de diligence raisonnable telles qu'elles existaient au moment de l'archivage de cette version.",
 };
 
 export default fr;

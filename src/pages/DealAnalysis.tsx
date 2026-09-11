@@ -4,63 +4,13 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { supabase, invokeFunction, invokeFunctionWithDetails } from "../lib/supabase";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
-import { tRiskLabel } from "../lib/riskLabel";
 import { translateBandUnits } from "../lib/bandUnits";
 import { fmtValue } from "../lib/metricFormat";
 import type { MemoSections } from "../lib/memoExport";
-
-const NAVY = "#1B2B4B";
-const GOLD = "#D4940A";
-const CREAM = "#FAF8F4";
-const GREEN = "#059669";
-const RED = "#DC2626";
-const MUTED = "#7A7060";
-
-const TIER_ORDER = ["Critical", "Important", "Supplementary", "Optional"];
-
-
-function gradeChip(grade: string, t: (k: string) => string) {
-  const color = grade === "Strong" ? GREEN : grade === "Adequate" ? GOLD : RED;
-  return (
-    <span style={{
-      display: "inline-block", padding: "2px 10px", borderRadius: 99,
-      fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
-      background: color + "1A", color, border: `1px solid ${color}40`,
-    }}>{tRiskLabel(grade, t)}</span>
-  );
-}
-
-function riskChip(label: string, t: (k: string) => string) {
-  const color = label === "Strong" || label === "Very Low" ? GREEN
-    : label === "Adequate" || label === "Low" ? GOLD
-    : label === "Moderate" ? "#D97706"
-    : RED;
-  return (
-    <span style={{
-      display: "inline-block", padding: "4px 14px", borderRadius: 99,
-      fontSize: 13, fontWeight: 700, background: color + "1A", color,
-      border: `1px solid ${color}40`,
-    }}>{tRiskLabel(label, t)}</span>
-  );
-}
-
-function humanizeNotScoredReason(detail: string | null, reason: string | null, t: (k: string) => string): string {
-  const raw = detail ?? reason ?? "";
-  if (!raw) return "—";
-  if (raw.includes("=DOC") || raw.includes("=EXT") || raw.includes("primary_resolution=DOC") || raw.includes("primary_resolution=EXT")) {
-    return t("analysis.reasonNeedsDocument");
-  }
-  if (raw.toLowerCase().includes("no computation registered")) {
-    return t("analysis.reasonNoFormula");
-  }
-  return raw;
-}
-
-function statusLabelKey(status: string): { key: string; color: string } {
-  if (status === "needs_document_or_input" || status === "needs_input") return { key: "analysis.statusNeedsData", color: GOLD };
-  if (status === "needs_review") return { key: "analysis.statusNeedsReview", color: RED };
-  return { key: "analysis.statusQualitative", color: MUTED };
-}
+import {
+  NAVY, GOLD, CREAM, GREEN, RED, MUTED, TIER_ORDER,
+  gradeChip, riskChip, humanizeNotScoredReason, statusLabelKey, DefContent,
+} from "../lib/analysisRender";
 
 interface MetricRow {
   id: string;
@@ -85,41 +35,6 @@ interface WiEditState {
   weak:     string;
   tier:     string;
   enabled:  boolean;
-}
-
-function DefContent({ def, lang }: { def: any; lang: "en" | "fr" }) {
-  const fr = lang === "fr";
-  const tDef = (enVal: string | null, frVal: string | null) => (fr && frVal) ? frVal : enVal;
-  const higher = fr ? "↑ Plus élevé :" : "↑ Higher:";
-  const lower  = fr ? "↓ Plus bas :"  : "↓ Lower:";
-  const whatItIs       = tDef(def.what_it_is,       def.what_it_is_fr);
-  const whatItMeasures = tDef(def.what_it_measures,  def.what_it_measures_fr);
-  const highMeans      = tDef(def.high_value_means,  def.high_value_means_fr);
-  const lowMeans       = tDef(def.low_value_means,   def.low_value_means_fr);
-  const why            = tDef(def.why_it_matters,    def.why_it_matters_fr);
-  const formula        = tDef(def.formula_plain,     def.formula_plain_fr);
-  return (
-    <>
-      {whatItIs && (
-        <div style={{ color: NAVY, fontWeight: 500, marginBottom: 4 }}>{whatItIs}</div>
-      )}
-      {whatItMeasures && (
-        <div style={{ marginBottom: 4 }}>{whatItMeasures}</div>
-      )}
-      {(highMeans || lowMeans) && (
-        <div style={{ marginBottom: 4 }}>
-          {highMeans && <div>{higher} {highMeans}</div>}
-          {lowMeans  && <div>{lower} {lowMeans}</div>}
-        </div>
-      )}
-      {why && (
-        <div style={{ fontStyle: "italic", marginBottom: 6 }}>{why}</div>
-      )}
-      {formula && (
-        <code style={{ fontSize: 11, background: "#EDE9E1", padding: "2px 7px", borderRadius: 4, fontFamily: "monospace", color: NAVY }}>{formula}</code>
-      )}
-    </>
-  );
 }
 
 export default function DealAnalysis() {
@@ -213,6 +128,7 @@ export default function DealAnalysis() {
   const [wiReasonError, setWiReasonError] = useState<string | null>(null);
   const [wiApplying, setWiApplying] = useState(false);
   const [wiApplyError, setWiApplyError] = useState<string | null>(null);
+  const [historyVersions, setHistoryVersions] = useState<any[]>([]);
   const wiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -308,6 +224,14 @@ export default function DealAnalysis() {
 
       setDocuments(docsData ?? []);
       setLatestFinUpdatedAt(latestFinRow?.updated_at ?? null);
+
+      const { data: hvRows } = await supabase
+        .from("credit_scores_history")
+        .select("version,archived_at,archived_reason,overall_score,risk_label")
+        .eq("deal_id", dealId)
+        .order("version", { ascending: false });
+      setHistoryVersions(hvRows ?? []);
+
       setLoading(false);
     })();
   }, [dealId, user?.sub]);
@@ -1378,6 +1302,76 @@ export default function DealAnalysis() {
                   </ul>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Previous versions ── */}
+        {historyVersions.length > 0 && (
+          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
+            <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 16px" }}>
+              {t("analysis.previousVersions")}
+            </h2>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 480 }}>
+                <thead>
+                  <tr style={{ borderBottom: "2px solid #E8E2D9" }}>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{t("analysis.prevVerVersion")}</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{t("analysis.prevVerDate")}</th>
+                    <th style={{ textAlign: "center", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{t("analysis.prevVerScore")}</th>
+                    <th style={{ textAlign: "center", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{t("analysis.prevVerChange")}</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED }}>{t("analysis.prevVerReason")}</th>
+                    <th style={{ padding: "6px 10px" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyVersions.map((hv: any, i: number) => {
+                    const nextOlder = historyVersions[i + 1];
+                    const delta = nextOlder != null
+                      ? (hv.overall_score ?? 0) - (nextOlder.overall_score ?? 0)
+                      : null;
+                    const isLast = i === historyVersions.length - 1;
+                    return (
+                      <tr key={hv.version} style={{ borderBottom: isLast ? "none" : "1px solid #F0EDE8" }}>
+                        <td style={{ padding: "10px 10px", color: NAVY, fontWeight: 600 }}>v{hv.version}</td>
+                        <td style={{ padding: "10px 10px", color: MUTED, fontSize: 12, whiteSpace: "nowrap" }}>
+                          {new Date(hv.archived_at).toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" })}
+                        </td>
+                        <td style={{ padding: "10px 10px", textAlign: "center" }}>
+                          <span style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 700, fontSize: 16, color: NAVY }}>{hv.overall_score ?? "—"}</span>
+                          {hv.risk_label && (
+                            <div style={{ marginTop: 3 }}>{riskChip(hv.risk_label, t)}</div>
+                          )}
+                        </td>
+                        <td style={{ padding: "10px 10px", textAlign: "center" }}>
+                          {delta !== null ? (
+                            <span style={{ fontWeight: 700, fontSize: 13, color: delta > 0 ? GREEN : delta < 0 ? RED : MUTED }}>
+                              {delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)}
+                            </span>
+                          ) : (
+                            <span style={{ color: MUTED, fontSize: 12 }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "10px 10px", color: MUTED, fontSize: 12, maxWidth: 220 }}>
+                          <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {hv.archived_reason || "—"}
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 10px" }}>
+                          <button
+                            onClick={() => setLocation(`/analysis/${dealId}/history/${hv.version}`)}
+                            style={{
+                              padding: "4px 10px", borderRadius: 6, border: "1px solid #E8E2D9",
+                              background: "transparent", color: NAVY, fontSize: 11, fontWeight: 600,
+                              cursor: "pointer", fontFamily: "Inter, sans-serif", whiteSpace: "nowrap",
+                            }}
+                          >{t("analysis.prevVerView")}</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
