@@ -133,6 +133,8 @@ async function archiveCurrentScore(
       return;
     }
 
+    const archivedAt = new Date().toISOString();
+
     // Archive all current score_metric_results rows.
     const { data: metricRows } = await supabase
       .from("score_metric_results")
@@ -142,33 +144,105 @@ async function archiveCurrentScore(
       )
       .eq("deal_id", deal_id);
 
-    const rows: any[] = metricRows ?? [];
-    if (rows.length > 0) {
-      const archivedAt = new Date().toISOString();
+    const metricRowCount = (metricRows ?? []).length;
+    if (metricRowCount > 0) {
       const { error: smErr } = await supabase.from("score_metric_results_history").insert(
-        rows.map((r) => ({
+        (metricRows as any[]).map((r) => ({
           deal_id,
           version,
-          metric_id:       r.metric_id,
-          metric_name:     r.metric_name,
-          tier:            r.tier,
-          value:           r.value,
-          grade:           r.grade,
-          status:          r.status,
-          counted:         r.counted,
-          compute_detail:  r.compute_detail,
-          grade_reason:    r.grade_reason,
-          strong_band:     r.strong_band,
-          adequate_band:   r.adequate_band,
-          weak_band:       r.weak_band,
+          metric_id:        r.metric_id,
+          metric_name:      r.metric_name,
+          tier:             r.tier,
+          value:            r.value,
+          grade:            r.grade,
+          status:           r.status,
+          counted:          r.counted,
+          compute_detail:   r.compute_detail,
+          grade_reason:     r.grade_reason,
+          strong_band:      r.strong_band,
+          adequate_band:    r.adequate_band,
+          weak_band:        r.weak_band,
           band_is_override: r.band_is_override,
-          archived_at:     archivedAt,
+          archived_at:      archivedAt,
         }))
       );
       if (smErr) console.error(`[score-deal] score_metric_results_history insert error (deal_id: ${deal_id}):`, smErr);
     }
 
-    console.log(`[score-deal] Archived score v${version} for deal ${deal_id}: ${rows.length} metric row(s).`);
+    // Archive capitalization_items.
+    const { data: capRows } = await supabase
+      .from("capitalization_items")
+      .select("category, label, amount, rate, notes, sort_order")
+      .eq("deal_id", deal_id);
+
+    const capRowCount = (capRows ?? []).length;
+    if (capRowCount > 0) {
+      const { error: capErr } = await supabase.from("capitalization_items_history").insert(
+        (capRows as any[]).map((r) => ({
+          deal_id,
+          version,
+          archived_at:  archivedAt,
+          category:     r.category,
+          label:        r.label,
+          amount:       r.amount,
+          rate:         r.rate,
+          notes:        r.notes,
+          sort_order:   r.sort_order,
+        }))
+      );
+      if (capErr) console.error(`[score-deal] capitalization_items_history insert error (deal_id: ${deal_id}):`, capErr);
+    }
+
+    // Archive sources_uses_entries.
+    const { data: suRows } = await supabase
+      .from("sources_uses_entries")
+      .select("side, label, amount, sort_order")
+      .eq("deal_id", deal_id);
+
+    const suRowCount = (suRows ?? []).length;
+    if (suRowCount > 0) {
+      const { error: suErr } = await supabase.from("sources_uses_entries_history").insert(
+        (suRows as any[]).map((r) => ({
+          deal_id,
+          version,
+          archived_at: archivedAt,
+          side:        r.side,
+          label:       r.label,
+          amount:      r.amount,
+          sort_order:  r.sort_order,
+        }))
+      );
+      if (suErr) console.error(`[score-deal] sources_uses_entries_history insert error (deal_id: ${deal_id}):`, suErr);
+    }
+
+    // Archive collateral_assets.
+    const { data: colRows } = await supabase
+      .from("collateral_assets")
+      .select("asset_type, description, market_value, advance_rate, lending_value")
+      .eq("deal_id", deal_id);
+
+    const colRowCount = (colRows ?? []).length;
+    if (colRowCount > 0) {
+      const { error: colErr } = await supabase.from("collateral_assets_history").insert(
+        (colRows as any[]).map((r) => ({
+          deal_id,
+          version,
+          archived_at:    archivedAt,
+          asset_type:     r.asset_type,
+          description:    r.description,
+          market_value:   r.market_value,
+          advance_rate:   r.advance_rate,
+          lending_value:  r.lending_value,
+        }))
+      );
+      if (colErr) console.error(`[score-deal] collateral_assets_history insert error (deal_id: ${deal_id}):`, colErr);
+    }
+
+    console.log(
+      `[score-deal] Archived score v${version} for deal ${deal_id}: ` +
+      `${metricRowCount} metric row(s), ${capRowCount} cap item(s), ` +
+      `${suRowCount} S&U entry/ies, ${colRowCount} collateral asset(s).`
+    );
   } catch (err) {
     console.error(`[score-deal] archiveCurrentScore unhandled error (deal_id: ${deal_id}):`, err);
   }
