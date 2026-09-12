@@ -523,7 +523,7 @@ function pdfFinancials(data: MemoData, t: (k: string) => string, lang: string): 
     };
   };
 
-  const blocks: any[] = [pdfSection(t('memo.secFinancialStatements'))];
+  const blocks: any[] = [pdfSection(t('memo.secFinancialStatements'), true)];
   blocks.push({ stack: [pdfSubHead(t('analysis.finIncomeStatement')), buildSubTable([
     { labelKey: 'analysis.finRevenue',           get: (r: any) => r.revenue },
     { labelKey: 'analysis.finCogs',              get: (r: any) => r.cogs },
@@ -556,7 +556,7 @@ function pdfAnalystCommentary(data: MemoData, t: (k: string) => string, lang: st
   if (!text) return [];
   const paras = splitIntoParagraphs(text);
   return [
-    pdfSection(t('memo.secAnalystCommentary')),
+    pdfSection(t('memo.secAnalystCommentary'), true),
     ...paras.map((p, i) => ({ text: p, fontSize: 9, lineHeight: 1.55, margin: [0, 0, 0, i < paras.length - 1 ? 10 : 0] })),
   ];
 }
@@ -1539,6 +1539,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
         });
 
       children.push(
+        wPageBreak(),
         wHead1(t('memo.secFinancialStatements').replace(/^[A-Z À-ɏ]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())),
         wHead2(t('analysis.finIncomeStatement')),
         buildFinTableW([
@@ -1577,7 +1578,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
   if (sec.analystCommentary) {
     const summaryText = summaryRaw?.trim();
     if (summaryText) {
-      children.push(wHead1(t('memo.secAnalystCommentary').replace(/^[A-Z ]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())));
+      children.push(wPageBreak(), wHead1(t('memo.secAnalystCommentary').replace(/^[A-Z ]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())));
       splitIntoParagraphs(summaryText).forEach(p => children.push(wPara(p, { spaceAfter: 160 })));
     }
   }
