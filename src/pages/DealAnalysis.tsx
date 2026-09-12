@@ -129,6 +129,8 @@ export default function DealAnalysis() {
   const [wiApplying, setWiApplying] = useState(false);
   const [wiApplyError, setWiApplyError] = useState<string | null>(null);
   const [historyVersions, setHistoryVersions] = useState<any[]>([]);
+  const [financials, setFinancials] = useState<any[]>([]);
+  const [finShowEarlier, setFinShowEarlier] = useState(false);
   const wiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -163,7 +165,7 @@ export default function DealAnalysis() {
     if (!dealId) return;
     (async () => {
       setLoading(true);
-      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }, { data: qsData }, { data: docsData }, { data: latestFinRow }] = await Promise.all([
+      const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }, { data: qsData }, { data: docsData }, { data: latestFinRow }, { data: finAllRows }] = await Promise.all([
         supabase.from("deals").select("title,deal_label,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,created_by,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr,updated_at,org_id").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source,summary_fr,strengths_fr,risks_fr,generated_at").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
@@ -175,6 +177,7 @@ export default function DealAnalysis() {
         supabase.from("credit_questions").select("*").eq("deal_id", dealId).order("created_at"),
         supabase.from("documents").select("id,file_name,file_type,storage_path,doc_category,created_at,size_bytes").eq("deal_id", dealId).order("created_at", { ascending: true }),
         supabase.from("extracted_financials").select("updated_at").eq("deal_id", dealId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("extracted_financials").select("fiscal_year,revenue,cogs,gross_profit,operating_expenses,ebitda,net_income,cash,current_assets,total_assets,current_liabilities,total_debt,total_liabilities,equity,cfo,capex").eq("deal_id", dealId).eq("borrower_confirmed", true).order("fiscal_year", { ascending: true }),
       ]);
       if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
@@ -224,6 +227,7 @@ export default function DealAnalysis() {
 
       setDocuments(docsData ?? []);
       setLatestFinUpdatedAt(latestFinRow?.updated_at ?? null);
+      setFinancials(finAllRows ?? []);
 
       const { data: hvRows } = await supabase
         .from("credit_scores_history")
@@ -1274,7 +1278,157 @@ export default function DealAnalysis() {
           </div>
         )}
 
-        {/* FINANCIALS SECTION — TO BE BUILT */}
+        {/* ── Financials ── */}
+        {(() => {
+          const MAX_DEFAULT = 5;
+          const hasMore = financials.length > MAX_DEFAULT;
+          const displayedRows: any[] = hasMore && !finShowEarlier
+            ? financials.slice(-MAX_DEFAULT)
+            : financials;
+
+          const thLabel: React.CSSProperties = {
+            fontSize: 11, fontWeight: 700, color: MUTED, textAlign: "left",
+            padding: "0 10px 8px 0", borderBottom: "1px solid #E8E2D9", verticalAlign: "bottom",
+          };
+          const thYear: React.CSSProperties = {
+            fontSize: 12, fontWeight: 700, color: NAVY, textAlign: "right",
+            padding: "0 10px 8px", borderBottom: "1px solid #E8E2D9", verticalAlign: "bottom",
+            whiteSpace: "nowrap",
+          };
+          const thDelta: React.CSSProperties = {
+            fontSize: 10, fontWeight: 600, color: MUTED, textAlign: "center",
+            padding: "0 4px 8px", borderBottom: "1px solid #E8E2D9", verticalAlign: "bottom",
+            whiteSpace: "nowrap",
+          };
+          const tdLabel: React.CSSProperties = {
+            fontSize: 13, color: NAVY, padding: "8px 10px 8px 0",
+            borderBottom: "1px solid #F3EFE8", verticalAlign: "middle",
+          };
+          const tdVal: React.CSSProperties = {
+            fontSize: 13, color: NAVY, textAlign: "right", padding: "8px 10px",
+            borderBottom: "1px solid #F3EFE8", verticalAlign: "middle", whiteSpace: "nowrap",
+          };
+          const tdDelta: React.CSSProperties = {
+            textAlign: "center", padding: "8px 4px",
+            borderBottom: "1px solid #F3EFE8", verticalAlign: "middle",
+          };
+          const subHdStyle: React.CSSProperties = {
+            fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase" as const,
+            letterSpacing: "0.08em", color: NAVY, margin: "20px 0 10px",
+          };
+
+          const fmtFin = (v: number | null): string => v != null ? fmtValue(v, "amount") : "—";
+          const fcfVal = (row: any): number | null =>
+            row.cfo == null && row.capex == null ? null : (row.cfo ?? 0) - (row.capex ?? 0);
+
+          const renderRow = (labelKey: string, getValue: (r: any) => number | null, isLast: boolean) => {
+            const lastBorder = isLast ? { borderBottom: "none" } : {};
+            return (
+              <tr key={labelKey}>
+                <td style={{ ...tdLabel, ...lastBorder }}>{t(labelKey)}</td>
+                {displayedRows.map((row: any, i: number) => {
+                  const curr = getValue(row);
+                  const prior = i > 0 ? getValue(displayedRows[i - 1]) : null;
+                  const delta = (i > 0 && curr != null && prior != null && prior !== 0)
+                    ? (curr - prior) / Math.abs(prior) * 100
+                    : null;
+                  return (
+                    <React.Fragment key={row.fiscal_year}>
+                      {i > 0 && (
+                        <td style={{ ...tdDelta, ...lastBorder }}>
+                          {delta != null
+                            ? <span style={{ fontSize: 11, fontWeight: 600, color: delta > 0 ? GREEN : delta < 0 ? RED : MUTED }}>
+                                {delta > 0 ? "+" : ""}{delta.toFixed(1)}%
+                              </span>
+                            : <span style={{ fontSize: 11, color: MUTED }}>—</span>
+                          }
+                        </td>
+                      )}
+                      <td style={{ ...tdVal, ...lastBorder }}>{fmtFin(curr)}</td>
+                    </React.Fragment>
+                  );
+                })}
+              </tr>
+            );
+          };
+
+          const finTable = (rows: { key: string; get: (r: any) => number | null }[]) => (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th style={thLabel}></th>
+                    {displayedRows.map((row: any, i: number) => (
+                      <React.Fragment key={row.fiscal_year}>
+                        {i > 0 && <th style={thDelta}>{t("analysis.finVsPriorYear")}</th>}
+                        <th style={thYear}>{row.fiscal_year}</th>
+                      </React.Fragment>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(({ key, get }, idx) => renderRow(key, get, idx === rows.length - 1))}
+                </tbody>
+              </table>
+            </div>
+          );
+
+          return (
+            <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginBottom: 24 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: financials.length === 0 ? 12 : 4 }}>
+                <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: 0 }}>
+                  {t("analysis.financialStatements")}
+                </h2>
+                {hasMore && (
+                  <button
+                    onClick={() => setFinShowEarlier(v => !v)}
+                    style={{ fontSize: 12, fontWeight: 600, color: NAVY, background: "none", border: "1px solid #E8E2D9", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: "Inter, sans-serif" }}
+                  >
+                    {finShowEarlier ? t("analysis.finHideEarlier") : t("analysis.finShowEarlier")}
+                  </button>
+                )}
+              </div>
+
+              {financials.length === 0 ? (
+                <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>{t("analysis.finNotConfirmed")}</p>
+              ) : (
+                <>
+                  <div style={subHdStyle}>{t("analysis.finIncomeStatement")}</div>
+                  {finTable([
+                    { key: "analysis.finRevenue",           get: r => r.revenue },
+                    { key: "analysis.finCogs",              get: r => r.cogs },
+                    { key: "analysis.finGrossProfit",       get: r => r.gross_profit },
+                    { key: "analysis.finOperatingExpenses", get: r => r.operating_expenses },
+                    { key: "analysis.finEbitda",            get: r => r.ebitda },
+                    { key: "analysis.finNetIncome",         get: r => r.net_income },
+                  ])}
+
+                  <div style={subHdStyle}>{t("analysis.finBalanceSheet")}</div>
+                  {finTable([
+                    { key: "analysis.finCash",               get: r => r.cash },
+                    { key: "analysis.finCurrentAssets",      get: r => r.current_assets },
+                    { key: "analysis.finTotalAssets",        get: r => r.total_assets },
+                    { key: "analysis.finCurrentLiabilities", get: r => r.current_liabilities },
+                    { key: "analysis.finTotalDebt",          get: r => r.total_debt },
+                    { key: "analysis.finTotalLiabilities",   get: r => r.total_liabilities },
+                    { key: "analysis.finEquity",             get: r => r.equity },
+                  ])}
+
+                  <div style={subHdStyle}>{t("analysis.finCashFlow")}</div>
+                  {finTable([
+                    { key: "analysis.finCfo",   get: r => r.cfo },
+                    { key: "analysis.finCapex", get: r => r.capex },
+                    { key: "analysis.finFcf",   get: r => fcfVal(r) },
+                  ])}
+
+                  <p style={{ fontSize: 12, color: MUTED, margin: "16px 0 0", lineHeight: 1.6 }}>
+                    {t("analysis.finNotCaptured")}
+                  </p>
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── 5. Narrative ── */}
         {score && (displaySummary || displayStrengths?.length || displayRisks?.length) && (
