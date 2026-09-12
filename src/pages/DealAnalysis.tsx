@@ -1416,9 +1416,9 @@ export default function DealAnalysis() {
                     ...(hasDistributions ? [{ key: "analysis.finDistributions", get: (r: any) => r.distributions }] : []),
                   ])}
 
-                  {!(hasFfo || hasDistributions) && (
+                  {!hasFfo && (
                     <p style={{ fontSize: 12, color: MUTED, margin: "16px 0 0", lineHeight: 1.6 }}>
-                      {t("analysis.finNotApplicable")}
+                      {t("analysis.finFfoNotFound")}
                     </p>
                   )}
                 </>

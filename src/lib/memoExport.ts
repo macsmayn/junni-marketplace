@@ -552,8 +552,8 @@ function pdfFinancials(data: MemoData, t: (k: string) => string, lang: string): 
     ...(hasDistributionsPdf ? [{ labelKey: 'analysis.finDistributions', get: (r: any) => r.distributions }] : []),
   ];
   blocks.push({ stack: [pdfSubHead(t('analysis.finCashFlow')), buildSubTable(cfItems)], unbreakable: true });
-  if (!(hasFfoPdf || hasDistributionsPdf)) {
-    blocks.push({ text: t('analysis.finNotApplicable'), fontSize: 7.5, color: MUTED, italics: true, margin: [0, 8, 0, 0], lineHeight: 1.4 });
+  if (!hasFfoPdf) {
+    blocks.push({ text: t('analysis.finFfoNotFound'), fontSize: 7.5, color: MUTED, italics: true, margin: [0, 8, 0, 0], lineHeight: 1.4 });
   }
   return blocks;
 }
@@ -1586,8 +1586,8 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
         buildFinTableW(cfItemsW),
         wSpacer(80),
       );
-      if (!(hasFfoW || hasDistributionsW)) {
-        children.push(wPara(t('analysis.finNotApplicable'), { italics: true, color: '888888', spaceAfter: 160 }));
+      if (!hasFfoW) {
+        children.push(wPara(t('analysis.finFfoNotFound'), { italics: true, color: '888888', spaceAfter: 160 }));
       }
     }
   } // end sec.financials
