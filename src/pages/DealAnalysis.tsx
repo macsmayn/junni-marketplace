@@ -711,28 +711,7 @@ export default function DealAnalysis() {
               {isRescoring ? t("analysis.rescoring") : t("analysis.rescoreBtn")}
             </button>
           )}
-          {/* TEMPORARY TEST BUTTON — REMOVE AFTER DEBT REPAYMENT / DISTRIBUTIONS FIX IS VERIFIED */}
-          {deal && currentUser?.role === "admin" && (
-            <button
-              onClick={async () => {
-                console.log("[TEST] Forcing Phase 2a re-extraction for deal:", dealId);
-                const resp = await invokeFunction("score-deal", { deal_id: dealId, extract_only: true });
-                console.log("[TEST] score-deal extract_only response:", resp);
-                if (resp.error) {
-                  alert(`Re-extract FAILED: ${JSON.stringify(resp.error)}`);
-                } else {
-                  alert("Re-extract completed successfully. Check console for full response and then refresh or re-score to see updated values.");
-                }
-              }}
-              style={{
-                padding: "4px 12px", borderRadius: 8, border: "2px dashed #DC2626",
-                fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
-                background: "#FEF2F2", color: "#DC2626", letterSpacing: "0.03em",
-              }}
-            >
-              TEST force re-extract
-            </button>
-          )}
+
           {deal && (
             <div ref={memoRef} style={{ position: "relative" }}>
               <button
