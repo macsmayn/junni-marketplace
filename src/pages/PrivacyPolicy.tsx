@@ -1,9 +1,10 @@
-﻿import { useLocation } from "wouter";
-
-const LOGO_BEIGE = "/junni-logo-beige.png";
+import { useLocation } from "wouter";
+import { useLanguage } from "../contexts/LanguageContext";
+import { LanguageToggle } from "../components/LanguageToggle";
 
 export default function PrivacyPolicy() {
   const [, setLocation] = useLocation();
+  const { t } = useLanguage();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#FAF8F4", color: "#1B2B4B", fontFamily: "'Inter', sans-serif" }}>
@@ -19,7 +20,6 @@ export default function PrivacyPolicy() {
           --text-secondary: #4A4035;
         }
 
-        /* NAV */
         nav {
           height: 64px;
           border-bottom: 1px solid var(--border);
@@ -47,11 +47,6 @@ export default function PrivacyPolicy() {
           font-size: 14px;
           font-weight: 700;
           color: var(--navy);
-        }
-
-        .nav-logo img {
-          width: 120px;
-          height: auto;
         }
 
         .nav-links {
@@ -107,7 +102,6 @@ export default function PrivacyPolicy() {
           background: rgba(27, 43, 75, 0.03);
         }
 
-        /* MAIN */
         main {
           flex: 1;
           display: flex;
@@ -189,7 +183,6 @@ export default function PrivacyPolicy() {
           text-decoration: underline;
         }
 
-        /* FOOTER */
         footer {
           background: #fff;
           border-top: 1px solid var(--border);
@@ -225,134 +218,151 @@ export default function PrivacyPolicy() {
       {/* NAV */}
       <nav>
         <div className="nav-left">
-          <a href="/" className="nav-logo">
-            <img src={LOGO_BEIGE} alt="Junni" style={{ width: "120px", height: "auto" }} />
-          </a>
+          <a href="/" className="nav-logo">Junni</a>
           <div className="nav-links">
-            <button className="nav-link" onClick={() => alert("About")}>About</button>
-            <button className="nav-link" onClick={() => setLocation("/marketplace")}>Marketplace</button>
+            <button className="nav-link" onClick={() => alert("About")}>{t("privacy.nav.about")}</button>
+            <button className="nav-link" onClick={() => setLocation("/marketplace")}>{t("privacy.nav.marketplace")}</button>
           </div>
         </div>
         <div className="nav-right">
-          <button className="btn btn-ghost" onClick={() => alert("Sign In")}>Sign In</button>
+          <LanguageToggle />
+          <button className="btn btn-ghost" onClick={() => alert("Sign In")}>{t("privacy.nav.signIn")}</button>
         </div>
       </nav>
 
       {/* MAIN */}
       <main>
         <div className="policy-container">
-          <h1>Privacy Policy</h1>
-          <p className="last-updated">Last updated: April 2025</p>
+          <h1>{t("privacy.title")}</h1>
+          <p className="last-updated">{t("privacy.lastUpdated")}</p>
 
+          {/* Introduction */}
           <div className="section">
-            <h2>Introduction</h2>
-            <p>Junni Marketplace Inc. ("we," "us," "our," or "Junni") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our marketplace platform, including our website, mobile applications, and related services (collectively, the "Platform").</p>
-            <p>Please read this Privacy Policy carefully. If you do not agree with our policies and practices, please do not use our Platform. By accessing and using Junni, you acknowledge that you have read, understood, and agree to be bound by all the terms of this Privacy Policy.</p>
+            <h2>{t("privacy.intro.heading")}</h2>
+            <p>{t("privacy.intro.p1")}</p>
+            <p>{t("privacy.intro.p2")}</p>
           </div>
 
+          {/* Information We Collect */}
           <div className="section">
-            <h2>Information We Collect</h2>
-            <p>We collect information in several ways:</p>
+            <h2>{t("privacy.collect.heading")}</h2>
+            <p>{t("privacy.collect.intro")}</p>
             <ul>
-              <li><strong>Registration and Account Information:</strong> When you create an account, we collect your name, email address, phone number, business name, address, and tax identification numbers.</li>
-              <li><strong>Financial Information:</strong> Borrowers submit financial statements, revenue data, EBITDA, debt obligations, and bank account information to enable credit scoring and marketplace visibility.</li>
-              <li><strong>Identity Verification Documents:</strong> We collect government-issued identification, business licenses, and other Know Your Customer (KYC) documents required for compliance.</li>
-              <li><strong>Transactional Data:</strong> We record loan requests, bids, terms, acceptance, and funding details as you use our Platform.</li>
-              <li><strong>Technical Information:</strong> We automatically collect IP addresses, device types, browser information, pages visited, time spent, and interaction patterns via cookies and similar technologies.</li>
-              <li><strong>Communications:</strong> We retain copies of messages, support tickets, and correspondence between users on our Platform.</li>
+              <li><strong>{t("privacy.collect.item1.label")}:</strong> {t("privacy.collect.item1.text")}</li>
+              <li><strong>{t("privacy.collect.item2.label")}:</strong> {t("privacy.collect.item2.text")}</li>
+              <li><strong>{t("privacy.collect.item3.label")}:</strong> {t("privacy.collect.item3.text")}</li>
+              <li><strong>{t("privacy.collect.item4.label")}:</strong> {t("privacy.collect.item4.text")}</li>
             </ul>
           </div>
 
+          {/* How We Use Your Information */}
           <div className="section">
-            <h2>How We Use Your Information</h2>
-            <p>We use the information we collect for the following purposes:</p>
+            <h2>{t("privacy.use.heading")}</h2>
+            <p>{t("privacy.use.intro")}</p>
             <ul>
-              <li><strong>Platform Operation:</strong> To create and maintain your account, process transactions, and facilitate communication between borrowers and lenders.</li>
-              <li><strong>Credit Scoring and Risk Assessment:</strong> To analyze financial data and generate transparent AI-driven credit scores that inform lending decisions.</li>
-              <li><strong>Regulatory Compliance:</strong> To satisfy Know Your Customer (KYC), Anti-Money Laundering (AML), and other legal obligations under Canadian financial services regulations.</li>
-              <li><strong>Platform Improvement:</strong> To analyze user behavior, identify trends, and enhance our features, user experience, and fraud detection systems.</li>
-              <li><strong>Marketing and Communications:</strong> To send newsletters, product updates, promotional offers, and transactional notifications (you may opt out of marketing emails at any time).</li>
-              <li><strong>Legal and Security:</strong> To enforce our Terms of Service, protect against fraud and unauthorized access, and respond to legal processes.</li>
+              <li>{t("privacy.use.item1")}</li>
+              <li>{t("privacy.use.item2")}</li>
+              <li>{t("privacy.use.item3")}</li>
+              <li>{t("privacy.use.item4")}</li>
+            </ul>
+            <p>{t("privacy.use.noAds")}</p>
+          </div>
+
+          {/* Service Providers */}
+          <div className="section">
+            <h2>{t("privacy.providers.heading")}</h2>
+            <p>{t("privacy.providers.intro")}</p>
+            <ul>
+              <li><strong>{t("privacy.providers.supabase.label")}:</strong> {t("privacy.providers.supabase.text")}</li>
+              <li><strong>{t("privacy.providers.anthropic.label")}:</strong> {t("privacy.providers.anthropic.text")}</li>
+              <li><strong>{t("privacy.providers.stripe.label")}:</strong> {t("privacy.providers.stripe.text")}</li>
+              <li><strong>{t("privacy.providers.resend.label")}:</strong> {t("privacy.providers.resend.text")}</li>
             </ul>
           </div>
 
+          {/* Cross-Border Transfers */}
           <div className="section">
-            <h2>Data Sharing and Disclosure</h2>
-            <p><strong>We do not sell your personal information.</strong> However, we may share information in the following circumstances:</p>
+            <h2>{t("privacy.crossBorder.heading")}</h2>
+            <p>{t("privacy.crossBorder.p1")}</p>
+            <p>{t("privacy.crossBorder.p2intro")}</p>
             <ul>
-              <li><strong>Between Marketplace Users:</strong> Borrowers' company information, loan terms, and credit scores are visible to potential lenders on our marketplace. Lenders' identity remains anonymized unless you accept their bid.</li>
-              <li><strong>Service Providers:</strong> We engage third-party vendors (payment processors, document storage, analytics platforms) who process data on our behalf under strict confidentiality agreements.</li>
-              <li><strong>Financial Institutions:</strong> To facilitate funding, we may share necessary transactional details with banks and lending partners.</li>
-              <li><strong>Regulatory Authorities:</strong> We disclose information as required by law to comply with Canadian financial regulators, tax authorities, and law enforcement.</li>
-              <li><strong>Business Transfers:</strong> If Junni is acquired or merged, your information may be transferred as part of that transaction, with notice provided.</li>
+              <li>{t("privacy.crossBorder.anthropic")}</li>
+              <li>{t("privacy.crossBorder.stripe")}</li>
+              <li>{t("privacy.crossBorder.resend")}</li>
+            </ul>
+            <p>{t("privacy.crossBorder.p3")}</p>
+          </div>
+
+          {/* Data Retention */}
+          <div className="section">
+            <h2>{t("privacy.retention.heading")}</h2>
+            <p>{t("privacy.retention.intro")}</p>
+            <ul>
+              <li><strong>{t("privacy.retention.item1.label")}:</strong> {t("privacy.retention.item1.text")}</li>
+              <li><strong>{t("privacy.retention.item2.label")}:</strong> {t("privacy.retention.item2.text")}</li>
+              <li><strong>{t("privacy.retention.item3.label")}:</strong> {t("privacy.retention.item3.text")}</li>
+              <li><strong>{t("privacy.retention.item4.label")}:</strong> {t("privacy.retention.item4.text")}</li>
             </ul>
           </div>
 
+          {/* Privacy Rights */}
           <div className="section">
-            <h2>Data Security</h2>
-            <p>We implement industry-standard security measures to protect your personal information, including:</p>
+            <h2>{t("privacy.rights.heading")}</h2>
+            <p>{t("privacy.rights.intro")}</p>
             <ul>
-              <li>Encryption of sensitive data in transit (SSL/TLS) and at rest (AES-256).</li>
-              <li>Secure authentication with password hashing and optional multi-factor authentication.</li>
-              <li>Regular security audits and penetration testing by third-party firms.</li>
-              <li>Restricted access to personal data on a need-to-know basis.</li>
-              <li>Incident response protocols to address potential data breaches.</li>
+              <li><strong>{t("privacy.rights.item1.label")}:</strong> {t("privacy.rights.item1.text")}</li>
+              <li><strong>{t("privacy.rights.item2.label")}:</strong> {t("privacy.rights.item2.text")}</li>
+              <li><strong>{t("privacy.rights.item3.label")}:</strong> {t("privacy.rights.item3.text")}</li>
+              <li><strong>{t("privacy.rights.item4.label")}:</strong> {t("privacy.rights.item4.text")}</li>
+              <li><strong>{t("privacy.rights.item5.label")}:</strong> {t("privacy.rights.item5.text")}</li>
+              <li><strong>{t("privacy.rights.item6.label")}:</strong> {t("privacy.rights.item6.text")}</li>
             </ul>
-            <p>While we strive to protect your information, no security system is impenetrable. We cannot guarantee absolute security, but we are committed to maintaining robust protections in compliance with Canadian privacy laws.</p>
+            <p>{t("privacy.rights.response")}</p>
           </div>
 
+          {/* Automated Processing */}
           <div className="section">
-            <h2>Your Privacy Rights</h2>
-            <p>Under Canadian privacy legislation (including PIPEDA), you have the right to:</p>
-            <ul>
-              <li><strong>Access:</strong> Request a copy of the personal information we hold about you.</li>
-              <li><strong>Correction:</strong> Request correction of inaccurate or incomplete information.</li>
-              <li><strong>Withdrawal of Consent:</strong> Withdraw consent for certain uses of your information (this may affect Platform functionality).</li>
-              <li><strong>Opt-Out:</strong> Unsubscribe from marketing communications at any time.</li>
-              <li><strong>Deletion:</strong> Request deletion of your information, subject to legal and regulatory obligations to retain certain records.</li>
-            </ul>
-            <p>To exercise these rights, contact us using the information in the Contact section below. We will respond to verified requests within 30 days.</p>
+            <h2>{t("privacy.automated.heading")}</h2>
+            <p>{t("privacy.automated.p1")}</p>
+            <p>{t("privacy.automated.p2")}</p>
           </div>
 
+          {/* Security */}
           <div className="section">
-            <h2>Data Retention</h2>
-            <p>We retain personal information for as long as necessary to fulfill the purposes outlined in this Privacy Policy, unless a longer retention period is required by law. Generally:</p>
+            <h2>{t("privacy.security.heading")}</h2>
+            <p>{t("privacy.security.intro")}</p>
             <ul>
-              <li>Account information is retained while your account is active and for 7 years thereafter for tax and compliance purposes.</li>
-              <li>Transaction records are retained for 7 years to satisfy Canadian financial regulations.</li>
-              <li>KYC and identity documents are retained for the duration of the business relationship plus 7 years.</li>
-              <li>Marketing preferences and opt-out requests are retained indefinitely to respect your choices.</li>
+              <li>{t("privacy.security.item1")}</li>
+              <li>{t("privacy.security.item2")}</li>
+              <li>{t("privacy.security.item3")}</li>
+              <li>{t("privacy.security.item4")}</li>
             </ul>
           </div>
 
+          {/* Contact */}
           <div className="section">
-            <h2>Third-Party Links</h2>
-            <p>Our Platform may contain links to third-party websites and applications. We are not responsible for the privacy practices of external sites. We encourage you to review their privacy policies before providing personal information.</p>
-          </div>
-
-          <div className="section">
-            <h2>Contact Us</h2>
-            <p>If you have questions about this Privacy Policy, wish to exercise your privacy rights, or report a data breach, please contact us:</p>
+            <h2>{t("privacy.contact.heading")}</h2>
+            <p>{t("privacy.contact.p1")}</p>
             <p>
-              <strong>Junni Marketplace Inc.</strong><br />
-              Privacy Officer<br />
-              Email: <a href="mailto:privacy@junni.ca">privacy@junni.ca</a><br />
-              Address: Suite 500, 180 King Street West, Toronto, ON M5H 1A1, Canada<br />
-              Phone: 1-800-JUNNI-01
+              <strong>{t("privacy.contact.entity")}</strong><br />
+              {t("privacy.contact.role")}<br />
+              {t("privacy.contact.emailLabel")} <a href="mailto:privacy@junni.ca">privacy@junni.ca</a><br />
+              {t("privacy.contact.addressLabel")} {t("privacy.contact.address")}
             </p>
-            <p>We will respond to all privacy inquiries within 30 business days.</p>
+            <p>{t("privacy.contact.response")}</p>
           </div>
 
+          {/* Changes */}
           <div className="section">
-            <h2>Changes to This Policy</h2>
-            <p>We may update this Privacy Policy periodically to reflect changes in our practices, technology, legal requirements, or other factors. We will notify you of material changes by posting the updated policy on our Platform and updating the "Last updated" date at the top of this document. Your continued use of the Platform after such modifications constitutes your acceptance of the updated Privacy Policy.</p>
+            <h2>{t("privacy.changes.heading")}</h2>
+            <p>{t("privacy.changes.p1")}</p>
           </div>
         </div>
       </main>
 
       {/* FOOTER */}
       <footer>
-        <p>&copy; 2025 Junni Marketplace Inc. All rights reserved.</p>
+        <p>{t("privacy.footer")}</p>
       </footer>
     </div>
   );
