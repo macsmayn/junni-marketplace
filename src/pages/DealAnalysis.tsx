@@ -1274,6 +1274,8 @@ export default function DealAnalysis() {
           </div>
         )}
 
+        {/* FINANCIALS SECTION — TO BE BUILT */}
+
         {/* ── 5. Narrative ── */}
         {score && (displaySummary || displayStrengths?.length || displayRisks?.length) && (
           <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px" }}>
@@ -1304,6 +1306,212 @@ export default function DealAnalysis() {
                   </ul>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Sources & Uses ── */}
+        {sourcesUses.length > 0 ? (
+          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 16 }}>{t("analysis.sourcesUses")}</div>
+            {(() => {
+              const uses = sourcesUses.filter((e: any) => e.side === "use");
+              const sources = sourcesUses.filter((e: any) => e.side === "source");
+              const totalUses = uses.reduce((s: number, e: any) => s + Number(e.amount), 0);
+              const totalSources = sources.reduce((s: number, e: any) => s + Number(e.amount), 0);
+              const gap = Math.abs(totalUses - totalSources);
+              return (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 24 }}>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>{t("analysis.uses")}</div>
+                      {uses.map((e: any, i: number) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < uses.length - 1 ? "1px solid #E8E2D9" : "none", fontSize: 13 }}>
+                          <span style={{ color: NAVY }}>{e.label}</span>
+                          <span style={{ color: NAVY, fontWeight: 500 }}>{fmtAmt(Number(e.amount))}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 0", marginTop: 4, fontSize: 13, fontWeight: 700, color: NAVY, borderTop: "2px solid #E8E2D9" }}>
+                        <span>{t("analysis.totalUses")}</span><span>{fmtAmt(totalUses)}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>{t("analysis.sources")}</div>
+                      {sources.map((e: any, i: number) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < sources.length - 1 ? "1px solid #E8E2D9" : "none", fontSize: 13 }}>
+                          <span style={{ color: NAVY }}>{e.label}</span>
+                          <span style={{ color: NAVY, fontWeight: 500 }}>{fmtAmt(Number(e.amount))}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 0", marginTop: 4, fontSize: 13, fontWeight: 700, color: NAVY, borderTop: "2px solid #E8E2D9" }}>
+                        <span>{t("analysis.totalSources")}</span><span>{fmtAmt(totalSources)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {gap > 0 && totalUses + totalSources > 0 && (
+                    <div style={{ marginTop: 14, fontSize: 12, fontWeight: 600, color: RED }}>{t("analysis.outOfBalance")} {fmtAmt(gap)}</div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        ) : deal?.use_of_funds ? (
+          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 10 }}>{t("analysis.useOfFunds")}</div>
+            <p style={{ fontSize: 14, color: NAVY, lineHeight: 1.7, margin: 0 }}>{deal.use_of_funds}</p>
+          </div>
+        ) : null}
+
+        {/* ── Capitalization ── */}
+        {capItems.length > 0 && (() => {
+          const DEBT_CATS = ["Senior Debt", "Subordinated Debt", "Shareholder Loans"];
+          const CAT_ORDER: Record<string, number> = { "Senior Debt": 0, "Subordinated Debt": 1, "Shareholder Loans": 2, "Preferred Equity": 3, "Common Equity": 4, "Other": 5 };
+          const sorted = [...capItems].sort((a: any, b: any) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99));
+          const totalCap = capItems.reduce((s: number, r: any) => s + Number(r.amount), 0);
+          const totalDebt = capItems.filter((r: any) => DEBT_CATS.includes(r.category)).reduce((s: number, r: any) => s + Number(r.amount), 0);
+          const seniorDebt = capItems.filter((r: any) => r.category === "Senior Debt").reduce((s: number, r: any) => s + Number(r.amount), 0);
+          const totalEquity = totalCap - totalDebt;
+          const ebitdaVal = Number(deal?.ebitda);
+          const hasEbitda = ebitdaVal > 0;
+          const cashVal = Number(confirmedCash) || 0;
+          const netDebt = totalDebt - cashVal;
+          const rl = deal?.revolver_limit != null ? Number(deal.revolver_limit) : null;
+          const rd = deal?.revolver_drawn != null ? Number(deal.revolver_drawn) : null;
+          const hasRevolver = rl !== null;
+          const availLiquidity = cashVal + (hasRevolver ? (rl! - (rd ?? 0)) : 0);
+          const evProvided = deal?.enterprise_value != null ? Number(deal.enterprise_value) : null;
+          const evProxy = totalCap - cashVal;
+          let cumDebt = 0;
+          const capHeaders = [t("analysis.capColInstrument"), t("analysis.capColCategory"), t("analysis.capColAmount"), t("analysis.capColPctCap"), ...(hasEbitda ? [t("analysis.capColXEbitda")] : [])];
+          return (
+            <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 4 }}>{t("analysis.capitalization")}</div>
+              <p style={{ margin: "0 0 14px", fontSize: 12, color: MUTED }}>{t("analysis.capProFormaNote")}</p>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #E8E2D9" }}>
+                      {capHeaders.map(h => (
+                        <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map((row: any, i: number) => {
+                      const amt = Number(row.amount);
+                      const pctCap = totalCap > 0 ? `${(amt / totalCap * 100).toFixed(1)}%` : "—";
+                      let xEbitda = "";
+                      if (hasEbitda && DEBT_CATS.includes(row.category)) { cumDebt += amt; xEbitda = `${(cumDebt / ebitdaVal).toFixed(2)}x`; }
+                      return (
+                        <tr key={i} style={{ borderBottom: i < sorted.length - 1 ? "1px solid #E8E2D9" : "none" }}>
+                          <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{row.label}</td>
+                          <td style={{ padding: "8px 10px", color: MUTED }}>{row.category}</td>
+                          <td style={{ padding: "8px 10px", color: NAVY }}>{fmtAmt(amt)}</td>
+                          <td style={{ padding: "8px 10px", color: MUTED }}>{pctCap}</td>
+                          {hasEbitda && <td style={{ padding: "8px 10px", color: xEbitda ? NAVY : MUTED }}>{xEbitda || "—"}</td>}
+                        </tr>
+                      );
+                    })}
+                    <tr style={{ borderTop: "2px solid #E8E2D9", background: "#FAFAF9" }}>
+                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>{t("analysis.capTotalDebt")}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(totalDebt)}</td>
+                      <td style={{ padding: "8px 10px", color: MUTED }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</td>
+                      {hasEbitda && <td style={{ padding: "8px 10px", fontWeight: 600, color: NAVY }}>{totalDebt > 0 ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "—"}</td>}
+                    </tr>
+                    <tr style={{ background: "#FAFAF9" }}>
+                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>{t("analysis.capTotalEquity")}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(totalEquity)}</td>
+                      <td style={{ padding: "8px 10px", color: MUTED }}>{totalCap > 0 ? `${(totalEquity / totalCap * 100).toFixed(1)}%` : "—"}</td>
+                      {hasEbitda && <td></td>}
+                    </tr>
+                    <tr style={{ borderTop: "2px solid #E8E2D9" }}>
+                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{t("analysis.capTotalCap")}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(totalCap)}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>100%</td>
+                      {hasEbitda && <td></td>}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop: 16, borderTop: "1px solid #E8E2D9", paddingTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+                {[
+                  { label: t("analysis.capSeniorDebtEbitda"), value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
+                  { label: t("analysis.capTotalDebtEbitda"), value: hasEbitda ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
+                  { label: t("analysis.capNetDebtEbitda"), value: hasEbitda ? `${(netDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
+                  ...(hasRevolver ? [{ label: t("analysis.capRevolverLimit"), value: fmtAmt(rl!) }] : []),
+                  { label: hasRevolver ? t("analysis.capAvailLiquidity") : t("analysis.capAvailLiquidityCashOnly"), value: fmtAmt(availLiquidity) },
+                  (() => {
+                    if (evProvided !== null) return { label: t("analysis.capEVProvided"), value: fmtAmt(evProvided) };
+                    if (totalEquity > 0 && evProxy > 0) return { label: t("analysis.capEVProxy"), value: fmtAmt(evProxy) };
+                    return { label: t("analysis.capEVProxy"), value: "n/m", hint: t("analysis.capEVHint") };
+                  })(),
+                  { label: t("analysis.capDebtToCap"), value: totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—" },
+                ].map(({ label, value, hint }: { label: string; value: string; hint?: string }) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, alignItems: "baseline" }}>
+                    <span style={{ color: MUTED }}>{label}{hint ? <span style={{ opacity: 0.65, marginLeft: 6, fontSize: 11 }}>{hint}</span> : null}</span>
+                    <span style={{ fontWeight: 600, color: NAVY }}>{value}</span>
+                  </div>
+                ))}
+                {totalEquity === 0 && (
+                  <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>{t("analysis.capNoEquity")}</div>
+                )}
+                {!hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>{t("analysis.capNoEbitda")}</div>}
+                {hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7 }}>EBITDA {fmtAmt(ebitdaVal)}{cashVal > 0 ? ` · ${t("analysis.cashWord")} ${fmtAmt(cashVal)}` : ""}</div>}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Collateral & Asset Coverage ── */}
+        {collateral.length > 0 && (
+          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24, marginBottom: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 14 }}>{t("analysis.collateralTitle")}</div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #E8E2D9" }}>
+                    {[t("analysis.collColAsset"), t("analysis.collColDescription"), t("analysis.collColMarketValue"), t("analysis.collColAdvance"), t("analysis.collColLendingValue")].map(h => (
+                      <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {collateral.map((row: any, i: number) => (
+                    <tr key={i} style={{ borderBottom: i < collateral.length - 1 ? "1px solid #E8E2D9" : "none" }}>
+                      <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{row.asset_type}</td>
+                      <td style={{ padding: "8px 10px", color: MUTED, fontSize: 12 }}>{row.description || "—"}</td>
+                      <td style={{ padding: "8px 10px", color: NAVY }}>{fmtAmt(Number(row.market_value || 0))}</td>
+                      <td style={{ padding: "8px 10px", color: MUTED }}>{row.advance_rate}%</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{fmtAmt(Number(row.lending_value || 0))}</td>
+                    </tr>
+                  ))}
+                  {(() => {
+                    const sumMarket = collateral.reduce((s: number, r: any) => s + (Number(r.market_value) || 0), 0);
+                    const sumLending = collateral.reduce((s: number, r: any) => s + (Number(r.lending_value) || 0), 0);
+                    const existing = Number(deal?.existing_debt) || 0;
+                    const requested = Number(deal?.amount_requested) || 0;
+                    const totalDebt = existing + requested;
+                    const coverage = totalDebt > 0 ? sumLending / totalDebt : null;
+                    return (
+                      <>
+                        <tr style={{ borderTop: "2px solid #E8E2D9" }}>
+                          <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>{t("analysis.collTotal")}</td>
+                          <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(sumMarket)}</td>
+                          <td></td>
+                          <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(sumLending)}</td>
+                        </tr>
+                        {coverage !== null && (
+                          <tr>
+                            <td colSpan={5} style={{ padding: "10px 10px 4px", fontSize: 12, color: MUTED }}>
+                              {t("analysis.collCoveragePre")} {fmtAmt(sumLending)} {t("analysis.collCoverageMid")} {fmtAmt(totalDebt)} ({t("analysis.collCoverageExisting")} {fmtAmt(existing)} + {t("analysis.collCoverageRequested")} {fmtAmt(requested)}) = <strong style={{ color: NAVY }}>{coverage.toFixed(2)}x</strong>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })()}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -1820,212 +2028,6 @@ export default function DealAnalysis() {
             </div>
           );
         })()}
-
-        {/* ── Sources & Uses ── */}
-        {sourcesUses.length > 0 ? (
-          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 16 }}>{t("analysis.sourcesUses")}</div>
-            {(() => {
-              const uses = sourcesUses.filter((e: any) => e.side === "use");
-              const sources = sourcesUses.filter((e: any) => e.side === "source");
-              const totalUses = uses.reduce((s: number, e: any) => s + Number(e.amount), 0);
-              const totalSources = sources.reduce((s: number, e: any) => s + Number(e.amount), 0);
-              const gap = Math.abs(totalUses - totalSources);
-              return (
-                <>
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 24 }}>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>{t("analysis.uses")}</div>
-                      {uses.map((e: any, i: number) => (
-                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < uses.length - 1 ? "1px solid #E8E2D9" : "none", fontSize: 13 }}>
-                          <span style={{ color: NAVY }}>{e.label}</span>
-                          <span style={{ color: NAVY, fontWeight: 500 }}>{fmtAmt(Number(e.amount))}</span>
-                        </div>
-                      ))}
-                      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 0", marginTop: 4, fontSize: 13, fontWeight: 700, color: NAVY, borderTop: "2px solid #E8E2D9" }}>
-                        <span>{t("analysis.totalUses")}</span><span>{fmtAmt(totalUses)}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>{t("analysis.sources")}</div>
-                      {sources.map((e: any, i: number) => (
-                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < sources.length - 1 ? "1px solid #E8E2D9" : "none", fontSize: 13 }}>
-                          <span style={{ color: NAVY }}>{e.label}</span>
-                          <span style={{ color: NAVY, fontWeight: 500 }}>{fmtAmt(Number(e.amount))}</span>
-                        </div>
-                      ))}
-                      <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 0", marginTop: 4, fontSize: 13, fontWeight: 700, color: NAVY, borderTop: "2px solid #E8E2D9" }}>
-                        <span>{t("analysis.totalSources")}</span><span>{fmtAmt(totalSources)}</span>
-                      </div>
-                    </div>
-                  </div>
-                  {gap > 0 && totalUses + totalSources > 0 && (
-                    <div style={{ marginTop: 14, fontSize: 12, fontWeight: 600, color: RED }}>{t("analysis.outOfBalance")} {fmtAmt(gap)}</div>
-                  )}
-                </>
-              );
-            })()}
-          </div>
-        ) : deal?.use_of_funds ? (
-          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 10 }}>{t("analysis.useOfFunds")}</div>
-            <p style={{ fontSize: 14, color: NAVY, lineHeight: 1.7, margin: 0 }}>{deal.use_of_funds}</p>
-          </div>
-        ) : null}
-
-        {/* ── Capitalization ── */}
-        {capItems.length > 0 && (() => {
-          const DEBT_CATS = ["Senior Debt", "Subordinated Debt", "Shareholder Loans"];
-          const CAT_ORDER: Record<string, number> = { "Senior Debt": 0, "Subordinated Debt": 1, "Shareholder Loans": 2, "Preferred Equity": 3, "Common Equity": 4, "Other": 5 };
-          const sorted = [...capItems].sort((a: any, b: any) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99));
-          const totalCap = capItems.reduce((s: number, r: any) => s + Number(r.amount), 0);
-          const totalDebt = capItems.filter((r: any) => DEBT_CATS.includes(r.category)).reduce((s: number, r: any) => s + Number(r.amount), 0);
-          const seniorDebt = capItems.filter((r: any) => r.category === "Senior Debt").reduce((s: number, r: any) => s + Number(r.amount), 0);
-          const totalEquity = totalCap - totalDebt;
-          const ebitdaVal = Number(deal?.ebitda);
-          const hasEbitda = ebitdaVal > 0;
-          const cashVal = Number(confirmedCash) || 0;
-          const netDebt = totalDebt - cashVal;
-          const rl = deal?.revolver_limit != null ? Number(deal.revolver_limit) : null;
-          const rd = deal?.revolver_drawn != null ? Number(deal.revolver_drawn) : null;
-          const hasRevolver = rl !== null;
-          const availLiquidity = cashVal + (hasRevolver ? (rl! - (rd ?? 0)) : 0);
-          const evProvided = deal?.enterprise_value != null ? Number(deal.enterprise_value) : null;
-          const evProxy = totalCap - cashVal;
-          let cumDebt = 0;
-          const capHeaders = [t("analysis.capColInstrument"), t("analysis.capColCategory"), t("analysis.capColAmount"), t("analysis.capColPctCap"), ...(hasEbitda ? [t("analysis.capColXEbitda")] : [])];
-          return (
-            <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 4 }}>{t("analysis.capitalization")}</div>
-              <p style={{ margin: "0 0 14px", fontSize: 12, color: MUTED }}>{t("analysis.capProFormaNote")}</p>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid #E8E2D9" }}>
-                      {capHeaders.map(h => (
-                        <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map((row: any, i: number) => {
-                      const amt = Number(row.amount);
-                      const pctCap = totalCap > 0 ? `${(amt / totalCap * 100).toFixed(1)}%` : "—";
-                      let xEbitda = "";
-                      if (hasEbitda && DEBT_CATS.includes(row.category)) { cumDebt += amt; xEbitda = `${(cumDebt / ebitdaVal).toFixed(2)}x`; }
-                      return (
-                        <tr key={i} style={{ borderBottom: i < sorted.length - 1 ? "1px solid #E8E2D9" : "none" }}>
-                          <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{row.label}</td>
-                          <td style={{ padding: "8px 10px", color: MUTED }}>{row.category}</td>
-                          <td style={{ padding: "8px 10px", color: NAVY }}>{fmtAmt(amt)}</td>
-                          <td style={{ padding: "8px 10px", color: MUTED }}>{pctCap}</td>
-                          {hasEbitda && <td style={{ padding: "8px 10px", color: xEbitda ? NAVY : MUTED }}>{xEbitda || "—"}</td>}
-                        </tr>
-                      );
-                    })}
-                    <tr style={{ borderTop: "2px solid #E8E2D9", background: "#FAFAF9" }}>
-                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>{t("analysis.capTotalDebt")}</td>
-                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(totalDebt)}</td>
-                      <td style={{ padding: "8px 10px", color: MUTED }}>{totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—"}</td>
-                      {hasEbitda && <td style={{ padding: "8px 10px", fontWeight: 600, color: NAVY }}>{totalDebt > 0 ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "—"}</td>}
-                    </tr>
-                    <tr style={{ background: "#FAFAF9" }}>
-                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>{t("analysis.capTotalEquity")}</td>
-                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(totalEquity)}</td>
-                      <td style={{ padding: "8px 10px", color: MUTED }}>{totalCap > 0 ? `${(totalEquity / totalCap * 100).toFixed(1)}%` : "—"}</td>
-                      {hasEbitda && <td></td>}
-                    </tr>
-                    <tr style={{ borderTop: "2px solid #E8E2D9" }}>
-                      <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{t("analysis.capTotalCap")}</td>
-                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(totalCap)}</td>
-                      <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>100%</td>
-                      {hasEbitda && <td></td>}
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div style={{ marginTop: 16, borderTop: "1px solid #E8E2D9", paddingTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-                {[
-                  { label: t("analysis.capSeniorDebtEbitda"), value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
-                  { label: t("analysis.capTotalDebtEbitda"), value: hasEbitda ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
-                  { label: t("analysis.capNetDebtEbitda"), value: hasEbitda ? `${(netDebt / ebitdaVal).toFixed(2)}x` : "n/m" },
-                  ...(hasRevolver ? [{ label: t("analysis.capRevolverLimit"), value: fmtAmt(rl!) }] : []),
-                  { label: hasRevolver ? t("analysis.capAvailLiquidity") : t("analysis.capAvailLiquidityCashOnly"), value: fmtAmt(availLiquidity) },
-                  (() => {
-                    if (evProvided !== null) return { label: t("analysis.capEVProvided"), value: fmtAmt(evProvided) };
-                    if (totalEquity > 0 && evProxy > 0) return { label: t("analysis.capEVProxy"), value: fmtAmt(evProxy) };
-                    return { label: t("analysis.capEVProxy"), value: "n/m", hint: t("analysis.capEVHint") };
-                  })(),
-                  { label: t("analysis.capDebtToCap"), value: totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "—" },
-                ].map(({ label, value, hint }: { label: string; value: string; hint?: string }) => (
-                  <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, alignItems: "baseline" }}>
-                    <span style={{ color: MUTED }}>{label}{hint ? <span style={{ opacity: 0.65, marginLeft: 6, fontSize: 11 }}>{hint}</span> : null}</span>
-                    <span style={{ fontWeight: 600, color: NAVY }}>{value}</span>
-                  </div>
-                ))}
-                {totalEquity === 0 && (
-                  <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>{t("analysis.capNoEquity")}</div>
-                )}
-                {!hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>{t("analysis.capNoEbitda")}</div>}
-                {hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7 }}>EBITDA {fmtAmt(ebitdaVal)}{cashVal > 0 ? ` · ${t("analysis.cashWord")} ${fmtAmt(cashVal)}` : ""}</div>}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── Collateral & Asset Coverage ── */}
-        {collateral.length > 0 && (
-          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24, marginBottom: 8 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase", letterSpacing: "0.08em", color: NAVY, marginBottom: 14 }}>{t("analysis.collateralTitle")}</div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid #E8E2D9" }}>
-                    {[t("analysis.collColAsset"), t("analysis.collColDescription"), t("analysis.collColMarketValue"), t("analysis.collColAdvance"), t("analysis.collColLendingValue")].map(h => (
-                      <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {collateral.map((row: any, i: number) => (
-                    <tr key={i} style={{ borderBottom: i < collateral.length - 1 ? "1px solid #E8E2D9" : "none" }}>
-                      <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{row.asset_type}</td>
-                      <td style={{ padding: "8px 10px", color: MUTED, fontSize: 12 }}>{row.description || "—"}</td>
-                      <td style={{ padding: "8px 10px", color: NAVY }}>{fmtAmt(Number(row.market_value || 0))}</td>
-                      <td style={{ padding: "8px 10px", color: MUTED }}>{row.advance_rate}%</td>
-                      <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{fmtAmt(Number(row.lending_value || 0))}</td>
-                    </tr>
-                  ))}
-                  {(() => {
-                    const sumMarket = collateral.reduce((s: number, r: any) => s + (Number(r.market_value) || 0), 0);
-                    const sumLending = collateral.reduce((s: number, r: any) => s + (Number(r.lending_value) || 0), 0);
-                    const existing = Number(deal?.existing_debt) || 0;
-                    const requested = Number(deal?.amount_requested) || 0;
-                    const totalDebt = existing + requested;
-                    const coverage = totalDebt > 0 ? sumLending / totalDebt : null;
-                    return (
-                      <>
-                        <tr style={{ borderTop: "2px solid #E8E2D9" }}>
-                          <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 600, color: MUTED, fontSize: 12 }}>{t("analysis.collTotal")}</td>
-                          <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(sumMarket)}</td>
-                          <td></td>
-                          <td style={{ padding: "8px 10px", fontWeight: 700, color: NAVY }}>{fmtAmt(sumLending)}</td>
-                        </tr>
-                        {coverage !== null && (
-                          <tr>
-                            <td colSpan={5} style={{ padding: "10px 10px 4px", fontSize: 12, color: MUTED }}>
-                              {t("analysis.collCoveragePre")} {fmtAmt(sumLending)} {t("analysis.collCoverageMid")} {fmtAmt(totalDebt)} ({t("analysis.collCoverageExisting")} {fmtAmt(existing)} + {t("analysis.collCoverageRequested")} {fmtAmt(requested)}) = <strong style={{ color: NAVY }}>{coverage.toFixed(2)}x</strong>
-                            </td>
-                          </tr>
-                        )}
-                      </>
-                    );
-                  })()}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
         </div>{/* end main column */}
 
         {/* ── Sidebar: Documents + Previous Versions ── */}
