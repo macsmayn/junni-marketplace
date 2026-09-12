@@ -541,12 +541,20 @@ function pdfFinancials(data: MemoData, t: (k: string) => string, lang: string): 
     { labelKey: 'analysis.finTotalLiabilities',   get: (r: any) => r.total_liabilities },
     { labelKey: 'analysis.finEquity',             get: (r: any) => r.equity },
   ])], unbreakable: true });
-  blocks.push({ stack: [pdfSubHead(t('analysis.finCashFlow')), buildSubTable([
-    { labelKey: 'analysis.finCfo',   get: (r: any) => r.cfo },
-    { labelKey: 'analysis.finCapex', get: (r: any) => r.capex },
-    { labelKey: 'analysis.finFcf',   get: (r: any) => fcfVal(r) },
-  ])], unbreakable: true });
-  blocks.push({ text: t('analysis.finNotCaptured'), fontSize: 7.5, color: MUTED, italics: true, margin: [0, 8, 0, 0], lineHeight: 1.4 });
+  const hasFfoPdf = rows.some((r: any) => r.ffo != null);
+  const hasDistributionsPdf = rows.some((r: any) => r.distributions != null);
+  const cfItems: { labelKey: string; get: (r: any) => number | null }[] = [
+    { labelKey: 'analysis.finCfo',           get: (r: any) => r.cfo },
+    { labelKey: 'analysis.finCapex',         get: (r: any) => r.capex },
+    { labelKey: 'analysis.finFcf',           get: (r: any) => fcfVal(r) },
+    { labelKey: 'analysis.finDebtRepayment', get: (r: any) => r.debt_principal_repayment },
+    ...(hasFfoPdf ? [{ labelKey: 'analysis.finFfo', get: (r: any) => r.ffo }] : []),
+    ...(hasDistributionsPdf ? [{ labelKey: 'analysis.finDistributions', get: (r: any) => r.distributions }] : []),
+  ];
+  blocks.push({ stack: [pdfSubHead(t('analysis.finCashFlow')), buildSubTable(cfItems)], unbreakable: true });
+  if (!(hasFfoPdf || hasDistributionsPdf)) {
+    blocks.push({ text: t('analysis.finNotApplicable'), fontSize: 7.5, color: MUTED, italics: true, margin: [0, 8, 0, 0], lineHeight: 1.4 });
+  }
   return blocks;
 }
 
@@ -1563,14 +1571,24 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
         ]),
         wSpacer(100),
         wHead2(t('analysis.finCashFlow')),
-        buildFinTableW([
-          { key: 'analysis.finCfo',   get: (r: any) => r.cfo },
-          { key: 'analysis.finCapex', get: (r: any) => r.capex },
-          { key: 'analysis.finFcf',   get: (r: any) => fcfValW(r) },
-        ]),
-        wSpacer(80),
-        wPara(t('analysis.finNotCaptured'), { italics: true, color: '888888', spaceAfter: 160 }),
       );
+      const hasFfoW = finRows.some((r: any) => r.ffo != null);
+      const hasDistributionsW = finRows.some((r: any) => r.distributions != null);
+      const cfItemsW: { key: string; get: (r: any) => number | null }[] = [
+        { key: 'analysis.finCfo',           get: (r: any) => r.cfo },
+        { key: 'analysis.finCapex',         get: (r: any) => r.capex },
+        { key: 'analysis.finFcf',           get: (r: any) => fcfValW(r) },
+        { key: 'analysis.finDebtRepayment', get: (r: any) => r.debt_principal_repayment },
+        ...(hasFfoW ? [{ key: 'analysis.finFfo', get: (r: any) => r.ffo }] : []),
+        ...(hasDistributionsW ? [{ key: 'analysis.finDistributions', get: (r: any) => r.distributions }] : []),
+      ];
+      children.push(
+        buildFinTableW(cfItemsW),
+        wSpacer(80),
+      );
+      if (!(hasFfoW || hasDistributionsW)) {
+        children.push(wPara(t('analysis.finNotApplicable'), { italics: true, color: '888888', spaceAfter: 160 }));
+      }
     }
   } // end sec.financials
 

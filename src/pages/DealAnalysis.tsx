@@ -1288,6 +1288,9 @@ export default function DealAnalysis() {
             ? financials.slice(-MAX_DEFAULT)
             : financials;
 
+          const hasFfo = financials.some((r: any) => r.ffo != null);
+          const hasDistributions = financials.some((r: any) => r.distributions != null);
+
           const thLabel: React.CSSProperties = {
             fontSize: 11, fontWeight: 700, color: MUTED, textAlign: "left",
             padding: "0 10px 8px 0", borderBottom: "1px solid #E8E2D9", verticalAlign: "bottom",
@@ -1405,14 +1408,19 @@ export default function DealAnalysis() {
 
                   <div style={subHdStyle}>{t("analysis.finCashFlow")}</div>
                   {finTable([
-                    { key: "analysis.finCfo",   get: r => r.cfo },
-                    { key: "analysis.finCapex", get: r => r.capex },
-                    { key: "analysis.finFcf",   get: r => fcfVal(r) },
+                    { key: "analysis.finCfo",            get: (r: any) => r.cfo },
+                    { key: "analysis.finCapex",          get: (r: any) => r.capex },
+                    { key: "analysis.finFcf",            get: (r: any) => fcfVal(r) },
+                    { key: "analysis.finDebtRepayment",  get: (r: any) => r.debt_principal_repayment },
+                    ...(hasFfo ? [{ key: "analysis.finFfo", get: (r: any) => r.ffo }] : []),
+                    ...(hasDistributions ? [{ key: "analysis.finDistributions", get: (r: any) => r.distributions }] : []),
                   ])}
 
-                  <p style={{ fontSize: 12, color: MUTED, margin: "16px 0 0", lineHeight: 1.6 }}>
-                    {t("analysis.finNotCaptured")}
-                  </p>
+                  {!(hasFfo || hasDistributions) && (
+                    <p style={{ fontSize: 12, color: MUTED, margin: "16px 0 0", lineHeight: 1.6 }}>
+                      {t("analysis.finNotApplicable")}
+                    </p>
+                  )}
                 </>
               )}
             </div>

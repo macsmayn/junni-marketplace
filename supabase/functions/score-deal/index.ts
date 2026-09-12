@@ -501,6 +501,11 @@ WORKING CAPITAL AND CASH FLOW FIELDS — read these from the balance sheet and c
 - depreciation_amortization: D&A add-back from operating activities on the cash flow statement, or from the notes. Combine depreciation + amortization into one figure.
 If no cash flow statement is provided, set capex, cfo, and depreciation_amortization to null — do not estimate them.
 
+ADDITIONAL CASH FLOW FIELDS — read from the cash flow statement or notes:
+- debt_principal_repayment: the total principal repayment on interest-bearing debt made or disclosed for this fiscal year. Read from the financing activities section of the cash flow statement ("repayment of long-term debt", "principal payments on term loans", or equivalent), or from the notes if amounts are explicitly stated per year. Return as a POSITIVE number (even though the cash flow shows it as an outflow). Null if not disclosed in the documents.
+- ffo: Funds from Operations. ONLY applicable to real estate investment trusts (REITs), real estate operating companies, or income trusts that explicitly report FFO as a defined performance metric in their statements. For any other borrower type — manufacturing, retail, professional services, technology, food service, agriculture, healthcare clinics, etc. — return null without exception. Do NOT calculate or estimate FFO when the concept does not appear in the source documents. null is the correct and expected answer for the vast majority of borrowers.
+- distributions: cash distributions paid to unitholders, limited partners, or trust beneficiaries during the period. ONLY applicable to income trusts, limited partnerships, REITs, or similar structures that explicitly report distributions as a line item in their financial statements. For a standard corporation — including those that pay dividends, which are a different concept — return null. null is the correct and expected answer for most borrowers.
+
 MD&A / MANAGEMENT DISCUSSION: Beyond the financial statements, the document(s) may contain a Management Discussion & Analysis (MD&A) section, management commentary, or other narrative business context. Read all such narrative content in full and produce a concise digest (max ~200 words) capturing ONLY decision-relevant credit information: customer or supplier concentration, management's explanation of revenue/margin changes, forward guidance or outlook, named business risks, litigation or contingencies, liquidity or covenant commentary, and material events. Return this as a TOP-LEVEL JSON field mda_digest (not per-statement). If there is no narrative/MD&A content, return mda_digest: null. Do NOT invent content — digest only what is written. Do NOT include financial figures that contradict the extracted statements; the statements are the source of truth for numbers.
 
 Return ONLY valid JSON with no markdown fences or commentary. Use this exact shape:
@@ -534,6 +539,9 @@ Return ONLY valid JSON with no markdown fences or commentary. Use this exact sha
       "capex": <number or null>,
       "cfo": <number or null>,
       "depreciation_amortization": <number or null>,
+      "debt_principal_repayment": <number or null — principal repaid on debt this year; positive; null if not disclosed>,
+      "ffo": <number or null — funds from operations; null for all non-REIT/trust borrowers>,
+      "distributions": <number or null — distributions to unitholders/partners; null for standard corporations>,
       "debt_detail": <object with current_portion, long_term, rates, maturities if disclosed — or null>,
       "notes_summary": "<material disclosures from notes: debt covenants, maturities, contingencies, related-party transactions, leases, guarantees>",
       "extraction_confidence": "<high | medium | low>",
@@ -579,6 +587,9 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
               capex: stmt.capex ?? null,
               cfo: stmt.cfo ?? null,
               depreciation_amortization: stmt.depreciation_amortization ?? null,
+              debt_principal_repayment: stmt.debt_principal_repayment ?? null,
+              ffo: stmt.ffo ?? null,
+              distributions: stmt.distributions ?? null,
               debt_detail: stmt.debt_detail ?? null,
               notes_summary: stmt.notes_summary ?? null,
               extraction_confidence: stmt.extraction_confidence ?? null,

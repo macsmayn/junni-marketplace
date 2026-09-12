@@ -19,7 +19,10 @@ const NUMERIC_FIELDS: { key: string; label: string }[] = [
   { key: "current_liabilities", label: "Current Liabilities" },
   { key: "total_debt", label: "Total Debt" },
   { key: "equity", label: "Equity" },
-  { key: "interest_expense", label: "Interest Expense" },
+  { key: "interest_expense",          label: "Interest Expense" },
+  { key: "debt_principal_repayment",  label: "Debt Principal Repayment" },
+  { key: "ffo",                       label: "FFO" },
+  { key: "distributions",             label: "Distributions" },
 ];
 
 type Edits = Record<string, Record<string, number | null>>;
