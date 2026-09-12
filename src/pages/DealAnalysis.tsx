@@ -1295,22 +1295,13 @@ export default function DealAnalysis() {
             padding: "0 10px 8px", borderBottom: "1px solid #E8E2D9", verticalAlign: "bottom",
             whiteSpace: "nowrap",
           };
-          const thDelta: React.CSSProperties = {
-            fontSize: 10, fontWeight: 600, color: MUTED, textAlign: "center",
-            padding: "0 4px 8px", borderBottom: "1px solid #E8E2D9", verticalAlign: "bottom",
-            whiteSpace: "nowrap",
-          };
           const tdLabel: React.CSSProperties = {
             fontSize: 13, color: NAVY, padding: "8px 10px 8px 0",
-            borderBottom: "1px solid #F3EFE8", verticalAlign: "middle",
+            borderBottom: "1px solid #F3EFE8", verticalAlign: "top",
           };
           const tdVal: React.CSSProperties = {
             fontSize: 13, color: NAVY, textAlign: "right", padding: "8px 10px",
-            borderBottom: "1px solid #F3EFE8", verticalAlign: "middle", whiteSpace: "nowrap",
-          };
-          const tdDelta: React.CSSProperties = {
-            textAlign: "center", padding: "8px 4px",
-            borderBottom: "1px solid #F3EFE8", verticalAlign: "middle",
+            borderBottom: "1px solid #F3EFE8", verticalAlign: "top", whiteSpace: "nowrap",
           };
           const subHdStyle: React.CSSProperties = {
             fontSize: 10, fontWeight: 700, fontVariant: "small-caps", textTransform: "uppercase" as const,
@@ -1333,19 +1324,18 @@ export default function DealAnalysis() {
                     ? (curr - prior) / Math.abs(prior) * 100
                     : null;
                   return (
-                    <React.Fragment key={row.fiscal_year}>
-                      {i > 0 && (
-                        <td style={{ ...tdDelta, ...lastBorder }}>
-                          {delta != null
+                    <td key={row.fiscal_year} style={{ ...tdVal, ...lastBorder }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                        <span>{fmtFin(curr)}</span>
+                        {i > 0 && (
+                          delta != null
                             ? <span style={{ fontSize: 11, fontWeight: 600, color: delta > 0 ? GREEN : delta < 0 ? RED : MUTED }}>
                                 {delta > 0 ? "+" : ""}{delta.toFixed(1)}%
                               </span>
                             : <span style={{ fontSize: 11, color: MUTED }}>—</span>
-                          }
-                        </td>
-                      )}
-                      <td style={{ ...tdVal, ...lastBorder }}>{fmtFin(curr)}</td>
-                    </React.Fragment>
+                        )}
+                      </div>
+                    </td>
                   );
                 })}
               </tr>
@@ -1358,11 +1348,8 @@ export default function DealAnalysis() {
                 <thead>
                   <tr>
                     <th style={thLabel}></th>
-                    {displayedRows.map((row: any, i: number) => (
-                      <React.Fragment key={row.fiscal_year}>
-                        {i > 0 && <th style={thDelta}>{t("analysis.finVsPriorYear")}</th>}
-                        <th style={thYear}>{row.fiscal_year}</th>
-                      </React.Fragment>
+                    {displayedRows.map((row: any) => (
+                      <th key={row.fiscal_year} style={thYear}>{row.fiscal_year}</th>
                     ))}
                   </tr>
                 </thead>
