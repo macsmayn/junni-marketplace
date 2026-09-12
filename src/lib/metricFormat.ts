@@ -42,7 +42,9 @@ export function fmtValue(
   if (isYears)  return `${v.toFixed(1)} ${lang === 'fr' ? 'ans'    : 'years'}`;
   if (isPct)    return `${v.toFixed(1)}%`;
   if (isRatio)  return `${v.toFixed(2)}x`;
-  if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(v) >= 1_000)     return `$${(v / 1_000).toFixed(1)}K`;
-  return v.toFixed(2);
+  const sign = v < 0 ? '-' : '';
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000)     return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${abs.toFixed(2)}`;
 }
