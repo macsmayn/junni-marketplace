@@ -813,7 +813,9 @@ export default function DealAnalysis() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: isMobile ? "24px 16px 60px" : "40px 24px 80px" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: isMobile ? "24px 16px 60px" : "40px 24px 80px" }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: "flex-start", gap: 32 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
 
         {/* ── 1. Header ── */}
         <div style={{ marginBottom: 28 }}>
@@ -1305,228 +1307,6 @@ export default function DealAnalysis() {
             </div>
           </div>
         )}
-
-        {/* ── Previous versions ── */}
-        {historyVersions.length > 0 && (
-          <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
-            <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 16px" }}>
-              {t("analysis.previousVersions")}
-            </h2>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 480 }}>
-                <thead>
-                  <tr style={{ borderBottom: "2px solid #E8E2D9" }}>
-                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{t("analysis.prevVerVersion")}</th>
-                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{t("analysis.prevVerDate")}</th>
-                    <th style={{ textAlign: "center", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{t("analysis.prevVerScore")}</th>
-                    <th style={{ textAlign: "center", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{t("analysis.prevVerChange")}</th>
-                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, fontWeight: 600, color: MUTED }}>{t("analysis.prevVerReason")}</th>
-                    <th style={{ padding: "6px 10px" }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historyVersions.map((hv: any, i: number) => {
-                    const nextOlder = historyVersions[i + 1];
-                    const delta = nextOlder != null
-                      ? (hv.overall_score ?? 0) - (nextOlder.overall_score ?? 0)
-                      : null;
-                    const isLast = i === historyVersions.length - 1;
-                    return (
-                      <tr key={hv.version} style={{ borderBottom: isLast ? "none" : "1px solid #F0EDE8" }}>
-                        <td style={{ padding: "10px 10px", color: NAVY, fontWeight: 600 }}>v{hv.version}</td>
-                        <td style={{ padding: "10px 10px", color: MUTED, fontSize: 12, whiteSpace: "nowrap" }}>
-                          {new Date(hv.archived_at).toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" })}
-                        </td>
-                        <td style={{ padding: "10px 10px", textAlign: "center" }}>
-                          <span style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 700, fontSize: 16, color: NAVY }}>{hv.overall_score ?? "—"}</span>
-                          {hv.risk_label && (
-                            <div style={{ marginTop: 3 }}>{riskChip(hv.risk_label, t)}</div>
-                          )}
-                        </td>
-                        <td style={{ padding: "10px 10px", textAlign: "center" }}>
-                          {delta !== null ? (
-                            <span style={{ fontWeight: 700, fontSize: 13, color: delta > 0 ? GREEN : delta < 0 ? RED : MUTED }}>
-                              {delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)}
-                            </span>
-                          ) : (
-                            <span style={{ color: MUTED, fontSize: 12 }}>—</span>
-                          )}
-                        </td>
-                        <td style={{ padding: "10px 10px", color: MUTED, fontSize: 12, maxWidth: 220 }}>
-                          <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {hv.archived_reason || "—"}
-                          </span>
-                        </td>
-                        <td style={{ padding: "10px 10px" }}>
-                          <button
-                            onClick={() => setLocation(`/analysis/${dealId}/history/${hv.version}`)}
-                            style={{
-                              padding: "4px 10px", borderRadius: 6, border: "1px solid #E8E2D9",
-                              background: "transparent", color: NAVY, fontSize: 11, fontWeight: 600,
-                              cursor: "pointer", fontFamily: "Inter, sans-serif", whiteSpace: "nowrap",
-                            }}
-                          >{t("analysis.prevVerView")}</button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ── 6. Documents ── */}
-        {(() => {
-          const resolveLabel = (key: string) => {
-            const dt = docTypes.find((d: any) => d.key === key);
-            if (!dt) return key;
-            return (lang === "fr" && dt.label_fr) ? dt.label_fr : dt.label_en;
-          };
-          const groupedTypes = docTypes.reduce((acc: Record<string, any[]>, dt: any) => {
-            if (!acc[dt.category]) acc[dt.category] = [];
-            acc[dt.category].push(dt);
-            return acc;
-          }, {});
-          const selectedDt = docTypes.find((d: any) => d.key === uploadDocType);
-          return (
-            <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: isMobile ? "24px 20px" : "32px 36px", marginTop: 24 }}>
-              <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 18, color: NAVY, margin: "0 0 16px" }}>
-                {t("analysis.documentsSection")}
-              </h2>
-
-              {documents.length === 0 ? (
-                <div style={{ fontSize: 13, color: MUTED, marginBottom: 16 }}>{t("analysis.docNoFiles")}</div>
-              ) : (
-                <div style={{ marginBottom: 16 }}>
-                  {documents.map((doc: any, i: number) => {
-                    const dt = docTypes.find((d: any) => d.key === doc.doc_category);
-                    return (
-                      <div key={doc.id ?? i} style={{
-                        display: "grid",
-                        gridTemplateColumns: isMobile ? "1fr auto" : "2fr 1fr 1fr auto",
-                        gap: 10, alignItems: "center", padding: "10px 0",
-                        borderBottom: i < documents.length - 1 ? "1px solid #F0EDE8" : "none",
-                      }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{doc.file_name}</div>
-                          {dt && !dt.is_extracted && (
-                            <div style={{ fontSize: 11, color: MUTED, fontStyle: "italic", marginTop: 2 }}>
-                              {t("analysis.docNotAnalysed")}
-                            </div>
-                          )}
-                        </div>
-                        {!isMobile && (
-                          <div style={{ fontSize: 12, color: MUTED }}>{resolveLabel(doc.doc_category)}</div>
-                        )}
-                        {!isMobile && (
-                          <div style={{ fontSize: 12, color: MUTED }}>
-                            {new Date(doc.created_at).toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" })}
-                          </div>
-                        )}
-                        <button
-                          onClick={async () => {
-                            setDocViewError(null);
-                            const win = window.open("", "_blank");
-                            if (!win) { setDocViewError(t("analysis.docViewError")); return; }
-                            const { data: signed, error: signErr } = await supabase.storage
-                              .from("documents")
-                              .createSignedUrl(doc.storage_path, 3600);
-                            if (signErr || !signed?.signedUrl) {
-                              console.error("[DealAnalysis] createSignedUrl failed:", doc.storage_path, signErr);
-                              win.close();
-                              setDocViewError(t("analysis.docViewError"));
-                              return;
-                            }
-                            win.location.href = signed.signedUrl;
-                          }}
-                          style={{
-                            padding: "4px 10px", borderRadius: 6, border: "1px solid #E8E2D9",
-                            background: "transparent", color: NAVY, fontSize: 11, fontWeight: 600,
-                            cursor: "pointer", fontFamily: "Inter, sans-serif",
-                          }}
-                        >{t("analysis.docView")}</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {docViewError && (
-                <div style={{ background: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#B71C1C", marginBottom: 12 }}>
-                  {docViewError}
-                </div>
-              )}
-
-              {showRescorePrompt && (
-                <div style={{
-                  background: "#FFFBEB", border: `1px solid ${GOLD}`, borderRadius: 8,
-                  padding: "12px 16px", marginBottom: 16, display: "flex", flexWrap: "wrap",
-                  gap: 10, alignItems: "center",
-                }}>
-                  <span style={{ fontSize: 13, color: "#92400E", flex: 1, minWidth: 160 }}>{t("analysis.docRescorePrompt")}</span>
-                  <button onClick={handleRescore} disabled={isRescoring} style={{
-                    padding: "5px 12px", borderRadius: 6, border: "none", background: GOLD,
-                    color: "#fff", fontSize: 12, fontWeight: 700, cursor: isRescoring ? "wait" : "pointer",
-                    fontFamily: "Inter, sans-serif", opacity: isRescoring ? 0.7 : 1,
-                  }}>{isRescoring ? t("analysis.rescoring") : t("analysis.docRescoreBtn")}</button>
-                  <button onClick={() => setShowRescorePrompt(false)} style={{
-                    padding: "5px 12px", borderRadius: 6, border: "1px solid #E8E2D9",
-                    background: "transparent", color: MUTED, fontSize: 12, cursor: "pointer",
-                    fontFamily: "Inter, sans-serif",
-                  }}>{t("analysis.docRescoreNotNow")}</button>
-                </div>
-              )}
-
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <select
-                  value={uploadDocType}
-                  onChange={e => setUploadDocType(e.target.value)}
-                  style={{
-                    padding: "6px 10px", borderRadius: 6, border: "1px solid #E8E2D9",
-                    fontSize: 12, color: NAVY, fontFamily: "Inter, sans-serif",
-                    background: "#fff", cursor: "pointer", minWidth: 200,
-                  }}
-                >
-                  <option value="">{t("analysis.docTypeSelect")}</option>
-                  {Object.entries(groupedTypes).map(([cat, types]) => (
-                    <optgroup key={cat} label={cat}>
-                      {types.map((dt: any) => (
-                        <option key={dt.key} value={dt.key}>
-                          {(lang === "fr" && dt.label_fr) ? dt.label_fr : dt.label_en}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-                <label style={{
-                  display: "inline-block", padding: "6px 14px", borderRadius: 6,
-                  border: `1px solid ${uploadDocType && !isUploading ? NAVY : "#E8E2D9"}`,
-                  background: uploadDocType && !isUploading ? NAVY : "#F5F3EE",
-                  color: uploadDocType && !isUploading ? "#fff" : MUTED,
-                  fontSize: 12, fontWeight: 700,
-                  cursor: uploadDocType && !isUploading ? "pointer" : "not-allowed",
-                  fontFamily: "Inter, sans-serif",
-                }}>
-                  {isUploading ? t("analysis.docUploading") : t("analysis.docUploadBtn")}
-                  <input
-                    type="file"
-                    multiple
-                    accept=".pdf,.xlsx,.xls,.csv,.docx,.doc"
-                    disabled={!uploadDocType || isUploading}
-                    style={{ display: "none" }}
-                    onChange={e => e.target.files && handleUploadDocs(e.target.files)}
-                  />
-                </label>
-                {selectedDt && !selectedDt.is_extracted && (
-                  <span style={{ fontSize: 11, color: MUTED, fontStyle: "italic" }}>
-                    {t("analysis.docNotAnalysed")}
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })()}
 
         {/* ── 7. Diligence Questions ── */}
         {(() => {
@@ -2246,6 +2026,199 @@ export default function DealAnalysis() {
             </div>
           </div>
         )}
+        </div>{/* end main column */}
+
+        {/* ── Sidebar: Documents + Previous Versions ── */}
+        <div style={{ width: isMobile ? "100%" : 284, flexShrink: 0, marginTop: isMobile ? 32 : 0 }}>
+
+          {/* Documents */}
+          {(() => {
+            const resolveLabel = (key: string) => {
+              const dt = docTypes.find((d: any) => d.key === key);
+              if (!dt) return key;
+              return (lang === "fr" && dt.label_fr) ? dt.label_fr : dt.label_en;
+            };
+            const groupedTypes = docTypes.reduce((acc: Record<string, any[]>, dt: any) => {
+              if (!acc[dt.category]) acc[dt.category] = [];
+              acc[dt.category].push(dt);
+              return acc;
+            }, {});
+            const selectedDt = docTypes.find((d: any) => d.key === uploadDocType);
+            return (
+              <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: "20px" }}>
+                <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 16, color: NAVY, margin: "0 0 12px" }}>
+                  {t("analysis.documentsSection")}
+                </h2>
+                {documents.length === 0 ? (
+                  <div style={{ fontSize: 13, color: MUTED, marginBottom: 14 }}>{t("analysis.docNoFiles")}</div>
+                ) : (
+                  <div style={{ marginBottom: 14 }}>
+                    {documents.map((doc: any, i: number) => {
+                      const dt = docTypes.find((d: any) => d.key === doc.doc_category);
+                      return (
+                        <div key={doc.id ?? i} style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+                          gap: 8, padding: "7px 0",
+                          borderBottom: i < documents.length - 1 ? "1px solid #F0EDE8" : "none",
+                        }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: NAVY, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.file_name}</div>
+                            {dt && !dt.is_extracted && (
+                              <div style={{ fontSize: 10, color: MUTED, fontStyle: "italic", marginTop: 1 }}>{t("analysis.docNotAnalysed")}</div>
+                            )}
+                          </div>
+                          <button
+                            onClick={async () => {
+                              setDocViewError(null);
+                              const win = window.open("", "_blank");
+                              if (!win) { setDocViewError(t("analysis.docViewError")); return; }
+                              const { data: signed, error: signErr } = await supabase.storage
+                                .from("documents")
+                                .createSignedUrl(doc.storage_path, 3600);
+                              if (signErr || !signed?.signedUrl) {
+                                console.error("[DealAnalysis] createSignedUrl failed:", doc.storage_path, signErr);
+                                win.close();
+                                setDocViewError(t("analysis.docViewError"));
+                                return;
+                              }
+                              win.location.href = signed.signedUrl;
+                            }}
+                            style={{
+                              flexShrink: 0, padding: "3px 8px", borderRadius: 6, border: "1px solid #E8E2D9",
+                              background: "transparent", color: NAVY, fontSize: 11, fontWeight: 600,
+                              cursor: "pointer", fontFamily: "Inter, sans-serif",
+                            }}
+                          >{t("analysis.docView")}</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {docViewError && (
+                  <div style={{ background: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 6, padding: "8px 10px", fontSize: 12, color: "#B71C1C", marginBottom: 10 }}>
+                    {docViewError}
+                  </div>
+                )}
+                {showRescorePrompt && (
+                  <div style={{
+                    background: "#FFFBEB", border: `1px solid ${GOLD}`, borderRadius: 8,
+                    padding: "10px 12px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8,
+                  }}>
+                    <span style={{ fontSize: 12, color: "#92400E" }}>{t("analysis.docRescorePrompt")}</span>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={handleRescore} disabled={isRescoring} style={{
+                        padding: "4px 10px", borderRadius: 6, border: "none", background: GOLD,
+                        color: "#fff", fontSize: 11, fontWeight: 700, cursor: isRescoring ? "wait" : "pointer",
+                        fontFamily: "Inter, sans-serif", opacity: isRescoring ? 0.7 : 1,
+                      }}>{isRescoring ? t("analysis.rescoring") : t("analysis.docRescoreBtn")}</button>
+                      <button onClick={() => setShowRescorePrompt(false)} style={{
+                        padding: "4px 10px", borderRadius: 6, border: "1px solid #E8E2D9",
+                        background: "transparent", color: MUTED, fontSize: 11, cursor: "pointer",
+                        fontFamily: "Inter, sans-serif",
+                      }}>{t("analysis.docRescoreNotNow")}</button>
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <select
+                    value={uploadDocType}
+                    onChange={e => setUploadDocType(e.target.value)}
+                    style={{
+                      padding: "6px 8px", borderRadius: 6, border: "1px solid #E8E2D9",
+                      fontSize: 12, color: NAVY, fontFamily: "Inter, sans-serif",
+                      background: "#fff", cursor: "pointer", width: "100%",
+                    }}
+                  >
+                    <option value="">{t("analysis.docTypeSelect")}</option>
+                    {Object.entries(groupedTypes).map(([cat, types]) => (
+                      <optgroup key={cat} label={cat}>
+                        {(types as any[]).map((dt: any) => (
+                          <option key={dt.key} value={dt.key}>
+                            {(lang === "fr" && dt.label_fr) ? dt.label_fr : dt.label_en}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <label style={{
+                    display: "block", padding: "6px 12px", borderRadius: 6, textAlign: "center" as const,
+                    border: `1px solid ${uploadDocType && !isUploading ? NAVY : "#E8E2D9"}`,
+                    background: uploadDocType && !isUploading ? NAVY : "#F5F3EE",
+                    color: uploadDocType && !isUploading ? "#fff" : MUTED,
+                    fontSize: 12, fontWeight: 700,
+                    cursor: uploadDocType && !isUploading ? "pointer" : "not-allowed",
+                    fontFamily: "Inter, sans-serif",
+                  }}>
+                    {isUploading ? t("analysis.docUploading") : t("analysis.docUploadBtn")}
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.xlsx,.xls,.csv,.docx,.doc"
+                      disabled={!uploadDocType || isUploading}
+                      style={{ display: "none" }}
+                      onChange={e => e.target.files && handleUploadDocs(e.target.files)}
+                    />
+                  </label>
+                  {selectedDt && !selectedDt.is_extracted && (
+                    <span style={{ fontSize: 11, color: MUTED, fontStyle: "italic" }}>{t("analysis.docNotAnalysed")}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Previous Versions */}
+          {historyVersions.length > 0 && (
+            <div style={{ background: "#fff", border: "1px solid #E8E2D9", borderRadius: 16, padding: "20px", marginTop: 16 }}>
+              <h2 style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 800, fontSize: 16, color: NAVY, margin: "0 0 12px" }}>
+                {t("analysis.previousVersions")}
+              </h2>
+              {historyVersions.map((hv: any, i: number) => {
+                const nextOlder = historyVersions[i + 1];
+                const delta = nextOlder != null
+                  ? (hv.overall_score ?? 0) - (nextOlder.overall_score ?? 0)
+                  : null;
+                const isLast = i === historyVersions.length - 1;
+                return (
+                  <div key={hv.version} style={{ padding: "10px 0", borderBottom: isLast ? "none" : "1px solid #F0EDE8" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                        <span style={{ fontWeight: 700, color: NAVY, fontSize: 12 }}>v{hv.version}</span>
+                        <span style={{ fontFamily: "Fraunces, Georgia, serif", fontWeight: 700, fontSize: 15, color: NAVY }}>{hv.overall_score ?? "—"}</span>
+                        {delta !== null && (
+                          <span style={{ fontWeight: 700, fontSize: 11, color: delta > 0 ? GREEN : delta < 0 ? RED : MUTED }}>
+                            {delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setLocation(`/analysis/${dealId}/history/${hv.version}`)}
+                        style={{
+                          padding: "3px 8px", borderRadius: 6, border: "1px solid #E8E2D9",
+                          background: "transparent", color: NAVY, fontSize: 11, fontWeight: 600,
+                          cursor: "pointer", fontFamily: "Inter, sans-serif", whiteSpace: "nowrap",
+                        }}
+                      >{t("analysis.prevVerView")}</button>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 11, color: MUTED }}>
+                        {new Date(hv.archived_at).toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                      {hv.risk_label && riskChip(hv.risk_label, t)}
+                    </div>
+                    {hv.archived_reason && (
+                      <div style={{ fontSize: 11, color: MUTED, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {hv.archived_reason}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+        </div>{/* end sidebar */}
+        </div>{/* end two-column flex */}
       </div>
 
       {/* ── What-if reason modal ── */}
