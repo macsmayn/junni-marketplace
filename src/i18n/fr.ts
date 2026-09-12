@@ -1162,6 +1162,105 @@ const fr: Record<string, string> = {
   "privacy.changes.p1":                 "Nous pouvons mettre à jour la présente politique de confidentialité pour refléter des changements dans nos pratiques ou des exigences légales. Les modifications importantes seront affichées sur cette page avec une date de « Dernière mise à jour » révisée. La poursuite de l'utilisation de la plateforme après une modification importante vaut acceptation de la politique mise à jour.",
 
   "privacy.footer":                     "© 2026 Junni Technologies Inc. Tous droits réservés.",
+
+  // Conditions d'utilisation
+  "terms.nav.about":                    "À propos",
+  "terms.nav.marketplace":              "Plateforme",
+  "terms.nav.signIn":                   "Se connecter",
+  "terms.title":                        "Conditions d'utilisation",
+  "terms.lastUpdated":                  "Dernière mise à jour : 12 septembre 2026",
+  "terms.footer":                       "© 2026 Junni Technologies Inc. Tous droits réservés.",
+
+  "terms.s1.heading":                   "1. Acceptation des conditions",
+  "terms.s1.p1":                        "Les présentes conditions d'utilisation (les « Conditions ») régissent votre accès à la plateforme Junni (le « Service ») et son utilisation. Le Service est exploité par Junni Technologies Inc. (société fédérale no 1818450-0), dont l'adresse est Appartement 301–1212, Avenue des Pins Ouest, Montréal (Québec) H3G 1A9 (« Junni », « nous »).",
+  "terms.s1.p2":                        "En créant un compte ou en accédant au Service, vous acceptez d'être lié par les présentes Conditions. Si vous acceptez au nom d'une personne morale, vous déclarez avoir l'autorité de l'engager. Si vous n'acceptez pas, n'utilisez pas le Service.",
+
+  "terms.s2.heading":                   "2. Description du Service",
+  "terms.s2.p1":                        "Junni est une plateforme logicielle en mode SaaS qui aide les prêteurs commerciaux à analyser des dossiers de crédit. Le Service traite les documents financiers soumis par les utilisateurs, en extrait les données financières à l'aide de l'intelligence artificielle, et produit des analyses de crédit structurées comprenant des scores, des métriques et des narratifs.",
+  "terms.s2.centralPoint":              "Junni produit des analyses pour aider à la prise de décision humaine éclairée. Le client est seul responsable de toutes les décisions de crédit. Junni n'est pas un prêteur, un courtier, un conseiller financier ni un bureau de crédit.",
+
+  "terms.s3.heading":                   "3. Comptes, organisations et membres de l'équipe",
+  "terms.s3.item1.label":               "Création de compte",
+  "terms.s3.item1.text":                "Vous devez fournir des informations exactes et complètes et les maintenir à jour. Vous êtes responsable de la confidentialité de vos identifiants.",
+  "terms.s3.item2.label":               "Organisations",
+  "terms.s3.item2.text":                "Le Service est vendu à des organisations (prêteurs). Un administrateur d'organisation peut inviter des membres de l'équipe dans le cadre de l'abonnement de l'organisation. Chaque utilisateur invité est lié par les présentes Conditions.",
+  "terms.s3.item3.label":               "Sécurité du compte",
+  "terms.s3.item3.text":                "Vous êtes responsable de toutes les activités effectuées sous votre compte. Informez-nous immédiatement à l'adresse info@junni.ca si vous soupçonnez un accès non autorisé.",
+
+  "terms.s4.heading":                   "4. Responsabilités du client",
+  "terms.s4.item1.label":               "Utilisation autorisée seulement",
+  "terms.s4.item1.text":                "Vous ne pouvez utiliser le Service qu'à des fins d'analyse de crédit licites dans le cadre des activités de prêt normales de votre organisation.",
+  "terms.s4.item2.label":               "Exactitude des données",
+  "terms.s4.item2.text":                "Vous êtes responsable de l'exactitude et de l'exhaustivité des documents et données que vous téléversez. La fiabilité des résultats de Junni dépend de la qualité des données soumises.",
+  "terms.s4.item3.label":               "Décisions de crédit",
+  "terms.s4.item3.text":                "Toutes les décisions de crédit demeurent entièrement sous votre responsabilité. L'analyse de Junni ne constitue pas une recommandation de prêter ou de ne pas prêter.",
+  "terms.s4.item4.label":               "Conformité réglementaire",
+  "terms.s4.item4.text":                "Vous êtes responsable du respect de toutes les lois et réglementations applicables à vos activités de prêt, notamment en matière de lutte contre le blanchiment d'argent, de connaissance du client et de protection des consommateurs.",
+
+  "terms.s5.heading":                   "5. Abonnement, frais et facturation",
+  "terms.s5.item1.label":               "Tarification",
+  "terms.s5.item1.text":                "Les frais d'abonnement en vigueur et les détails des forfaits sont présentés au moment de l'achat et sont accessibles dans les paramètres de votre compte.",
+  "terms.s5.item2.label":               "Période d'essai gratuite",
+  "terms.s5.item2.text":                "Junni peut offrir une période d'essai gratuite de 14 jours aux nouvelles organisations. À l'expiration de la période d'essai, un abonnement payant est requis pour continuer à utiliser le Service.",
+  "terms.s5.item3.label":               "Cycle de facturation",
+  "terms.s5.item3.text":                "Les abonnements sont facturés mensuellement ou annuellement, selon le choix effectué lors de la souscription. Les frais sont prélevés à l'avance pour chaque période.",
+  "terms.s5.item4.label":               "Aucun remboursement",
+  "terms.s5.item4.text":                "Les frais d'abonnement sont non remboursables, sauf dans les cas prévus par la loi applicable, notamment la Loi sur la protection du consommateur (Québec).",
+  "terms.s5.item5.label":               "Modifications des frais",
+  "terms.s5.item5.text":                "Nous pouvons modifier les frais d'abonnement moyennant un préavis écrit d'au moins 30 jours. La poursuite de l'utilisation du Service après la date d'entrée en vigueur vaut acceptation des nouveaux frais.",
+
+  "terms.s6.heading":                   "6. Utilisation acceptable",
+  "terms.s6.intro":                     "Vous vous engagez à ne pas :",
+  "terms.s6.item1":                     "Utiliser le Service pour traiter des documents sur lesquels vous n'avez pas de droits de soumission",
+  "terms.s6.item2":                     "Tenter de procéder à l'ingénierie inverse, de décompiler ou d'extraire les modèles d'IA sous-jacents",
+  "terms.s6.item3":                     "Revendre, sous-licencier ou donner accès au Service à des tiers en dehors de votre organisation",
+  "terms.s6.item4":                     "Téléverser des codes malveillants, des virus ou du contenu enfreignant toute loi applicable",
+  "terms.s6.item5":                     "Entraver ou perturber l'intégrité ou le fonctionnement du Service ou de son infrastructure sous-jacente",
+  "terms.s6.item6":                     "Utiliser le Service de toute manière susceptible d'exposer Junni ou ses utilisateurs à une responsabilité juridique",
+
+  "terms.s7.heading":                   "7. Propriété intellectuelle",
+  "terms.s7.p1":                        "Le Service, y compris tous les logiciels, modèles d'IA, méthodologies de cotation, interface utilisateur et contenus créés par Junni, appartient à Junni Technologies Inc. et est protégé par les lois canadiennes et internationales sur la propriété intellectuelle. Les présentes Conditions vous accordent une licence limitée, non exclusive et non transférable d'utilisation du Service à des fins commerciales internes. Aucun droit de propriété ne vous est transféré. Vous conservez la propriété des documents et données que vous téléversez dans le Service.",
+
+  "terms.s8.heading":                   "8. Confidentialité",
+  "terms.s8.p1":                        "Chaque partie s'engage à garder confidentielles les informations non publiques de l'autre partie divulguées dans le cadre du Service. Junni traitera vos documents téléversés et les résultats d'analyse comme confidentiels. Vous vous engagez à traiter toute information non publique concernant la technologie, la tarification ou les activités de Junni comme confidentielle. Les obligations de confidentialité ne s'appliquent pas aux informations qui sont ou deviennent publiques sans qu'il y ait violation des présentes Conditions, ni aux informations dont la divulgation est exigée par la loi.",
+
+  "terms.s9.heading":                   "9. Protection des données",
+  "terms.s9.p1":                        "Junni collecte et traite les renseignements personnels conformément à sa Politique de confidentialité, disponible à l'adresse junni.ca/privacy. La Politique de confidentialité de Junni est incorporée aux présentes Conditions par renvoi. Dans la mesure où le Service implique le traitement de renseignements personnels en votre nom, Junni agit comme mandataire au sens de la Loi 25 du Québec et comme sous-traitant au sens de la législation fédérale applicable. Vous êtes responsable de vous assurer que tout renseignement personnel soumis a été collecté et communiqué en conformité avec les lois sur la protection de la vie privée applicables.",
+
+  "terms.s10.heading":                  "10. Disponibilité du Service",
+  "terms.s10.p1":                       "Junni fera des efforts commercialement raisonnables pour maintenir la disponibilité du Service. Le Service est fourni « tel quel » et « selon disponibilité ». Junni ne garantit pas un fonctionnement ininterrompu ou sans erreur et peut effectuer des opérations de maintenance ou des mises à jour à tout moment. Junni s'efforcera d'informer à l'avance des interruptions planifiées lorsque cela est réalisable.",
+
+  "terms.s11.heading":                  "11. Durée et résiliation",
+  "terms.s11.p1":                       "Les présentes Conditions demeurent en vigueur pendant toute la durée de votre abonnement. Chaque partie peut résilier pour manquement grave par avis écrit si l'autre partie ne remédie pas au manquement dans les 30 jours suivant la notification. Junni peut suspendre ou résilier votre compte immédiatement si la loi l'exige ou si votre conduite présente un risque pour la sécurité ou cause un préjudice à Junni ou à ses utilisateurs. En cas de résiliation, votre droit d'accès au Service cesse immédiatement. Vous pouvez demander l'exportation de vos données dans les 30 jours suivant la résiliation; passé ce délai, Junni peut les supprimer conformément à ses pratiques de conservation des données.",
+
+  "terms.s12.heading":                  "12. Limitation de responsabilité",
+  "terms.s12.sub1.heading":            "Exclusion de garantie",
+  "terms.s12.sub1.text":              "Le Service est fourni sans aucune garantie expresse ou implicite, y compris les garanties implicites de qualité marchande, d'adéquation à un usage particulier ou d'absence de contrefaçon, dans toute la mesure permise par la loi applicable.",
+  "terms.s12.sub2.heading":            "Avertissement relatif aux décisions de crédit",
+  "terms.s12.sub2.text":              "Junni ne garantit pas l'exactitude, l'exhaustivité ou l'adéquation de ses résultats d'analyse pour une décision de crédit particulière. Tous les résultats doivent être examinés de manière indépendante par du personnel qualifié avant d'être utilisés.",
+  "terms.s12.sub3.heading":            "Exclusion des dommages indirects",
+  "terms.s12.sub3.text":              "Dans toute la mesure permise par la loi applicable, Junni ne sera pas responsable des dommages indirects, accessoires, spéciaux, consécutifs ou punitifs, y compris la perte de profits, de données ou d'exploitation, découlant de votre utilisation du Service ou de votre incapacité à l'utiliser.",
+  "terms.s12.sub4.heading":            "Plafond de responsabilité",
+  "terms.s12.sub4.text":              "Dans toute la mesure permise par la loi applicable, la responsabilité totale de Junni à votre égard pour l'ensemble des réclamations découlant des présentes Conditions ou s'y rapportant ne dépassera pas les frais que vous avez versés à Junni au cours des 12 mois précédant l'événement à l'origine de la réclamation.",
+  "terms.s12.sub5.heading":            "Droits des consommateurs",
+  "terms.s12.sub5.text":              "Aucune disposition de la présente section ne limite les droits dont vous pouvez bénéficier en vertu de la Loi sur la protection du consommateur (Québec) ou d'autres dispositions impératives de la loi applicable auxquelles il ne peut être dérogé par contrat.",
+
+  "terms.s13.heading":                  "13. Règlement des litiges",
+  "terms.s13.p1":                       "En cas de litige entre vous et Junni, les deux parties conviennent de tenter d'abord de le résoudre de bonne foi par négociation directe pendant une période de 30 jours à compter de la notification écrite du litige.",
+  "terms.s13.p2":                       "Si le litige n'est pas résolu par voie de négociation, les parties peuvent, par accord écrit mutuel, le soumettre à une médiation ou à un arbitrage administré par un organisme neutre au Québec. En l'absence d'un tel accord écrit mutuel, les litiges seront soumis à la juridiction exclusive des tribunaux du district judiciaire de Montréal, Québec. Aucune disposition des présentes Conditions n'empêche l'une ou l'autre des parties de solliciter une injonction d'urgence ou toute autre mesure conservatoire auprès d'un tribunal compétent.",
+
+  "terms.s14.heading":                  "14. Droit applicable et juridiction",
+  "terms.s14.p1":                       "Les présentes Conditions sont régies et interprétées conformément aux lois de la Province de Québec et aux lois fédérales du Canada qui s'y appliquent, sans égard aux règles de conflit de lois. Sous réserve de l'article 13, les parties se soumettent irrévocablement à la juridiction exclusive des tribunaux du district judiciaire de Montréal, Québec.",
+
+  "terms.s15.heading":                  "15. Modifications des présentes Conditions",
+  "terms.s15.p1":                       "Nous pouvons mettre à jour les présentes Conditions de temps à autre. Nous publierons les Conditions révisées sur cette page avec une nouvelle date de « Dernière mise à jour » et donnerons un préavis raisonnable pour les modifications importantes, qui peut inclure une notification par courriel ou un avis dans l'application. La poursuite de votre utilisation du Service après la date d'entrée en vigueur des modifications importantes vaut acceptation des Conditions mises à jour.",
+
+  "terms.s16.heading":                  "16. Nous joindre",
+  "terms.s16.p1":                       "Pour toute question concernant les présentes Conditions, veuillez nous contacter :",
+  "terms.s16.entity":                   "Junni Technologies Inc.",
+  "terms.s16.emailLabel":               "Courriel :",
+  "terms.s16.addressLabel":             "Adresse :",
+  "terms.s16.address":                  "Appartement 301–1212, Avenue des Pins Ouest, Montréal (Québec) H3G 1A9",
 };
 
 export default fr;

@@ -926,6 +926,105 @@ const en: Record<string, string> = {
 
   "privacy.footer":                     "© 2026 Junni Technologies Inc. All rights reserved.",
 
+  // Terms of Service
+  "terms.nav.about":                    "About",
+  "terms.nav.marketplace":              "Platform",
+  "terms.nav.signIn":                   "Sign In",
+  "terms.title":                        "Terms of Service",
+  "terms.lastUpdated":                  "Last updated: September 12, 2026",
+  "terms.footer":                       "© 2026 Junni Technologies Inc. All rights reserved.",
+
+  "terms.s1.heading":                   "1. Acceptance of Terms",
+  "terms.s1.p1":                        "These Terms of Service (\"Terms\") govern your access to and use of the Junni platform (the \"Service\"), operated by Junni Technologies Inc. (federal corporation no. 1818450-0), with its registered address at Apartment 301–1212 Avenue des Pins Ouest, Montréal, Québec, H3G 1A9 (\"Junni\", \"we\", \"us\").",
+  "terms.s1.p2":                        "By creating an account or accessing the Service, you agree to be bound by these Terms. If you are accepting on behalf of a legal entity, you represent that you have the authority to bind that entity. If you do not agree, do not use the Service.",
+
+  "terms.s2.heading":                   "2. Description of the Service",
+  "terms.s2.p1":                        "Junni is a software-as-a-service (SaaS) platform that helps commercial lenders analyze credit files. The Service processes financial documents submitted by users, extracts financial data using artificial intelligence, and produces structured credit analysis outputs including scores, metrics, and narratives.",
+  "terms.s2.centralPoint":              "Junni produces analysis to assist informed human decision-making. The customer is solely responsible for all credit decisions. Junni is not a lender, broker, financial advisor, or credit bureau.",
+
+  "terms.s3.heading":                   "3. Accounts, Organizations, and Team Members",
+  "terms.s3.item1.label":               "Account creation",
+  "terms.s3.item1.text":                "You must provide accurate, complete information and keep it up to date. You are responsible for maintaining the confidentiality of your credentials.",
+  "terms.s3.item2.label":               "Organizations",
+  "terms.s3.item2.text":                "The Service is sold to organizations (lenders). An organization administrator may invite team members under the organization's subscription. Each invited user is bound by these Terms.",
+  "terms.s3.item3.label":               "Account security",
+  "terms.s3.item3.text":                "You are responsible for all activity that occurs under your account. Notify us immediately at info@junni.ca if you suspect unauthorized access.",
+
+  "terms.s4.heading":                   "4. Customer Responsibilities",
+  "terms.s4.item1.label":               "Authorized use only",
+  "terms.s4.item1.text":                "You may use the Service only for lawful credit analysis purposes within your organization's normal lending activities.",
+  "terms.s4.item2.label":               "Data accuracy",
+  "terms.s4.item2.text":                "You are responsible for the accuracy and completeness of documents and data you upload. Junni's outputs are only as reliable as the inputs provided.",
+  "terms.s4.item3.label":               "Credit decisions",
+  "terms.s4.item3.text":                "All credit decisions remain entirely your responsibility. Junni's analysis does not constitute a recommendation to lend or not to lend.",
+  "terms.s4.item4.label":               "Compliance",
+  "terms.s4.item4.text":                "You are responsible for complying with all applicable laws and regulations governing your lending activities, including anti-money laundering, know-your-customer, and consumer protection requirements.",
+
+  "terms.s5.heading":                   "5. Subscription, Fees, and Billing",
+  "terms.s5.item1.label":               "Pricing",
+  "terms.s5.item1.text":                "Current subscription fees and plan details are presented at the time of purchase and are available in your account settings.",
+  "terms.s5.item2.label":               "Free trial",
+  "terms.s5.item2.text":                "Junni may offer a 14-day free trial for new organizations. At the end of the trial period, a paid subscription is required to continue using the Service.",
+  "terms.s5.item3.label":               "Billing cycle",
+  "terms.s5.item3.text":                "Subscriptions are billed on a monthly or annual basis, as selected at checkout. Fees are charged in advance for each period.",
+  "terms.s5.item4.label":               "No refunds",
+  "terms.s5.item4.text":                "Subscription fees are non-refundable except as required by applicable law, including Quebec consumer protection legislation.",
+  "terms.s5.item5.label":               "Changes to fees",
+  "terms.s5.item5.text":                "We may change subscription fees with at least 30 days' written notice. Continuing to use the Service after the effective date constitutes acceptance of the new fees.",
+
+  "terms.s6.heading":                   "6. Acceptable Use",
+  "terms.s6.intro":                     "You agree not to:",
+  "terms.s6.item1":                     "Use the Service to process documents you do not have the right to submit",
+  "terms.s6.item2":                     "Attempt to reverse-engineer, decompile, or extract the underlying AI models",
+  "terms.s6.item3":                     "Resell, sublicense, or provide access to the Service to third parties outside your organization",
+  "terms.s6.item4":                     "Upload malicious code, viruses, or content that violates any law",
+  "terms.s6.item5":                     "Interfere with or disrupt the integrity or performance of the Service or its underlying infrastructure",
+  "terms.s6.item6":                     "Use the Service in any manner that could expose Junni or its users to legal liability",
+
+  "terms.s7.heading":                   "7. Intellectual Property",
+  "terms.s7.p1":                        "The Service, including all software, AI models, scoring methodologies, user interface, and content created by Junni, is owned by Junni Technologies Inc. and protected by Canadian and international intellectual property laws. These Terms grant you a limited, non-exclusive, non-transferable licence to use the Service for your internal business purposes. No ownership rights are transferred to you. You retain ownership of documents and data you upload to the Service.",
+
+  "terms.s8.heading":                   "8. Confidentiality",
+  "terms.s8.p1":                        "Each party agrees to keep confidential the other party's non-public information disclosed in connection with the Service. Junni will treat your uploaded documents and the analysis outputs as confidential. You agree to treat any non-public information about Junni's technology, pricing, or business as confidential. Confidentiality obligations do not apply to information that is or becomes publicly available through no breach of these Terms, or that is required to be disclosed by law.",
+
+  "terms.s9.heading":                   "9. Data Protection",
+  "terms.s9.p1":                        "Junni collects and processes personal information in accordance with its Privacy Policy, available at junni.ca/privacy. Junni's Privacy Policy is incorporated into these Terms by reference. To the extent the Service involves the processing of personal information on your behalf, Junni acts as a service provider (mandataire) under Québec Law 25 and as a data processor under applicable federal legislation. You are responsible for ensuring that any personal information you submit has been collected and shared in compliance with applicable privacy laws.",
+
+  "terms.s10.heading":                  "10. Service Availability",
+  "terms.s10.p1":                       "Junni will make commercially reasonable efforts to maintain Service availability. The Service is provided on an \"as is\" and \"as available\" basis. Junni does not guarantee uninterrupted or error-free operation and may perform maintenance or updates at any time. Junni will endeavour to provide advance notice of scheduled downtime where feasible.",
+
+  "terms.s11.heading":                  "11. Term and Termination",
+  "terms.s11.p1":                       "These Terms remain in effect for the duration of your subscription. Either party may terminate for cause upon written notice if the other party materially breaches these Terms and fails to cure the breach within 30 days. Junni may suspend or terminate your account immediately if required to comply with law, or if you engage in conduct that poses a security risk or harm to Junni or other users. Upon termination, your right to access the Service ceases. You may request export of your data within 30 days of termination; thereafter Junni may delete it in accordance with its data retention practices.",
+
+  "terms.s12.heading":                  "12. Limitation of Liability",
+  "terms.s12.sub1.heading":            "Disclaimer of warranties",
+  "terms.s12.sub1.text":              "The Service is provided without any express or implied warranties, including implied warranties of merchantability, fitness for a particular purpose, or non-infringement, to the maximum extent permitted by applicable law.",
+  "terms.s12.sub2.heading":            "Credit decision disclaimer",
+  "terms.s12.sub2.text":              "Junni does not warrant that its analysis outputs are accurate, complete, or suitable for any particular credit decision. All outputs must be independently reviewed by qualified personnel before reliance.",
+  "terms.s12.sub3.heading":            "Exclusion of consequential damages",
+  "terms.s12.sub3.text":              "To the maximum extent permitted by applicable law, Junni shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, loss of data, or business interruption, arising from your use of or inability to use the Service.",
+  "terms.s12.sub4.heading":            "Limitation of aggregate liability",
+  "terms.s12.sub4.text":              "To the maximum extent permitted by applicable law, Junni's total aggregate liability to you for all claims arising under or in connection with these Terms shall not exceed the fees paid by you to Junni in the 12 months preceding the event giving rise to the claim.",
+  "terms.s12.sub5.heading":            "Consumer rights",
+  "terms.s12.sub5.text":              "Nothing in this section limits rights you may have under the Consumer Protection Act (Québec) or other mandatory provisions of applicable law that cannot be excluded by contract.",
+
+  "terms.s13.heading":                  "13. Dispute Resolution",
+  "terms.s13.p1":                       "If a dispute arises between you and Junni, both parties agree to first attempt in good faith to resolve it through direct negotiation for a period of 30 days after written notice of the dispute is provided.",
+  "terms.s13.p2":                       "If the dispute is not resolved through negotiation, the parties may, by mutual written agreement, submit it to mediation or arbitration administered by a neutral body in Québec. In the absence of such mutual written agreement, disputes shall be subject to the exclusive jurisdiction of the courts of the judicial district of Montréal, Québec. Nothing in these Terms prevents either party from seeking emergency injunctive or other equitable relief from a court of competent jurisdiction.",
+
+  "terms.s14.heading":                  "14. Governing Law and Jurisdiction",
+  "terms.s14.p1":                       "These Terms are governed by and construed in accordance with the laws of the Province of Québec and the federal laws of Canada applicable therein, without regard to conflict-of-law principles. Subject to Section 13, the parties irrevocably submit to the exclusive jurisdiction of the courts of the judicial district of Montréal, Québec.",
+
+  "terms.s15.heading":                  "15. Changes to These Terms",
+  "terms.s15.p1":                       "We may update these Terms from time to time. We will post the revised Terms on this page with a new \"Last updated\" date and provide reasonable notice of material changes, which may include notification by email or in-product notice. Your continued use of the Service following the effective date of material changes constitutes your acceptance of the updated Terms.",
+
+  "terms.s16.heading":                  "16. Contact",
+  "terms.s16.p1":                       "For questions about these Terms, please contact us:",
+  "terms.s16.entity":                   "Junni Technologies Inc.",
+  "terms.s16.emailLabel":               "Email:",
+  "terms.s16.addressLabel":             "Address:",
+  "terms.s16.address":                  "Apartment 301–1212 Avenue des Pins Ouest, Montréal, Québec, H3G 1A9",
+
   // NotFound
   "notFound.signIn":                    "Sign In",
   "notFound.title":                     "This page doesn't exist.",
