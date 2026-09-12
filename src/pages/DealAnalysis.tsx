@@ -84,6 +84,7 @@ export default function DealAnalysis() {
   const [memoSections, setMemoSections] = useState<MemoSections>({
     execSummary:          true,
     financialMetrics:     true,
+    financials:           true,
     analystCommentary:    true,
     strengthsRisks:       true,
     historicalBenchmark:  true,
@@ -572,7 +573,7 @@ export default function DealAnalysis() {
         ...m,
         metric_name_fr: definitions[m.metric_name]?.metric_name_fr ?? null,
       }));
-      const memoData = { deal, score, metrics: metricsWithFr, confirmedCash, suEntries: sourcesUses, capItems, collateral, benchmarks, lang };
+      const memoData = { deal, score, metrics: metricsWithFr, confirmedCash, suEntries: sourcesUses, capItems, collateral, benchmarks, lang, financials };
       if (format === 'pdf') await downloadPDF(memoData, filteredQ, t, memoSections);
       else await downloadDocx(memoData, filteredQ, t, memoSections);
       setMemoOpen(false);
@@ -735,8 +736,9 @@ export default function DealAnalysis() {
                   </div>
                   {(([
                     { key: "execSummary"         as keyof MemoSections, labelKey: "memo.sectionExecSummary",         hasData: !!(deal?.executive_summary?.trim() || deal?.executive_summary_fr?.trim()) },
-                    { key: "financialMetrics"    as keyof MemoSections, labelKey: "memo.sectionFinancialMetrics",     hasData: true },
-                    { key: "analystCommentary"   as keyof MemoSections, labelKey: "memo.sectionAnalystCommentary",    hasData: !!(score?.summary?.trim() || score?.summary_fr?.trim()) },
+                    { key: "financialMetrics"    as keyof MemoSections, labelKey: "memo.sectionFinancialMetrics",         hasData: true },
+                    { key: "financials"          as keyof MemoSections, labelKey: "memo.sectionFinancialStatements",      hasData: financials.length > 0 },
+                    { key: "analystCommentary"   as keyof MemoSections, labelKey: "memo.sectionAnalystCommentary",        hasData: !!(score?.summary?.trim() || score?.summary_fr?.trim()) },
                     { key: "strengthsRisks"      as keyof MemoSections, labelKey: "memo.sectionStrengthsRisks",       hasData: !!(score?.strengths?.length || score?.strengths_fr?.length || score?.risks?.length || score?.risks_fr?.length) },
                     { key: "historicalBenchmark" as keyof MemoSections, labelKey: "memo.sectionHistoricalBenchmark",  hasData: !!(benchmarks?.csbfp || (!benchmarks?.noMapping && benchmarks?.base?.sector && benchmarks?.stress?.sector)) },
                     { key: "sourcesUses"         as keyof MemoSections, labelKey: "memo.sectionSourcesUses",          hasData: !!sourcesUses?.length },

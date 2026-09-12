@@ -38,6 +38,7 @@ export interface MemoQuestion {
 
 export interface MemoData {
   lang?: string;
+  financials?: Array<Record<string, any>> | null;
   deal: {
     title?: string | null;
     industry?: string | null;
@@ -87,6 +88,7 @@ export interface MemoData {
 export interface MemoSections {
   execSummary:          boolean;
   financialMetrics:     boolean;
+  financials:           boolean;
   analystCommentary:    boolean;
   strengthsRisks:       boolean;
   historicalBenchmark:  boolean;
@@ -101,6 +103,7 @@ export function defaultSections(): MemoSections {
   return {
     execSummary:          true,
     financialMetrics:     true,
+    financials:           true,
     analystCommentary:    true,
     strengthsRisks:       true,
     historicalBenchmark:  true,
@@ -459,6 +462,92 @@ function pdfMetrics(data: MemoData, t: (k: string) => string, lang: string): any
   }
 
   return out;
+}
+
+function pdfFinancials(data: MemoData, t: (k: string) => string, lang: string): any[] {
+  const rows = (data.financials ?? []).slice().sort((a: any, b: any) => a.fiscal_year - b.fiscal_year);
+  if (!rows.length) return [];
+
+  const fcfVal = (r: any): number | null =>
+    r.cfo == null && r.capex == null ? null : (r.cfo ?? 0) - (r.capex ?? 0);
+
+  const fmtFin = (v: number | null): string => v != null ? fmtValue(v, 'amount') : '—';
+
+  const n = rows.length;
+  const largeTable = n > 3;
+  const dataFs = largeTable ? 7.5 : 8.5;
+  const deltaFs = largeTable ? 6.5 : 7.0;
+  const labelW = largeTable ? 130 : 160;
+  const colWidths: any[] = [labelW, ...Array(n).fill('*')];
+
+  const getDelta = (curr: number | null, prior: number | null): number | null =>
+    curr != null && prior != null && prior !== 0
+      ? (curr - prior) / Math.abs(prior) * 100
+      : null;
+
+  const dColor = (d: number | null): string =>
+    d == null ? MUTED : d > 0 ? '#1B5E20' : d < 0 ? RED : MUTED;
+
+  const hdrRow = [
+    { text: '', bold: true, fontSize: dataFs, color: '#ffffff', fillColor: NAVY, margin: [4, 5, 4, 5] },
+    ...rows.map((r: any) => ({
+      text: String(r.fiscal_year), bold: true, fontSize: dataFs, color: '#ffffff',
+      fillColor: NAVY, margin: [4, 5, 4, 5], alignment: 'right',
+    })),
+  ];
+
+  const buildSubTable = (items: { labelKey: string; get: (r: any) => number | null }[]): any => {
+    const body = items.map(({ labelKey, get }, rowIdx) => {
+      const bg = rowIdx % 2 === 1 ? '#F8F6F3' : null;
+      return [
+        cell(t(labelKey), { fontSize: dataFs, color: NAVY }, bg ?? undefined),
+        ...rows.map((r: any, i: number) => {
+          const curr = get(r);
+          const prior = i > 0 ? get(rows[i - 1]) : null;
+          const delta = i > 0 ? getDelta(curr, prior) : null;
+          const dStr = delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%` : null;
+          return {
+            stack: [
+              { text: fmtFin(curr), fontSize: dataFs, alignment: 'right', margin: [4, 3, 4, i > 0 ? 0 : 3] },
+              ...(i > 0 ? [{ text: dStr ?? '—', fontSize: deltaFs, alignment: 'right', color: dStr != null ? dColor(delta) : MUTED, margin: [4, 0, 4, 2] }] : []),
+            ],
+            fillColor: bg,
+          };
+        }),
+      ];
+    });
+    return {
+      table: { widths: colWidths, headerRows: 1, keepWithHeaderRows: 1, body: [hdrRow, ...body] },
+      layout: thinLayout,
+      margin: [0, 0, 0, 6],
+    };
+  };
+
+  const blocks: any[] = [pdfSection(t('memo.secFinancialStatements'))];
+  blocks.push({ stack: [pdfSubHead(t('analysis.finIncomeStatement')), buildSubTable([
+    { labelKey: 'analysis.finRevenue',           get: (r: any) => r.revenue },
+    { labelKey: 'analysis.finCogs',              get: (r: any) => r.cogs },
+    { labelKey: 'analysis.finGrossProfit',       get: (r: any) => r.gross_profit },
+    { labelKey: 'analysis.finOperatingExpenses', get: (r: any) => r.operating_expenses },
+    { labelKey: 'analysis.finEbitda',            get: (r: any) => r.ebitda },
+    { labelKey: 'analysis.finNetIncome',         get: (r: any) => r.net_income },
+  ])], unbreakable: true });
+  blocks.push({ stack: [pdfSubHead(t('analysis.finBalanceSheet')), buildSubTable([
+    { labelKey: 'analysis.finCash',               get: (r: any) => r.cash },
+    { labelKey: 'analysis.finCurrentAssets',      get: (r: any) => r.current_assets },
+    { labelKey: 'analysis.finTotalAssets',        get: (r: any) => r.total_assets },
+    { labelKey: 'analysis.finCurrentLiabilities', get: (r: any) => r.current_liabilities },
+    { labelKey: 'analysis.finTotalDebt',          get: (r: any) => r.total_debt },
+    { labelKey: 'analysis.finTotalLiabilities',   get: (r: any) => r.total_liabilities },
+    { labelKey: 'analysis.finEquity',             get: (r: any) => r.equity },
+  ])], unbreakable: true });
+  blocks.push({ stack: [pdfSubHead(t('analysis.finCashFlow')), buildSubTable([
+    { labelKey: 'analysis.finCfo',   get: (r: any) => r.cfo },
+    { labelKey: 'analysis.finCapex', get: (r: any) => r.capex },
+    { labelKey: 'analysis.finFcf',   get: (r: any) => fcfVal(r) },
+  ])], unbreakable: true });
+  blocks.push({ text: t('analysis.finNotCaptured'), fontSize: 7.5, color: MUTED, italics: true, margin: [0, 8, 0, 0], lineHeight: 1.4 });
+  return blocks;
 }
 
 function pdfAnalystCommentary(data: MemoData, t: (k: string) => string, lang: string): any[] {
@@ -1046,6 +1135,7 @@ function buildPdfDef(data: MemoData, questions: MemoQuestion[], t: (k: string) =
     const cands: Array<[boolean, string]> = [
       [sec.execSummary         && !!execRaw?.trim(),                     t('memo.sectionExecSummary')],
       [sec.financialMetrics,                                              t('memo.sectionFinancialMetrics')],
+      [sec.financials          && (data.financials?.length ?? 0) > 0,   t('memo.sectionFinancialStatements')],
       [sec.analystCommentary   && !!sumRaw?.trim(),                      t('memo.sectionAnalystCommentary')],
       [sec.strengthsRisks      && (strs.length > 0 || rsks.length > 0), t('memo.sectionStrengthsRisks')],
       [sec.historicalBenchmark && (hasCsbfp || hasSba),                  t('memo.sectionHistoricalBenchmark')],
@@ -1062,6 +1152,7 @@ function buildPdfDef(data: MemoData, questions: MemoQuestion[], t: (k: string) =
     ...pdfCover(data, t, lang, fmt, partialNoticeNames),
     ...(sec.execSummary         ? pdfExecSummary(data, t, lang) : []),
     ...(sec.financialMetrics    ? pdfMetrics(data, t, lang) : []),
+    ...(sec.financials          ? pdfFinancials(data, t, lang) : []),
     ...(sec.analystCommentary   ? pdfAnalystCommentary(data, t, lang) : []),
     ...(sec.strengthsRisks      ? pdfStrengthsRisks(data, t, lang) : []),
     ...(sec.historicalBenchmark ? pdfBenchmark(data, t, lang, fmt) : []),
@@ -1254,6 +1345,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
     const cands: Array<[boolean, string]> = [
       [sec.execSummary         && !!execRaw?.trim(),                           t('memo.sectionExecSummary')],
       [sec.financialMetrics,                                                    t('memo.sectionFinancialMetrics')],
+      [sec.financials          && (data.financials?.length ?? 0) > 0,          t('memo.sectionFinancialStatements')],
       [sec.analystCommentary   && !!summaryRaw?.trim(),                         t('memo.sectionAnalystCommentary')],
       [sec.strengthsRisks      && (strengths.length > 0 || risks.length > 0),  t('memo.sectionStrengthsRisks')],
       [sec.historicalBenchmark && (hasCsbfpW || hasSbaW),                       t('memo.sectionHistoricalBenchmark')],
@@ -1359,6 +1451,127 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
     }), wSpacer(200));
   }
   } // end sec.financialMetrics
+
+  // ── Financials ──
+  if (sec.financials) {
+    const finRows = (data.financials ?? []).slice().sort((a: any, b: any) => a.fiscal_year - b.fiscal_year);
+    if (finRows.length > 0) {
+      const nYears = finRows.length;
+      const largeFinTable = nYears > 3;
+      const dollarHp = largeFinTable ? 16 : 18;
+      const deltaHp  = largeFinTable ? 14 : 16;
+      const finLabelW = largeFinTable ? 1800 : 2200;
+      const finYearW  = Math.floor((TW_CONT - finLabelW) / nYears);
+      const finLastW  = TW_CONT - finLabelW - finYearW * (nYears - 1);
+      const finYearWs: number[] = [...Array(nYears - 1).fill(finYearW), finLastW];
+
+      const fcfValW = (r: any): number | null =>
+        r.cfo == null && r.capex == null ? null : (r.cfo ?? 0) - (r.capex ?? 0);
+      const fmtFinW = (v: number | null): string => v != null ? fmtValue(v, 'amount') : '—';
+      const getDeltaW = (curr: number | null, prior: number | null): number | null =>
+        curr != null && prior != null && prior !== 0
+          ? (curr - prior) / Math.abs(prior) * 100
+          : null;
+      const dColorW = (d: number | null): string =>
+        d == null ? '888888' : d > 0 ? '1B5E20' : d < 0 ? 'B71C1C' : '888888';
+
+      const makeFinHdrRow = (): any => new TableRow({
+        tableHeader: true, cantSplit: true,
+        children: [
+          new TableCell({
+            width: { size: finLabelW, type: WidthType.DXA },
+            shading: shade(NAVY),
+            borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder },
+            children: [new Paragraph({ children: [new TextRun({ text: '', size: dollarHp, font: 'Calibri' })], spacing: { after: 0 } })],
+          }),
+          ...finRows.map((r: any, i: number) => new TableCell({
+            width: { size: finYearWs[i], type: WidthType.DXA },
+            shading: shade(NAVY),
+            borders: { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder },
+            children: [new Paragraph({
+              children: [new TextRun({ text: String(r.fiscal_year), bold: true, size: dollarHp, color: 'FFFFFF', font: 'Calibri' })],
+              alignment: AlignmentType.RIGHT, spacing: { after: 0 },
+            })],
+          })),
+        ],
+      });
+
+      const makeFinDataRow = (labelKey: string, getValue: (r: any) => number | null, rowIdx: number): any => {
+        const fill = rowIdx % 2 === 1 ? 'F8F6F3' : 'FFFFFF';
+        return new TableRow({
+          cantSplit: true,
+          children: [
+            new TableCell({
+              width: { size: finLabelW, type: WidthType.DXA },
+              shading: shade(fill),
+              borders: { top: rowBorder, bottom: rowBorder, left: noBorder, right: noBorder },
+              children: [new Paragraph({ children: [new TextRun({ text: t(labelKey), size: dollarHp, font: 'Calibri' })], spacing: { after: 0 } })],
+            }),
+            ...finRows.map((r: any, i: number) => {
+              const curr = getValue(r);
+              const prior = i > 0 ? getValue(finRows[i - 1]) : null;
+              const delta = i > 0 ? getDeltaW(curr, prior) : null;
+              const dStr = delta != null ? `${delta > 0 ? '+' : ''}${delta.toFixed(1)}%` : null;
+              return new TableCell({
+                width: { size: finYearWs[i], type: WidthType.DXA },
+                shading: shade(fill),
+                borders: { top: rowBorder, bottom: rowBorder, left: noBorder, right: noBorder },
+                children: [
+                  new Paragraph({
+                    children: [new TextRun({ text: fmtFinW(curr), size: dollarHp, font: 'Calibri' })],
+                    alignment: AlignmentType.RIGHT, spacing: { after: 0 },
+                  }),
+                  ...(i > 0 ? [new Paragraph({
+                    children: [new TextRun({ text: dStr ?? '—', size: deltaHp, color: dColorW(delta), font: 'Calibri' })],
+                    alignment: AlignmentType.RIGHT, spacing: { after: 0 },
+                  })] : []),
+                ],
+              });
+            }),
+          ],
+        });
+      };
+
+      const buildFinTableW = (items: { key: string; get: (r: any) => number | null }[]) =>
+        new Table({
+          width: { size: TW_CONT, type: WidthType.DXA },
+          rows: [makeFinHdrRow(), ...items.map(({ key, get }, idx) => makeFinDataRow(key, get, idx))],
+        });
+
+      children.push(
+        wHead1(t('memo.secFinancialStatements').replace(/^[A-Z À-ɏ]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())),
+        wHead2(t('analysis.finIncomeStatement')),
+        buildFinTableW([
+          { key: 'analysis.finRevenue',           get: (r: any) => r.revenue },
+          { key: 'analysis.finCogs',              get: (r: any) => r.cogs },
+          { key: 'analysis.finGrossProfit',       get: (r: any) => r.gross_profit },
+          { key: 'analysis.finOperatingExpenses', get: (r: any) => r.operating_expenses },
+          { key: 'analysis.finEbitda',            get: (r: any) => r.ebitda },
+          { key: 'analysis.finNetIncome',         get: (r: any) => r.net_income },
+        ]),
+        wSpacer(100),
+        wHead2(t('analysis.finBalanceSheet')),
+        buildFinTableW([
+          { key: 'analysis.finCash',               get: (r: any) => r.cash },
+          { key: 'analysis.finCurrentAssets',      get: (r: any) => r.current_assets },
+          { key: 'analysis.finTotalAssets',        get: (r: any) => r.total_assets },
+          { key: 'analysis.finCurrentLiabilities', get: (r: any) => r.current_liabilities },
+          { key: 'analysis.finTotalDebt',          get: (r: any) => r.total_debt },
+          { key: 'analysis.finTotalLiabilities',   get: (r: any) => r.total_liabilities },
+          { key: 'analysis.finEquity',             get: (r: any) => r.equity },
+        ]),
+        wSpacer(100),
+        wHead2(t('analysis.finCashFlow')),
+        buildFinTableW([
+          { key: 'analysis.finCfo',   get: (r: any) => r.cfo },
+          { key: 'analysis.finCapex', get: (r: any) => r.capex },
+          { key: 'analysis.finFcf',   get: (r: any) => fcfValW(r) },
+        ]),
+        wSpacer(80),
+        wPara(t('analysis.finNotCaptured'), { italics: true, color: '888888', spaceAfter: 160 }),
+      );
+    }
+  } // end sec.financials
 
   // ── Analyst Commentary ──
   if (sec.analystCommentary) {

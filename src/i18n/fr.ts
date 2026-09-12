@@ -678,6 +678,7 @@ const fr: Record<string, string> = {
   // Section headings
   "memo.secExecSummary":            "RÉSUMÉ EXÉCUTIF",
   "memo.secFinancialMetrics":       "INDICATEURS FINANCIERS",
+  "memo.secFinancialStatements":    "ÉTATS FINANCIERS",
   "memo.secAnalystCommentary":      "COMMENTAIRE DE L'ANALYSTE",
   "memo.secStrengthsRisks":         "FORCES ET RISQUES",
   "memo.secHistoricalBenchmark":    "RÉFÉRENCE HISTORIQUE",
@@ -977,6 +978,7 @@ const fr: Record<string, string> = {
   // Memo section selector & partial export notice
   "memo.sectionExecSummary":          "Sommaire exécutif",
   "memo.sectionFinancialMetrics":     "Indicateurs financiers",
+  "memo.sectionFinancialStatements":  "États financiers",
   "memo.sectionAnalystCommentary":    "Commentaire de l'analyste",
   "memo.sectionStrengthsRisks":       "Forces et risques",
   "memo.sectionHistoricalBenchmark":  "Données historiques de référence",
