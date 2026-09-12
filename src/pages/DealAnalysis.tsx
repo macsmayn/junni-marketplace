@@ -178,7 +178,7 @@ export default function DealAnalysis() {
         supabase.from("credit_questions").select("*").eq("deal_id", dealId).order("created_at"),
         supabase.from("documents").select("id,file_name,file_type,storage_path,doc_category,created_at,size_bytes").eq("deal_id", dealId).order("created_at", { ascending: true }),
         supabase.from("extracted_financials").select("updated_at").eq("deal_id", dealId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
-        supabase.from("extracted_financials").select("fiscal_year,revenue,cogs,gross_profit,operating_expenses,ebitda,net_income,cash,current_assets,total_assets,current_liabilities,total_debt,total_liabilities,equity,cfo,capex").eq("deal_id", dealId).eq("borrower_confirmed", true).order("fiscal_year", { ascending: true }),
+        supabase.from("extracted_financials").select("fiscal_year,revenue,cogs,gross_profit,operating_expenses,ebitda,net_income,cash,current_assets,total_assets,current_liabilities,total_debt,total_liabilities,equity,cfo,capex,debt_principal_repayment,ffo,distributions").eq("deal_id", dealId).eq("borrower_confirmed", true).order("fiscal_year", { ascending: true }),
       ]);
       if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
