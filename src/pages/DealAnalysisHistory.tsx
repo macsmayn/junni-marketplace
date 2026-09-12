@@ -121,24 +121,16 @@ export default function DealAnalysisHistory() {
           .order("created_at"),
       ]);
 
-      // For each structure table that returned 0 rows, check if ANY rows exist
-      // for this deal at other versions (= this version predates archiving).
-      let capPre = false, suPre = false, collPre = false;
-      if ((capRows ?? []).length === 0) {
-        const { data: anyRow } = await supabase.from("capitalization_items_history")
-          .select("version").eq("deal_id", dealId).limit(1).maybeSingle();
-        capPre = !!anyRow;
-      }
-      if ((suRows ?? []).length === 0) {
-        const { data: anyRow } = await supabase.from("sources_uses_entries_history")
-          .select("version").eq("deal_id", dealId).limit(1).maybeSingle();
-        suPre = !!anyRow;
-      }
-      if ((collRows ?? []).length === 0) {
-        const { data: anyRow } = await supabase.from("collateral_assets_history")
-          .select("version").eq("deal_id", dealId).limit(1).maybeSingle();
-        collPre = !!anyRow;
-      }
+      // Versions archived before structure archiving shipped have no rows in the
+      // three structure history tables — show a "not archived for this version"
+      // notice rather than silently omitting those sections.
+      // Cutoff = earliest archived_at observed across all three structure history
+      // tables platform-wide (empirical: first rescore after the migration ran).
+      const STRUCTURE_ARCHIVING_CUTOFF = "2026-09-11T23:15:46.759Z";
+      const preStructureArchiving = new Date(archivedAt) < new Date(STRUCTURE_ARCHIVING_CUTOFF);
+      const capPre  = (capRows  ?? []).length === 0 && preStructureArchiving;
+      const suPre   = (suRows   ?? []).length === 0 && preStructureArchiving;
+      const collPre = (collRows ?? []).length === 0 && preStructureArchiving;
 
       const metricNames = [...new Set((metricRows ?? []).map((r: any) => r.metric_name))];
       let defMap: Record<string, any> = {};
