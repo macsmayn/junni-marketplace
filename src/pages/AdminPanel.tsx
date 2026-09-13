@@ -66,6 +66,9 @@ export default function AdminPanel() {
   const [bidsList, setBidsList] = useState<any[]>([]);
   const [selectedBidsByDeal, setSelectedBidsByDeal] = useState<Record<string, Set<string>>>({});
 
+  // TEMPORARY TEST BUTTON — REMOVE AFTER RETENTION AUTOMATION IS VERIFIED
+  const [retentionRunning, setRetentionRunning] = useState(false);
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 900);
     window.addEventListener("resize", handleResize);
@@ -345,6 +348,27 @@ export default function AdminPanel() {
     if (roleChanged) {
       setEditUserForm(prev => ({ ...prev, role: viewingUser.role }));
       alert(t("adminPanel.alertRoleDisabled"));
+    }
+  };
+
+  // TEMPORARY TEST BUTTON — REMOVE AFTER RETENTION AUTOMATION IS VERIFIED
+  const handleRunRetentionReport = async () => {
+    setRetentionRunning(true);
+    try {
+      const result = await invokeFunction("data-retention", {});
+      console.log("[AdminPanel] data-retention report:", result);
+      const s = result?.data?.summary;
+      alert(
+        `Retention report\n` +
+        `Orgs needing 30-day warning: ${s?.needs_30d_warning ?? "?"}\n` +
+        `Orgs needing 14-day warning: ${s?.needs_14d_warning ?? "?"}\n` +
+        `Orgs due for deletion: ${s?.due_for_deletion ?? "?"}`
+      );
+    } catch (err: any) {
+      console.error("[AdminPanel] data-retention error:", err);
+      alert("Retention report failed: " + (err?.message ?? "unknown error"));
+    } finally {
+      setRetentionRunning(false);
     }
   };
 
@@ -820,6 +844,9 @@ export default function AdminPanel() {
     return null;
   };
 
+  // Derive current user's DB role from the already-loaded usersList
+  const currentUserDbRole = usersList.find(u => u.auth0_id === auth0User?.sub)?.role ?? null;
+
   // ── SHARED CSS BLOCKS ───────────────────────────────────────────────
   const mobileCSS = `
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1045,6 +1072,19 @@ export default function AdminPanel() {
             <div className="stat-card"><div className="stat-label">{t("adminPanel.statUsers")}</div><div className="stat-num">{usersLoading ? "—" : usersList.length}</div><div className="stat-sub">{t("adminPanel.statUsersSubtitle")}</div></div>
             <div className="stat-card"><div className="stat-label">{t("adminPanel.statAnalyses")}</div><div className="stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="stat-sub">{t("adminPanel.statAnalysesSubtitle")}</div></div>
           </div>
+          {/* TEMPORARY TEST BUTTON — REMOVE AFTER RETENTION AUTOMATION IS VERIFIED */}
+          {currentUserDbRole === "admin" && (
+            <div>
+              <button
+                className="a-btn a-btn-ghost"
+                disabled={retentionRunning}
+                onClick={handleRunRetentionReport}
+                style={{ fontSize: "11px", padding: "6px 10px", opacity: retentionRunning ? 0.6 : 1 }}
+              >
+                {retentionRunning ? "Running…" : "RUN retention report"}
+              </button>
+            </div>
+          )}
           <div>
             <div className="tabs">
               <button className={`tab ${activeTab === 0 ? "active" : ""}`} onClick={() => setActiveTab(0)}>
@@ -1115,6 +1155,20 @@ export default function AdminPanel() {
           <div className="d-stat-card"><div className="d-stat-label">{t("adminPanel.statUsers")}</div><div className="d-stat-num">{usersLoading ? "—" : usersList.length}</div><div className="d-stat-sub">{t("adminPanel.statUsersSubtitle")}</div></div>
           <div className="d-stat-card"><div className="d-stat-label">{t("adminPanel.statAnalyses")}</div><div className="d-stat-num gold">{dealsLoading ? "—" : dealsList.length}</div><div className="d-stat-sub">{t("adminPanel.statAnalysesSubtitle")}</div></div>
         </div>
+
+        {/* TEMPORARY TEST BUTTON — REMOVE AFTER RETENTION AUTOMATION IS VERIFIED */}
+        {currentUserDbRole === "admin" && (
+          <div style={{ marginBottom: "16px" }}>
+            <button
+              className="a-btn a-btn-ghost"
+              disabled={retentionRunning}
+              onClick={handleRunRetentionReport}
+              style={{ fontSize: "12px", padding: "8px 14px", opacity: retentionRunning ? 0.6 : 1 }}
+            >
+              {retentionRunning ? "Running…" : "RUN retention report"}
+            </button>
+          </div>
+        )}
 
         <div className="d-tabs">
           <button className={`d-tab ${activeTab === 0 ? "active" : ""}`} onClick={() => setActiveTab(0)}>
