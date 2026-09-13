@@ -1,9 +1,7 @@
-import { useLocation } from "wouter";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
 
 export default function PrivacyPolicy() {
-  const [, setLocation] = useLocation();
   const { t } = useLanguage();
 
   return (
@@ -218,15 +216,14 @@ export default function PrivacyPolicy() {
       {/* NAV */}
       <nav>
         <div className="nav-left">
-          <a href="/" className="nav-logo">Junni</a>
+          <a href="https://junni.ca" className="nav-logo">Junni</a>
           <div className="nav-links">
-            <button className="nav-link" onClick={() => alert("About")}>{t("privacy.nav.about")}</button>
-            <button className="nav-link" onClick={() => setLocation("/marketplace")}>{t("privacy.nav.marketplace")}</button>
+            <a href="/terms" className="nav-link">{t("privacy.nav.terms")}</a>
           </div>
         </div>
         <div className="nav-right">
           <LanguageToggle />
-          <button className="btn btn-ghost" onClick={() => alert("Sign In")}>{t("privacy.nav.signIn")}</button>
+          <a href="/login" className="btn btn-ghost">{t("privacy.nav.signIn")}</a>
         </div>
       </nav>
 

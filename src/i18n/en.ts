@@ -828,8 +828,7 @@ const en: Record<string, string> = {
   // Privacy Policy
   "privacy.title":                      "Privacy Policy",
   "privacy.lastUpdated":                "Last updated: September 12, 2026",
-  "privacy.nav.about":                  "About",
-  "privacy.nav.marketplace":            "Marketplace",
+  "privacy.nav.terms":                  "Terms of Service",
   "privacy.nav.signIn":                 "Sign In",
 
   "privacy.intro.heading":              "Introduction",
@@ -927,8 +926,7 @@ const en: Record<string, string> = {
   "privacy.footer":                     "© 2026 Junni Technologies Inc. All rights reserved.",
 
   // Terms of Service
-  "terms.nav.about":                    "About",
-  "terms.nav.marketplace":              "Platform",
+  "terms.nav.privacy":                  "Privacy Policy",
   "terms.nav.signIn":                   "Sign In",
   "terms.title":                        "Terms of Service",
   "terms.lastUpdated":                  "Last updated: September 12, 2026",
@@ -988,7 +986,7 @@ const en: Record<string, string> = {
   "terms.s8.p1":                        "Each party agrees to keep confidential the other party's non-public information disclosed in connection with the Service. Junni will treat your uploaded documents and the analysis outputs as confidential. You agree to treat any non-public information about Junni's technology, pricing, or business as confidential. Confidentiality obligations do not apply to information that is or becomes publicly available through no breach of these Terms, or that is required to be disclosed by law.",
 
   "terms.s9.heading":                   "9. Data Protection",
-  "terms.s9.p1":                        "Junni collects and processes personal information in accordance with its Privacy Policy, available at junni.ca/privacy. Junni's Privacy Policy is incorporated into these Terms by reference. To the extent the Service involves the processing of personal information on your behalf, Junni acts as a service provider (mandataire) under Québec Law 25 and as a data processor under applicable federal legislation. You are responsible for ensuring that any personal information you submit has been collected and shared in compliance with applicable privacy laws.",
+  "terms.s9.p1":                        "Junni collects and processes personal information in accordance with its Privacy Policy, available at app.junni.ca/privacy. Junni's Privacy Policy is incorporated into these Terms by reference. To the extent the Service involves the processing of personal information on your behalf, Junni acts as a service provider (mandataire) under Québec Law 25 and as a data processor under applicable federal legislation. You are responsible for ensuring that any personal information you submit has been collected and shared in compliance with applicable privacy laws.",
 
   "terms.s10.heading":                  "10. Service Availability",
   "terms.s10.p1":                       "Junni will make commercially reasonable efforts to maintain Service availability. The Service is provided on an \"as is\" and \"as available\" basis. Junni does not guarantee uninterrupted or error-free operation and may perform maintenance or updates at any time. Junni will endeavour to provide advance notice of scheduled downtime where feasible.",

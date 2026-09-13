@@ -1065,8 +1065,7 @@ const fr: Record<string, string> = {
   // Politique de confidentialité
   "privacy.title":                      "Politique de confidentialité",
   "privacy.lastUpdated":                "Dernière mise à jour : 12 septembre 2026",
-  "privacy.nav.about":                  "À propos",
-  "privacy.nav.marketplace":            "Marketplace",
+  "privacy.nav.terms":                  "Conditions d'utilisation",
   "privacy.nav.signIn":                 "Connexion",
 
   "privacy.intro.heading":              "Introduction",
@@ -1164,8 +1163,7 @@ const fr: Record<string, string> = {
   "privacy.footer":                     "© 2026 Junni Technologies Inc. Tous droits réservés.",
 
   // Conditions d'utilisation
-  "terms.nav.about":                    "À propos",
-  "terms.nav.marketplace":              "Plateforme",
+  "terms.nav.privacy":                  "Politique de confidentialité",
   "terms.nav.signIn":                   "Se connecter",
   "terms.title":                        "Conditions d'utilisation",
   "terms.lastUpdated":                  "Dernière mise à jour : 12 septembre 2026",
@@ -1225,7 +1223,7 @@ const fr: Record<string, string> = {
   "terms.s8.p1":                        "Chaque partie s'engage à garder confidentielles les informations non publiques de l'autre partie divulguées dans le cadre du Service. Junni traitera vos documents téléversés et les résultats d'analyse comme confidentiels. Vous vous engagez à traiter toute information non publique concernant la technologie, la tarification ou les activités de Junni comme confidentielle. Les obligations de confidentialité ne s'appliquent pas aux informations qui sont ou deviennent publiques sans qu'il y ait violation des présentes Conditions, ni aux informations dont la divulgation est exigée par la loi.",
 
   "terms.s9.heading":                   "9. Protection des données",
-  "terms.s9.p1":                        "Junni collecte et traite les renseignements personnels conformément à sa Politique de confidentialité, disponible à l'adresse junni.ca/privacy. La Politique de confidentialité de Junni est incorporée aux présentes Conditions par renvoi. Dans la mesure où le Service implique le traitement de renseignements personnels en votre nom, Junni agit comme mandataire au sens de la Loi 25 du Québec et comme sous-traitant au sens de la législation fédérale applicable. Vous êtes responsable de vous assurer que tout renseignement personnel soumis a été collecté et communiqué en conformité avec les lois sur la protection de la vie privée applicables.",
+  "terms.s9.p1":                        "Junni collecte et traite les renseignements personnels conformément à sa Politique de confidentialité, disponible à l'adresse app.junni.ca/privacy. La Politique de confidentialité de Junni est incorporée aux présentes Conditions par renvoi. Dans la mesure où le Service implique le traitement de renseignements personnels en votre nom, Junni agit comme mandataire au sens de la Loi 25 du Québec et comme sous-traitant au sens de la législation fédérale applicable. Vous êtes responsable de vous assurer que tout renseignement personnel soumis a été collecté et communiqué en conformité avec les lois sur la protection de la vie privée applicables.",
 
   "terms.s10.heading":                  "10. Disponibilité du Service",
   "terms.s10.p1":                       "Junni fera des efforts commercialement raisonnables pour maintenir la disponibilité du Service. Le Service est fourni « tel quel » et « selon disponibilité ». Junni ne garantit pas un fonctionnement ininterrompu ou sans erreur et peut effectuer des opérations de maintenance ou des mises à jour à tout moment. Junni s'efforcera d'informer à l'avance des interruptions planifiées lorsque cela est réalisable.",
