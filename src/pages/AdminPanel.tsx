@@ -67,7 +67,7 @@ export default function AdminPanel() {
   const [selectedBidsByDeal, setSelectedBidsByDeal] = useState<Record<string, Set<string>>>({});
 
   // TEMPORARY TEST BUTTON — REMOVE AFTER RETENTION AUTOMATION IS VERIFIED
-  const [retentionRunning, setRetentionRunning] = useState(false);
+  const [retentionMode, setRetentionMode] = useState<string | null>(null);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 900);
@@ -352,23 +352,34 @@ export default function AdminPanel() {
   };
 
   // TEMPORARY TEST BUTTON — REMOVE AFTER RETENTION AUTOMATION IS VERIFIED
-  const handleRunRetentionReport = async () => {
-    setRetentionRunning(true);
-    try {
-      const result = await invokeFunction("data-retention", {});
-      console.log("[AdminPanel] data-retention report:", result);
-      const s = result?.data?.summary;
-      alert(
-        `Retention report\n` +
-        `Orgs needing 30-day warning: ${s?.needs_30d_warning ?? "?"}\n` +
-        `Orgs needing 14-day warning: ${s?.needs_14d_warning ?? "?"}\n` +
-        `Orgs due for deletion: ${s?.due_for_deletion ?? "?"}`
+  const handleRunRetention = async (mode: "report" | "warn" | "execute") => {
+    if (mode === "execute") {
+      const confirmed = window.confirm(
+        "EXECUTE mode will permanently delete organization data and cannot be undone.\n\nProceed?"
       );
+      if (!confirmed) return;
+    }
+    setRetentionMode(mode);
+    try {
+      const result = await invokeFunction("data-retention", { mode });
+      console.log(`[AdminPanel] data-retention (${mode}):`, result);
+      const s = result?.data?.summary;
+      const lines: string[] = [
+        `Retention: ${mode.toUpperCase()}`,
+        `Orgs needing 30-day warning: ${s?.needs_30d_warning ?? "?"}`,
+        `Orgs needing 14-day warning: ${s?.needs_14d_warning ?? "?"}`,
+        `Orgs due for deletion: ${s?.due_for_deletion ?? "?"}`,
+      ];
+      if (s?.warnings_sent !== undefined) lines.push(`Warnings sent: ${s.warnings_sent}`);
+      if (s?.warnings_failed !== undefined) lines.push(`Warnings failed: ${s.warnings_failed}`);
+      if (s?.deletions_performed !== undefined) lines.push(`Deletions performed: ${s.deletions_performed}`);
+      if (s?.deletions_failed !== undefined) lines.push(`Deletions failed: ${s.deletions_failed}`);
+      alert(lines.join("\n"));
     } catch (err: any) {
-      console.error("[AdminPanel] data-retention error:", err);
-      alert("Retention report failed: " + (err?.message ?? "unknown error"));
+      console.error(`[AdminPanel] data-retention (${mode}) error:`, err);
+      alert(`Retention ${mode} failed: ` + (err?.message ?? "unknown error"));
     } finally {
-      setRetentionRunning(false);
+      setRetentionMode(null);
     }
   };
 
@@ -1074,14 +1085,30 @@ export default function AdminPanel() {
           </div>
           {/* TEMPORARY TEST BUTTON — REMOVE AFTER RETENTION AUTOMATION IS VERIFIED */}
           {currentUserDbRole === "admin" && (
-            <div>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "8px" }}>
               <button
                 className="a-btn a-btn-ghost"
-                disabled={retentionRunning}
-                onClick={handleRunRetentionReport}
-                style={{ fontSize: "11px", padding: "6px 10px", opacity: retentionRunning ? 0.6 : 1 }}
+                disabled={retentionMode !== null}
+                onClick={() => handleRunRetention("report")}
+                style={{ fontSize: "11px", padding: "6px 10px", opacity: retentionMode !== null ? 0.6 : 1 }}
               >
-                {retentionRunning ? "Running…" : "RUN retention report"}
+                {retentionMode === "report" ? "Running…" : "Retention: REPORT"}
+              </button>
+              <button
+                className="a-btn a-btn-ghost"
+                disabled={retentionMode !== null}
+                onClick={() => handleRunRetention("warn")}
+                style={{ fontSize: "11px", padding: "6px 10px", opacity: retentionMode !== null ? 0.6 : 1 }}
+              >
+                {retentionMode === "warn" ? "Running…" : "Retention: WARN"}
+              </button>
+              <button
+                className="a-btn a-btn-ghost"
+                disabled={retentionMode !== null}
+                onClick={() => handleRunRetention("execute")}
+                style={{ fontSize: "11px", padding: "6px 10px", opacity: retentionMode !== null ? 0.6 : 1, background: "#c0392b", color: "#fff", borderColor: "#c0392b" }}
+              >
+                {retentionMode === "execute" ? "Running…" : "Retention: EXECUTE"}
               </button>
             </div>
           )}
@@ -1158,14 +1185,30 @@ export default function AdminPanel() {
 
         {/* TEMPORARY TEST BUTTON — REMOVE AFTER RETENTION AUTOMATION IS VERIFIED */}
         {currentUserDbRole === "admin" && (
-          <div style={{ marginBottom: "16px" }}>
+          <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
             <button
               className="a-btn a-btn-ghost"
-              disabled={retentionRunning}
-              onClick={handleRunRetentionReport}
-              style={{ fontSize: "12px", padding: "8px 14px", opacity: retentionRunning ? 0.6 : 1 }}
+              disabled={retentionMode !== null}
+              onClick={() => handleRunRetention("report")}
+              style={{ fontSize: "12px", padding: "8px 14px", opacity: retentionMode !== null ? 0.6 : 1 }}
             >
-              {retentionRunning ? "Running…" : "RUN retention report"}
+              {retentionMode === "report" ? "Running…" : "Retention: REPORT"}
+            </button>
+            <button
+              className="a-btn a-btn-ghost"
+              disabled={retentionMode !== null}
+              onClick={() => handleRunRetention("warn")}
+              style={{ fontSize: "12px", padding: "8px 14px", opacity: retentionMode !== null ? 0.6 : 1 }}
+            >
+              {retentionMode === "warn" ? "Running…" : "Retention: WARN"}
+            </button>
+            <button
+              className="a-btn a-btn-ghost"
+              disabled={retentionMode !== null}
+              onClick={() => handleRunRetention("execute")}
+              style={{ fontSize: "12px", padding: "8px 14px", opacity: retentionMode !== null ? 0.6 : 1, background: "#c0392b", color: "#fff", borderColor: "#c0392b" }}
+            >
+              {retentionMode === "execute" ? "Running…" : "Retention: EXECUTE"}
             </button>
           </div>
         )}
