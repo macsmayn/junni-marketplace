@@ -1020,6 +1020,9 @@ export default function AdminPanel() {
               <span>{item.icon}</span><span>{t(item.text)}</span>
             </button>
           ))}
+          <button className="sb-item" onClick={() => { setLocation('/admin/dashboard'); setSidebarOpen(false); }}>
+            <span>🚀</span><span>{t("adminPanel.navFounderDashboard")}</span>
+          </button>
           <div className="sb-section">{t("adminPanel.sectionPlatform")}</div>
           {ADMIN_ACCOUNT_ITEMS.map((item, idx) => (
             <button key={idx} className="sb-item" onClick={() => setSidebarOpen(false)}>
@@ -1081,6 +1084,9 @@ export default function AdminPanel() {
             <span>{item.icon}</span>{t(item.text)}
           </button>
         ))}
+        <button className="d-sb-item" onClick={() => setLocation('/admin/dashboard')}>
+          <span>🚀</span>{t("adminPanel.navFounderDashboard")}
+        </button>
         <div className="d-sb-section">{t("adminPanel.sectionPlatform")}</div>
         {ADMIN_ACCOUNT_ITEMS.map((item, idx) => (
           <button key={idx} className="d-sb-item">

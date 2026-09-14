@@ -22,6 +22,7 @@ import LenderDashboard from "./pages/LenderDashboard";
 import LenderPortfolio from "./pages/LenderPortfolio";
 import FinancialReview from "./pages/FinancialReview";
 import AdminPanel from "./pages/AdminPanel";
+import FounderDashboard from "./pages/FounderDashboard";
 import DealAnalysis from "./pages/DealAnalysis";
 import DealAnalysisHistory from "./pages/DealAnalysisHistory";
 import NewAnalysis from "./pages/NewAnalysis";
@@ -82,6 +83,11 @@ function Router() {
       <Route path={"/admin"}>
         <AdminRoute>
           <AdminPanel />
+        </AdminRoute>
+      </Route>
+      <Route path={"/admin/dashboard"}>
+        <AdminRoute>
+          <FounderDashboard />
         </AdminRoute>
       </Route>
       <Route path={"/new-analysis"}>
