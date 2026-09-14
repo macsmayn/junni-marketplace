@@ -1,8 +1,23 @@
-// REPORT-ONLY MODE — deletion is NOT yet enabled in this version.
-// This function computes what WOULD be deleted and returns a structured JSON
-// report. It writes nothing to the database, sends no emails, and deletes
-// nothing. Actual deletion will be enabled in a subsequent version after the
-// report has been reviewed and verified against live data.
+// This function manages the data retention lifecycle for organizations whose
+// subscriptions have ended. It supports three modes via the `mode` body parameter:
+//
+//   "report"  (default) — computes what would be affected and returns a structured
+//                         JSON report. Writes nothing, sends no emails, deletes nothing.
+//
+//   "warn"    — sends due warning emails (30-day and 14-day) to organization owners
+//               and records them in data_retention_log. Performs no deletions.
+//
+//   "execute" — sends due warnings AND performs deletions for organizations 90+ days
+//               past their subscription end date, in a safe sequence that handles
+//               storage files, RESTRICT FK constraints, and cascades explicitly.
+//
+// Retention schedule (days after subscription end):
+//   Day 60: 30-day warning email sent to org owner
+//   Day 76: 14-day warning email sent to org owner
+//   Day 90: organization data permanently deleted
+//
+// Authentication: X-Data-Retention-Secret header (scheduler) OR
+//                 X-Auth0-Token + admin DB role (manual admin call).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -15,22 +30,20 @@ const CORS_HEADERS = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// ── Authentication note ────────────────────────────────────────────────────────
-// This function has no browser UI. It is called by a scheduler (no Auth0 token
-// available) and also manually by an admin for testing (Auth0 token available).
-// Two caller types are therefore accepted:
-//
-//   1. Scheduler / service call: provides the DATA_RETENTION_SECRET env var
-//      value in the X-Data-Retention-Secret header. No Auth0 token needed.
-//
-//   2. Admin manual call from a browser session: provides an Auth0 ID token
-//      in X-Auth0-Token, verified via Auth0 /userinfo. The caller's
-//      users.role must be "admin".
-//
-// The Auth0-then-DB pattern matches every other function in this project.
-// The pre-shared secret path exists only because schedulers have no browser
-// session and therefore no Auth0 token.
-// ──────────────────────────────────────────────────────────────────────────────
+function formatDate(date: Date, lang: "en" | "fr"): string {
+  const MONTHS_EN = [
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December",
+  ];
+  const MONTHS_FR = [
+    "janvier","février","mars","avril","mai","juin",
+    "juillet","août","septembre","octobre","novembre","décembre",
+  ];
+  const d = date.getUTCDate();
+  const m = lang === "fr" ? MONTHS_FR[date.getUTCMonth()] : MONTHS_EN[date.getUTCMonth()];
+  const y = date.getUTCFullYear();
+  return lang === "fr" ? `${d} ${m} ${y}` : `${m} ${d}, ${y}`;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -69,10 +82,14 @@ Deno.serve(async (req: Request) => {
 
     const AUTH0_DOMAIN = Deno.env.get("AUTH0_DOMAIN")!;
     const DATA_RETENTION_SECRET = Deno.env.get("DATA_RETENTION_SECRET") ?? "";
+    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 
     const supabase = createClient(SUPABASE_URL, secretKey);
 
     // ── Authenticate caller ─────────────────────────────────────────────────────
+    // Two caller types are accepted:
+    //   1. Scheduler: X-Data-Retention-Secret header matching DATA_RETENTION_SECRET env var.
+    //   2. Admin manual call: X-Auth0-Token verified via Auth0 /userinfo; users.role = "admin".
     const secretHeader = req.headers.get("X-Data-Retention-Secret");
     const auth0Token = req.headers.get("X-Auth0-Token");
     let callerLabel = "";
@@ -138,7 +155,181 @@ Deno.serve(async (req: Request) => {
     }
     // ── End authentication ──────────────────────────────────────────────────────
 
+    // ── Parse body → mode ───────────────────────────────────────────────────────
+    let bodyJson: Record<string, unknown> = {};
+    try {
+      const text = await req.text();
+      if (text.trim()) bodyJson = JSON.parse(text);
+    } catch {
+      // empty or non-JSON body → default mode
+    }
+    const rawMode =
+      typeof bodyJson.mode === "string" ? bodyJson.mode.trim() : "report";
+    const mode: "report" | "warn" | "execute" =
+      rawMode === "warn"
+        ? "warn"
+        : rawMode === "execute"
+        ? "execute"
+        : "report";
+    // ── End parse body ──────────────────────────────────────────────────────────
+
     const now = new Date();
+    const nowIso = now.toISOString();
+
+    // ── Helper: count rows by org_id ────────────────────────────────────────────
+    async function countByOrgId(
+      table: string,
+      orgId: string
+    ): Promise<number> {
+      const { count, error } = await supabase
+        .from(table)
+        .select("*", { count: "exact", head: true })
+        .eq("org_id", orgId);
+      if (error) {
+        console.error(
+          `[data-retention] count ${table} for org ${orgId}:`,
+          error
+        );
+        return -1;
+      }
+      return count ?? 0;
+    }
+
+    // ── Helper: count rows via deal_id (two-step, PostgREST JS limitation) ──────
+    async function countViaDeals(
+      table: string,
+      dealIds: string[]
+    ): Promise<number> {
+      if (dealIds.length === 0) return 0;
+      const { count, error } = await supabase
+        .from(table)
+        .select("*", { count: "exact", head: true })
+        .in("deal_id", dealIds);
+      if (error) {
+        console.error(`[data-retention] count ${table}:`, error);
+        return -1;
+      }
+      return count ?? 0;
+    }
+
+    // ── Helper: upsert data_retention_log row ───────────────────────────────────
+    async function writeRetentionLog(
+      orgId: string,
+      fields: Record<string, unknown>
+    ): Promise<void> {
+      const { data: existing } = await supabase
+        .from("data_retention_log")
+        .select("org_id")
+        .eq("org_id", orgId)
+        .maybeSingle();
+      if (existing) {
+        const { error } = await supabase
+          .from("data_retention_log")
+          .update(fields)
+          .eq("org_id", orgId);
+        if (error) {
+          console.error(`[data-retention] log update for org ${orgId}:`, error);
+        }
+      } else {
+        const { error } = await supabase
+          .from("data_retention_log")
+          .insert({ org_id: orgId, ...fields });
+        if (error) {
+          console.error(`[data-retention] log insert for org ${orgId}:`, error);
+        }
+      }
+    }
+
+    // ── Helper: send warning email via Resend ───────────────────────────────────
+    async function sendWarningEmail(params: {
+      ownerEmail: string;
+      lang: "en" | "fr";
+      orgName: string;
+      endDate: Date;
+      deletionDate: Date;
+      type: "30d" | "14d";
+    }): Promise<{ sent: boolean; error?: string }> {
+      if (!RESEND_API_KEY) {
+        console.error("[data-retention] sendWarningEmail: RESEND_API_KEY not configured");
+        return { sent: false, error: "RESEND_API_KEY not configured" };
+      }
+      const { ownerEmail, lang, orgName, endDate, deletionDate, type } = params;
+      const endDateStr = formatDate(endDate, lang);
+      const deletionDateStr = formatDate(deletionDate, lang);
+
+      let subject: string;
+      let html: string;
+
+      if (lang === "fr") {
+        if (type === "30d") {
+          subject = `Important : Les données de ${orgName} sur Junni seront supprimées le ${deletionDateStr}`;
+          html =
+            `<p>Bonjour,</p>` +
+            `<p>L'abonnement Junni de <strong>${orgName}</strong> a pris fin le ${endDateStr}.</p>` +
+            `<p>Conformément à notre politique de conservation des données, les données de votre organisation seront <strong>définitivement et irrévocablement supprimées le ${deletionDateStr}</strong> — dans 30 jours.</p>` +
+            `<p>D'ici là, vous pouvez nous écrire à <a href="mailto:support@junni.ca">support@junni.ca</a> pour demander une exportation de vos données ou discuter de la réactivation de votre abonnement.</p>` +
+            `<p>L'équipe Junni<br>Junni Technologies Inc.</p>`;
+        } else {
+          subject = `Rappel : Les données de ${orgName} sur Junni seront supprimées le ${deletionDateStr}`;
+          html =
+            `<p>Bonjour,</p>` +
+            `<p>Rappel : l'abonnement Junni de <strong>${orgName}</strong> a pris fin le ${endDateStr} et les données de votre organisation seront <strong>définitivement supprimées le ${deletionDateStr}</strong> — dans 14 jours.</p>` +
+            `<p>Pour demander une exportation ou réactiver votre abonnement, contactez-nous à <a href="mailto:support@junni.ca">support@junni.ca</a> avant cette date.</p>` +
+            `<p>L'équipe Junni<br>Junni Technologies Inc.</p>`;
+        }
+      } else {
+        if (type === "30d") {
+          subject = `Important: ${orgName}'s Junni data will be deleted on ${deletionDateStr}`;
+          html =
+            `<p>Hi,</p>` +
+            `<p>The Junni subscription for <strong>${orgName}</strong> ended on ${endDateStr}.</p>` +
+            `<p>Under our data retention policy, your organization's data will be <strong>permanently and irreversibly deleted on ${deletionDateStr}</strong> — 30 days from now.</p>` +
+            `<p>Before that date, you can write to us at <a href="mailto:support@junni.ca">support@junni.ca</a> to request a data export or to discuss reactivating your subscription.</p>` +
+            `<p>The Junni team<br>Junni Technologies Inc.</p>`;
+        } else {
+          subject = `Reminder: ${orgName}'s Junni data will be deleted on ${deletionDateStr}`;
+          html =
+            `<p>Hi,</p>` +
+            `<p>This is a reminder that the Junni subscription for <strong>${orgName}</strong> ended on ${endDateStr}, and your organization's data is scheduled for <strong>permanent deletion on ${deletionDateStr}</strong> — in 14 days.</p>` +
+            `<p>To request a data export or to reactivate your subscription, contact us at <a href="mailto:support@junni.ca">support@junni.ca</a> before that date.</p>` +
+            `<p>The Junni team<br>Junni Technologies Inc.</p>`;
+        }
+      }
+
+      try {
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: "Junni <notifications@junni.ca>",
+            to: [ownerEmail],
+            subject,
+            html,
+          }),
+        });
+        if (!res.ok) {
+          const errBody = await res.text();
+          console.error(
+            `[data-retention] email to ${ownerEmail} failed (${res.status}):`,
+            errBody
+          );
+          return { sent: false, error: `Resend ${res.status}` };
+        }
+        console.log(
+          `[data-retention] ${type} warning email sent to ${ownerEmail} for org "${orgName}"`
+        );
+        return { sent: true };
+      } catch (err: any) {
+        console.error(
+          `[data-retention] email to ${ownerEmail} threw:`,
+          err.message
+        );
+        return { sent: false, error: err.message };
+      }
+    }
 
     // ── Step 1: Identify eligible organizations ─────────────────────────────────
     // An org is eligible for the retention lifecycle only if:
@@ -206,16 +397,17 @@ Deno.serve(async (req: Request) => {
     // Early return if nothing to process
     if (eligibleOrgs.length === 0) {
       const report = {
-        run_at: now.toISOString(),
+        run_at: nowIso,
         caller: callerLabel,
-        mode: "report_only",
-        deletion_not_enabled: true,
+        mode,
         summary: {
           eligible_orgs: 0,
           needs_30d_warning: 0,
           needs_14d_warning: 0,
           due_for_deletion: 0,
           no_action: 0,
+          ...(mode !== "report" ? { warnings_sent: 0, warnings_failed: 0 } : {}),
+          ...(mode === "execute" ? { deletions_performed: 0, deletions_failed: 0 } : {}),
         },
         due_for_deletion: [],
         needs_warning: [],
@@ -248,10 +440,7 @@ Deno.serve(async (req: Request) => {
     ]);
 
     if (orgErr) {
-      console.error(
-        "[data-retention] organizations fetch failed:",
-        orgErr
-      );
+      console.error("[data-retention] organizations fetch failed:", orgErr);
       return new Response(
         JSON.stringify({ error: "Internal error fetching organizations" }),
         {
@@ -277,8 +466,6 @@ Deno.serve(async (req: Request) => {
     const orgNameMap = new Map<string, string>();
     for (const o of orgRows ?? []) orgNameMap.set(o.id, o.name);
 
-    // data_retention_log may have multiple rows per org (one per event).
-    // Collapse to the union of all flags per org.
     type LogState = {
       warning_30d_sent_at: string | null;
       warning_14d_sent_at: string | null;
@@ -339,7 +526,6 @@ Deno.serve(async (req: Request) => {
 
       let category: OrgCategory;
       if (alreadyDeleted) {
-        // Already processed — treated as no_action regardless of days elapsed
         category = "no_action";
       } else if (daysElapsed >= 90) {
         category = "due_for_deletion";
@@ -375,47 +561,6 @@ Deno.serve(async (req: Request) => {
     const noActionOrgs = categorized.filter((e) => e.category === "no_action");
 
     // ── Step 4: Full inventory for deletion candidates ──────────────────────────
-    // Count rows in every affected table. Two helpers:
-    //   countByOrgId  — tables with a direct org_id column
-    //   countViaDeals — tables with deal_id that links through deals.org_id
-    //
-    // We fetch deal IDs first then pass as an array to .in(), since PostgREST
-    // does not support subquery expressions in the JS client.
-
-    async function countByOrgId(
-      table: string,
-      orgId: string
-    ): Promise<number> {
-      const { count, error } = await supabase
-        .from(table)
-        .select("*", { count: "exact", head: true })
-        .eq("org_id", orgId);
-      if (error) {
-        console.error(
-          `[data-retention] count ${table} for org ${orgId}:`,
-          error
-        );
-        return -1;
-      }
-      return count ?? 0;
-    }
-
-    async function countViaDeals(
-      table: string,
-      dealIds: string[]
-    ): Promise<number> {
-      if (dealIds.length === 0) return 0;
-      const { count, error } = await supabase
-        .from(table)
-        .select("*", { count: "exact", head: true })
-        .in("deal_id", dealIds);
-      if (error) {
-        console.error(`[data-retention] count ${table}:`, error);
-        return -1;
-      }
-      return count ?? 0;
-    }
-
     interface UserRef {
       id: string;
       email: string | null;
@@ -440,7 +585,6 @@ Deno.serve(async (req: Request) => {
     const deletionInventories: DeletionInventory[] = [];
 
     for (const org of deletionCandidates) {
-      // Fetch this org's deal IDs first — used for all deal-child counts
       const { data: dealRows, error: dealIdErr } = await supabase
         .from("deals")
         .select("id")
@@ -456,7 +600,6 @@ Deno.serve(async (req: Request) => {
       const dealIds: string[] = (dealRows ?? []).map((d: any) => d.id);
       const dealCount = dealIds.length;
 
-      // Count all deal-child tables in parallel
       const [
         documentsCount,
         extractedFinancialsCount,
@@ -497,7 +640,6 @@ Deno.serve(async (req: Request) => {
         countViaDeals("financial_annotations", dealIds),
       ]);
 
-      // Count direct org tables in parallel
       const [
         orgMembersCount,
         orgInvitesCount,
@@ -518,16 +660,7 @@ Deno.serve(async (req: Request) => {
         countByOrgId("subscriptions", org.orgId),
       ]);
 
-      // Storage file count equals documents count: each documents row has one
-      // storage_path in the "documents" storage bucket at <deal_id>/<timestamp>_<name>.
-      // The storage objects are not auto-deleted by DB cascades and must be
-      // explicitly removed by path before or after the DB deletion.
       const storageFilesCount = documentsCount;
-
-      // ── Classify member users: delete vs. keep ──────────────────────────────
-      // A user is deleted only if this is their last remaining org membership.
-      // A user in another org keeps their account; only their membership in this
-      // org (and associated notifications) are removed.
 
       const { data: memberRows, error: membersErr } = await supabase
         .from("organization_members")
@@ -616,24 +749,357 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // ── Step 5: Build and return the report ─────────────────────────────────────
+    // ── Step 5: Process warning emails (mode: warn | execute) ───────────────────
+    interface WarningResult {
+      orgId: string;
+      orgName: string;
+      warningType: "30d" | "14d";
+      ownerEmail: string | null;
+      sent: boolean;
+      error?: string;
+    }
+    const warningResults: WarningResult[] = [];
+
+    if (mode === "warn" || mode === "execute") {
+      for (const org of warningCandidates) {
+        const warningType: "30d" | "14d" =
+          org.category === "needs_14d_warning" ? "14d" : "30d";
+
+        const { data: ownerMembership, error: ownerErr } = await supabase
+          .from("organization_members")
+          .select("user_id, users(email, language)")
+          .eq("org_id", org.orgId)
+          .eq("org_role", "owner")
+          .maybeSingle();
+
+        if (ownerErr) {
+          console.error(
+            `[data-retention] owner lookup for org ${org.orgId}:`,
+            ownerErr
+          );
+        }
+
+        const ownerUser = ownerMembership?.users as {
+          email: string | null;
+          language: string | null;
+        } | null;
+        const ownerEmail = ownerUser?.email ?? null;
+        const lang: "en" | "fr" =
+          ownerUser?.language === "fr" ? "fr" : "en";
+
+        if (!ownerEmail) {
+          const errMsg = "No owner email found";
+          console.error(`[data-retention] org ${org.orgId}: ${errMsg}`);
+          warningResults.push({
+            orgId: org.orgId,
+            orgName: org.orgName,
+            warningType,
+            ownerEmail: null,
+            sent: false,
+            error: errMsg,
+          });
+          continue;
+        }
+
+        const result = await sendWarningEmail({
+          ownerEmail,
+          lang,
+          orgName: org.orgName,
+          endDate: org.endDate,
+          deletionDate: org.scheduledDeletionAt,
+          type: warningType,
+        });
+
+        warningResults.push({
+          orgId: org.orgId,
+          orgName: org.orgName,
+          warningType,
+          ownerEmail,
+          sent: result.sent,
+          ...(result.error ? { error: result.error } : {}),
+        });
+
+        if (result.sent) {
+          const logFields: Record<string, unknown> = {
+            org_name: org.orgName,
+            subscription_ended_at: org.endDate.toISOString(),
+            scheduled_deletion_at: org.scheduledDeletionAt.toISOString(),
+          };
+          if (warningType === "30d") {
+            logFields.warning_30d_sent_at = nowIso;
+          } else {
+            logFields.warning_14d_sent_at = nowIso;
+          }
+          await writeRetentionLog(org.orgId, logFields);
+        }
+      }
+    }
+
+    // ── Step 6: Perform deletions (mode: execute only) ──────────────────────────
+    interface DeletionResult {
+      orgId: string;
+      orgName: string;
+      success: boolean;
+      countsDeleted?: Record<string, number>;
+      error?: string;
+    }
+    const deletionResults: DeletionResult[] = [];
+
+    if (mode === "execute") {
+      for (const inventory of deletionInventories) {
+        const orgId = inventory.orgId;
+        const orgName = inventory.orgName;
+        try {
+          // a. Collect storage_path values from documents for this org's deals
+          let storagePaths: string[] = [];
+          if (inventory.counts.deals > 0) {
+            const { data: dealRows2, error: dealErr2 } = await supabase
+              .from("deals")
+              .select("id")
+              .eq("org_id", orgId);
+            if (dealErr2) {
+              throw new Error(`Failed to re-fetch deals: ${dealErr2.message}`);
+            }
+            const dealIds2 = (dealRows2 ?? []).map((d: any) => d.id as string);
+            if (dealIds2.length > 0) {
+              const { data: docRows, error: docErr } = await supabase
+                .from("documents")
+                .select("storage_path")
+                .in("deal_id", dealIds2);
+              if (docErr) {
+                throw new Error(
+                  `Failed to fetch document storage paths: ${docErr.message}`
+                );
+              }
+              storagePaths = (docRows ?? [])
+                .map((d: any) => d.storage_path as string | null)
+                .filter(
+                  (p): p is string => typeof p === "string" && p.length > 0
+                );
+            }
+          }
+
+          // b. Delete storage files — abort this org on failure to avoid orphaned files
+          if (storagePaths.length > 0) {
+            const { error: storageErr } = await supabase.storage
+              .from("documents")
+              .remove(storagePaths);
+            if (storageErr) {
+              console.error(
+                `[data-retention] storage deletion failed for org ${orgId}:`,
+                storageErr
+              );
+              await writeRetentionLog(orgId, {
+                org_name: orgName,
+                subscription_ended_at: inventory.endDate,
+                scheduled_deletion_at: inventory.scheduledDeletionAt,
+                error: `Storage deletion failed: ${storageErr.message}`,
+              });
+              deletionResults.push({
+                orgId,
+                orgName,
+                success: false,
+                error: `Storage deletion failed: ${storageErr.message}`,
+              });
+              continue;
+            }
+            console.log(
+              `[data-retention] deleted ${storagePaths.length} storage files for org ${orgId}`
+            );
+          }
+
+          // c. Delete subscriptions (RESTRICT FK on organizations)
+          const { error: subDelErr } = await supabase
+            .from("subscriptions")
+            .delete()
+            .eq("org_id", orgId);
+          if (subDelErr) {
+            throw new Error(`subscriptions delete: ${subDelErr.message}`);
+          }
+
+          // d. Delete deals (cascades to all deal-child tables)
+          const { error: dealDelErr } = await supabase
+            .from("deals")
+            .delete()
+            .eq("org_id", orgId);
+          if (dealDelErr) {
+            throw new Error(`deals delete: ${dealDelErr.message}`);
+          }
+
+          // e. Delete billing_customers (RESTRICT FK on organizations)
+          const { error: billingDelErr } = await supabase
+            .from("billing_customers")
+            .delete()
+            .eq("org_id", orgId);
+          if (billingDelErr) {
+            throw new Error(`billing_customers delete: ${billingDelErr.message}`);
+          }
+
+          // f. Delete users whose only org is this one.
+          //    Remove their membership first in case the FK is not CASCADE.
+          //    Deleting the users row cascades to notifications and lender_profiles.
+          for (const user of inventory.usersToDelete) {
+            const { error: memDelErr } = await supabase
+              .from("organization_members")
+              .delete()
+              .eq("user_id", user.id)
+              .eq("org_id", orgId);
+            if (memDelErr) {
+              console.error(
+                `[data-retention] membership delete for user-to-delete ${user.id}:`,
+                memDelErr
+              );
+            }
+            const { error: userDelErr } = await supabase
+              .from("users")
+              .delete()
+              .eq("id", user.id);
+            if (userDelErr) {
+              throw new Error(`user delete ${user.id}: ${userDelErr.message}`);
+            }
+          }
+
+          // g. For users in other orgs: update active_org_id if it points here,
+          //    then remove only their membership in this org.
+          for (const user of inventory.usersToKeep) {
+            const { data: userRow } = await supabase
+              .from("users")
+              .select("active_org_id")
+              .eq("id", user.id)
+              .maybeSingle();
+
+            if (userRow?.active_org_id === orgId) {
+              const { data: otherMemberships } = await supabase
+                .from("organization_members")
+                .select("org_id")
+                .eq("user_id", user.id)
+                .neq("org_id", orgId)
+                .limit(1);
+              const newOrgId: string | null =
+                otherMemberships?.[0]?.org_id ?? null;
+              const { error: activeOrgErr } = await supabase
+                .from("users")
+                .update({ active_org_id: newOrgId })
+                .eq("id", user.id);
+              if (activeOrgErr) {
+                console.error(
+                  `[data-retention] active_org_id update for user ${user.id}:`,
+                  activeOrgErr
+                );
+              }
+            }
+
+            const { error: keepMemDelErr } = await supabase
+              .from("organization_members")
+              .delete()
+              .eq("user_id", user.id)
+              .eq("org_id", orgId);
+            if (keepMemDelErr) {
+              console.error(
+                `[data-retention] membership delete for user-to-keep ${user.id}:`,
+                keepMemDelErr
+              );
+            }
+          }
+
+          // h. Delete the organization row (cascades to remaining org-direct tables)
+          const { error: orgDelErr } = await supabase
+            .from("organizations")
+            .delete()
+            .eq("id", orgId);
+          if (orgDelErr) {
+            throw new Error(`organizations delete: ${orgDelErr.message}`);
+          }
+
+          console.log(
+            `[data-retention] org ${orgId} ("${orgName}") deleted successfully`
+          );
+
+          // i. Record deletion in data_retention_log
+          await writeRetentionLog(orgId, {
+            org_name: orgName,
+            subscription_ended_at: inventory.endDate,
+            scheduled_deletion_at: inventory.scheduledDeletionAt,
+            deleted_at: nowIso,
+            deletion_summary: JSON.stringify(inventory.counts),
+          });
+
+          deletionResults.push({
+            orgId,
+            orgName,
+            success: true,
+            countsDeleted: inventory.counts,
+          });
+        } catch (err: any) {
+          console.error(
+            `[data-retention] deletion failed for org ${orgId}:`,
+            err.message
+          );
+          await writeRetentionLog(orgId, {
+            org_name: orgName,
+            subscription_ended_at: inventory.endDate,
+            scheduled_deletion_at: inventory.scheduledDeletionAt,
+            error: err.message,
+          });
+          deletionResults.push({
+            orgId,
+            orgName,
+            success: false,
+            error: err.message,
+          });
+        }
+      }
+    }
+
+    // ── Step 7: Build and return the response ───────────────────────────────────
+    const warningsSent = warningResults.filter((w) => w.sent).length;
+    const warningsFailed = warningResults.filter((w) => !w.sent).length;
+    const deletionsPerformed = deletionResults.filter((d) => d.success).length;
+    const deletionsFailed = deletionResults.filter((d) => !d.success).length;
+
+    const summary: Record<string, number> = {
+      eligible_orgs: categorized.length,
+      needs_30d_warning: categorized.filter(
+        (e) => e.category === "needs_30d_warning"
+      ).length,
+      needs_14d_warning: categorized.filter(
+        (e) => e.category === "needs_14d_warning"
+      ).length,
+      due_for_deletion: deletionCandidates.length,
+      no_action: noActionOrgs.length,
+    };
+    if (mode !== "report") {
+      summary.warnings_sent = warningsSent;
+      summary.warnings_failed = warningsFailed;
+    }
+    if (mode === "execute") {
+      summary.deletions_performed = deletionsPerformed;
+      summary.deletions_failed = deletionsFailed;
+    }
+
     const report = {
-      run_at: now.toISOString(),
+      run_at: nowIso,
       caller: callerLabel,
-      mode: "report_only",
-      deletion_not_enabled: true,
-      summary: {
-        eligible_orgs: categorized.length,
-        needs_30d_warning: categorized.filter(
-          (e) => e.category === "needs_30d_warning"
-        ).length,
-        needs_14d_warning: categorized.filter(
-          (e) => e.category === "needs_14d_warning"
-        ).length,
-        due_for_deletion: deletionCandidates.length,
-        no_action: noActionOrgs.length,
-      },
-      due_for_deletion: deletionInventories,
+      mode,
+      summary,
+      due_for_deletion: deletionInventories.map((inv) => ({
+        orgId: inv.orgId,
+        orgName: inv.orgName,
+        endDate: inv.endDate,
+        daysElapsed: inv.daysElapsed,
+        scheduledDeletionAt: inv.scheduledDeletionAt,
+        warning30dAlreadySent: inv.warning30dAlreadySent,
+        warning14dAlreadySent: inv.warning14dAlreadySent,
+        counts: inv.counts,
+        usersToDelete: inv.usersToDelete,
+        usersToKeep: inv.usersToKeep,
+        ...(mode === "execute"
+          ? {
+              deletion_result:
+                deletionResults.find((d) => d.orgId === inv.orgId) ?? null,
+            }
+          : {}),
+      })),
       needs_warning: warningCandidates.map((org) => ({
         orgId: org.orgId,
         orgName: org.orgName,
@@ -643,6 +1109,12 @@ Deno.serve(async (req: Request) => {
         category: org.category,
         warning30dAlreadySent: org.warning30dAlreadySent,
         warning14dAlreadySent: org.warning14dAlreadySent,
+        ...(mode !== "report"
+          ? {
+              warning_result:
+                warningResults.find((w) => w.orgId === org.orgId) ?? null,
+            }
+          : {}),
       })),
       no_action: noActionOrgs.map((org) => ({
         orgId: org.orgId,
