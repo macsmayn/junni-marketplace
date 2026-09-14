@@ -1021,7 +1021,7 @@ Deno.serve(async (req: Request) => {
             subscription_ended_at: inventory.endDate,
             scheduled_deletion_at: inventory.scheduledDeletionAt,
             deleted_at: nowIso,
-            deletion_summary: JSON.stringify(inventory.counts),
+            deletion_summary: inventory.counts,
           });
 
           deletionResults.push({
