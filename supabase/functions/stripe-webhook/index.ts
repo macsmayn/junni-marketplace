@@ -18,7 +18,7 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: "Server configuration error" }), { status: 500, headers: { "Content-Type": "application/json" } });
   }
   const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY")!;
-  const STRIPE_WEBHOOK_SIGNING_SECRET = Deno.env.get("STRIPE_WEBHOOK_SIGNING_SECRET")!;
+  const STRIPE_WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET")!;
 
   const supabase = createClient(SUPABASE_URL, secretKey);
   const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" });
@@ -34,7 +34,7 @@ Deno.serve(async (req: Request) => {
     event = await stripe.webhooks.constructEventAsync(
       body,
       signature,
-      STRIPE_WEBHOOK_SIGNING_SECRET,
+      STRIPE_WEBHOOK_SECRET,
       undefined,
       cryptoProvider,
     );
