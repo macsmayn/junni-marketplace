@@ -98,6 +98,7 @@ export default function Billing() {
   const [manageError, setManageError] = useState<string | null>(null);
   const [billingInterval, setBillingInterval] = useState<"monthly" | "annual">("monthly");
   const [isOwner, setIsOwner] = useState(false);
+  const [isCreditAdmin, setIsCreditAdmin] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -133,6 +134,7 @@ export default function Billing() {
             .eq("user_id", uRow.id)
             .maybeSingle();
           setIsOwner(membership?.org_role === "owner");
+          setIsCreditAdmin(membership?.org_role === "credit_admin");
         }
 
         // 2. Organization name
@@ -585,8 +587,8 @@ export default function Billing() {
           </div>
         )}
 
-        {/* DATA EXPORT — owner only */}
-        {isOwner && (
+        {/* DATA EXPORT — owner or credit_admin */}
+        {(isOwner || isCreditAdmin) && (
           <div style={{ marginTop: 40, padding: "28px 32px", background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 16 }}>
             <h3 style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 20, color: NAVY, margin: "0 0 8px" }}>
               {t("billing.exportTitle")}

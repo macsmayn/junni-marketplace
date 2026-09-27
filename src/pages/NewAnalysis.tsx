@@ -856,7 +856,7 @@ export default function NewAnalysis() {
           {t("newAnalysis.checkingSubscription")}
         </div>
       )}
-      {subChecked && !hasSubscription && (
+      {subChecked && !hasSubscription && !showUpgradeScreen && (
         <div style={{ maxWidth: 480, margin: "60px auto", padding: "0 24px", textAlign: "center" }}>
           <h2 style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 26, color: NAVY, margin: "0 0 16px" }}>
             {t("newAnalysis.noSubscriptionTitle")}
@@ -873,7 +873,7 @@ export default function NewAnalysis() {
         </div>
       )}
 
-      {subChecked && !!hasSubscription && showUpgradeScreen && (
+      {subChecked && showUpgradeScreen && (
         <div style={{ maxWidth: 560, margin: "60px auto", padding: "0 24px" }}>
           <h2 style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 26, color: NAVY, margin: "0 0 12px" }}>
             {showUpgradeScreen === "trial_limit_reached" ? t("newAnalysis.upgradeTrialTitle") : t("newAnalysis.upgradeNoSubTitle")}

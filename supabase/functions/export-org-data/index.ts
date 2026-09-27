@@ -1,7 +1,7 @@
 // Exports all credit-analysis data for the caller's organization as a JSON blob.
 // Only org owners and credit_admins may call this endpoint.
 // The response includes a Content-Disposition header so the browser treats it
-// as a file download. Secrets (API keys, Stripe tokens, Auth0 IDs) are never included.
+// as a file download. API keys, Stripe secrets, and auth tokens are never included.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -103,13 +103,10 @@ Deno.serve(async (req: Request) => {
     }
     // ── End authorization ─────────────────────────────────────────────────────
 
-    // ── Fetch all org data ────────────────────────────────────────────────────
-    // Each table is fetched independently; a per-table try/catch ensures one
-    // missing table or permission error does not abort the whole export.
-
-    async function fetchTable(table: string, column: string, value: string) {
+    // ── Helper: fetch all rows from a table filtered to this org ─────────────
+    async function fetchByOrgId(table: string, select = "*") {
       try {
-        const { data, error } = await supabase.from(table).select("*").eq(column, value);
+        const { data, error } = await supabase.from(table).select(select).eq("org_id", orgId);
         if (error) { console.error(`[export-org-data] ${table}:`, error.message); return []; }
         return data ?? [];
       } catch (e: any) {
@@ -118,19 +115,43 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    async function fetchByIds(table: string, column: string, ids: string[]) {
-      if (ids.length === 0) return [];
+    // ── Helper: fetch all rows from a deal-child table by deal IDs ────────────
+    async function fetchByDealIds(table: string, dealIds: string[]) {
+      if (dealIds.length === 0) return [];
       try {
-        const { data, error } = await supabase.from(table).select("*").in(column, ids);
-        if (error) { console.error(`[export-org-data] ${table} (by ids):`, error.message); return []; }
+        const { data, error } = await supabase.from(table).select("*").in("deal_id", dealIds);
+        if (error) { console.error(`[export-org-data] ${table} (by deal_id):`, error.message); return []; }
         return data ?? [];
       } catch (e: any) {
-        console.error(`[export-org-data] ${table} (by ids) unexpected:`, e.message);
+        console.error(`[export-org-data] ${table} (by deal_id) unexpected:`, e.message);
         return [];
       }
     }
 
-    const [organization, members, deals] = await Promise.all([
+    // ── Helper: fetch all rows from a score-child table by score IDs ──────────
+    async function fetchByScoreIds(table: string, column: string, scoreIds: string[]) {
+      if (scoreIds.length === 0) return [];
+      try {
+        const { data, error } = await supabase.from(table).select("*").in(column, scoreIds);
+        if (error) { console.error(`[export-org-data] ${table} (by score_id):`, error.message); return []; }
+        return data ?? [];
+      } catch (e: any) {
+        console.error(`[export-org-data] ${table} (by score_id) unexpected:`, e.message);
+        return [];
+      }
+    }
+
+    // ── Org-level data ────────────────────────────────────────────────────────
+    const [
+      organization,
+      members,
+      orgInvites,
+      lenderMetricOverrides,
+      lenderThresholdOverrides,
+      metricOverrideLog,
+      thresholdOverrideLog,
+      billingCustomers,
+    ] = await Promise.all([
       (async () => {
         try {
           const { data } = await supabase
@@ -142,6 +163,7 @@ Deno.serve(async (req: Request) => {
         } catch { return null; }
       })(),
       (async () => {
+        // Include member name/email for usability; exclude auth0_id
         try {
           const { data } = await supabase
             .from("organization_members")
@@ -150,47 +172,102 @@ Deno.serve(async (req: Request) => {
           return data ?? [];
         } catch { return []; }
       })(),
-      fetchTable("deals", "org_id", orgId),
+      fetchByOrgId("org_invites"),
+      fetchByOrgId("lender_metric_overrides"),
+      fetchByOrgId("lender_threshold_overrides"),
+      fetchByOrgId("metric_override_log"),
+      fetchByOrgId("threshold_override_log"),
+      // billing_customers: only stripe_customer_id — no Stripe secret keys
+      fetchByOrgId("billing_customers", "id, org_id, stripe_customer_id, created_at"),
     ]);
 
+    // ── Deal-level data ───────────────────────────────────────────────────────
+    const deals = await fetchByOrgId("deals");
     const dealIds: string[] = (deals as any[]).map((d: any) => d.id).filter(Boolean);
 
-    const [dealDocuments, extractedFinancials, creditScores] = await Promise.all([
-      fetchByIds("deal_documents", "deal_id", dealIds),
-      fetchByIds("extracted_financials", "deal_id", dealIds),
-      fetchByIds("credit_scores", "deal_id", dealIds),
+    const [
+      documents,
+      extractedFinancials,
+      creditScores,
+      creditScoresHistory,
+      creditQuestions,
+      creditAnswers,
+      creditFlags,
+      computedMetrics,
+      collateralAssets,
+      collateralAssetsHistory,
+      capitalizationItems,
+      capitalizationItemsHistory,
+      sourcesUsesEntries,
+      sourcesUsesEntriesHistory,
+      capTableEntries,
+      financialAnnotations,
+    ] = await Promise.all([
+      fetchByDealIds("documents", dealIds),
+      fetchByDealIds("extracted_financials", dealIds),
+      fetchByDealIds("credit_scores", dealIds),
+      fetchByDealIds("credit_scores_history", dealIds),
+      fetchByDealIds("credit_questions", dealIds),
+      fetchByDealIds("credit_answers", dealIds),
+      fetchByDealIds("credit_flags", dealIds),
+      fetchByDealIds("computed_metrics", dealIds),
+      fetchByDealIds("collateral_assets", dealIds),
+      fetchByDealIds("collateral_assets_history", dealIds),
+      fetchByDealIds("capitalization_items", dealIds),
+      fetchByDealIds("capitalization_items_history", dealIds),
+      fetchByDealIds("sources_uses_entries", dealIds),
+      fetchByDealIds("sources_uses_entries_history", dealIds),
+      fetchByDealIds("cap_table_entries", dealIds),
+      fetchByDealIds("financial_annotations", dealIds),
     ]);
 
+    // score_metric_results and _history are keyed by credit_score_id
     const scoreIds: string[] = (creditScores as any[]).map((s: any) => s.id).filter(Boolean);
-    const scoreMetricResults = await fetchByIds("score_metric_results", "credit_score_id", scoreIds);
-
-    const diligenceQuestions = await fetchByIds("diligence_questions", "deal_id", dealIds);
-
-    const [collateralAssets, suSources, suUses, capItems] = await Promise.all([
-      fetchByIds("collateral_assets", "deal_id", dealIds),
-      fetchByIds("sources_uses_sources", "deal_id", dealIds),
-      fetchByIds("sources_uses_uses", "deal_id", dealIds),
-      fetchByIds("capitalization_items", "deal_id", dealIds),
+    const [scoreMetricResults, scoreMetricResultsHistory] = await Promise.all([
+      fetchByScoreIds("score_metric_results", "credit_score_id", scoreIds),
+      fetchByScoreIds("score_metric_results_history", "credit_score_id", scoreIds),
     ]);
 
     const exportedAt = new Date().toISOString();
-    console.log(`[export-org-data] org ${orgId}: ${dealIds.length} deals, ${(creditScores as any[]).length} scores — exported by user ${callerUser.id} at ${exportedAt}`);
+    console.log(
+      `[export-org-data] org ${orgId}: ${dealIds.length} deals, ` +
+      `${(creditScores as any[]).length} scores, ` +
+      `${(lenderThresholdOverrides as any[]).length} threshold overrides — ` +
+      `exported by user ${callerUser.id} at ${exportedAt}`
+    );
 
     const payload = {
       exported_at: exportedAt,
       org_id: orgId,
+      // Org-level
       organization,
       members,
+      org_invites: orgInvites,
+      lender_metric_overrides: lenderMetricOverrides,
+      lender_threshold_overrides: lenderThresholdOverrides,
+      metric_override_log: metricOverrideLog,
+      threshold_override_log: thresholdOverrideLog,
+      billing_customers: billingCustomers,
+      // Deal-level
       deals,
-      deal_documents: dealDocuments,
+      documents,
       extracted_financials: extractedFinancials,
       credit_scores: creditScores,
+      credit_scores_history: creditScoresHistory,
       score_metric_results: scoreMetricResults,
-      diligence_questions: diligenceQuestions,
+      score_metric_results_history: scoreMetricResultsHistory,
+      credit_questions: creditQuestions,
+      credit_answers: creditAnswers,
+      credit_flags: creditFlags,
+      computed_metrics: computedMetrics,
       collateral_assets: collateralAssets,
-      sources_uses_sources: suSources,
-      sources_uses_uses: suUses,
-      capitalization_items: capItems,
+      collateral_assets_history: collateralAssetsHistory,
+      capitalization_items: capitalizationItems,
+      capitalization_items_history: capitalizationItemsHistory,
+      sources_uses_entries: sourcesUsesEntries,
+      sources_uses_entries_history: sourcesUsesEntriesHistory,
+      cap_table_entries: capTableEntries,
+      financial_annotations: financialAnnotations,
     };
 
     const filename = `junni-export-${orgId.slice(0, 8)}-${exportedAt.slice(0, 10)}.json`;
