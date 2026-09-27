@@ -409,11 +409,27 @@ Deno.serve(async (req: Request) => {
           usedCount = count ?? 0;
         }
 
-        // g. Check overage — do NOT block; log and proceed (billed via Stripe meter)
-        const included = subscription.included_deals ?? 0;
-        if (usedCount >= included) {
-          isOverage = true;
-          console.log(`[score-deal] Overage: org ${callerUser.active_org_id} has used ${usedCount}/${included} included deals this period — deal_id: ${deal_id} will be billed as overage.`);
+        // g. Trial cap blocks; non-trial overage does NOT block (billed via Stripe meter).
+        if (subscription.status === "trialing") {
+          const { data: planRow } = await supabase
+            .from("billing_plans")
+            .select("trial_included_deals")
+            .eq("plan_key", subscription.plan_key ?? "")
+            .maybeSingle();
+          const trialIncluded: number = planRow?.trial_included_deals ?? 10;
+          if (usedCount >= trialIncluded) {
+            console.log(`[score-deal] Trial limit reached: org ${callerUser.active_org_id} used ${usedCount}/${trialIncluded} trial analyses — deal_id: ${deal_id}`);
+            return new Response(JSON.stringify({ error: "trial_limit_reached", trial_included: trialIncluded, used: usedCount }), {
+              status: 402,
+              headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+            });
+          }
+        } else {
+          const included = subscription.included_deals ?? 0;
+          if (usedCount >= included) {
+            isOverage = true;
+            console.log(`[score-deal] Overage: org ${callerUser.active_org_id} has used ${usedCount}/${included} included deals this period — deal_id: ${deal_id} will be billed as overage.`);
+          }
         }
       }
     }
@@ -762,6 +778,24 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
         JSON.stringify({ extract_only: true, years_extracted: totalYearsExtracted }),
         { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
       );
+    }
+
+    // Guard: abort scoring if documents were uploaded but none produced extracted_financials rows.
+    // A failed extraction must not consume quota or write a meaningless credit_scores row.
+    if (financialDocs && financialDocs.length > 0) {
+      const { count: finCount } = await supabase
+        .from("extracted_financials")
+        .select("deal_id", { count: "exact", head: true })
+        .eq("deal_id", deal_id);
+
+      if ((finCount ?? 0) === 0) {
+        const docNames = (financialDocs as any[]).map((d: any) => `"${d.file_name}"`).join(", ");
+        console.error(`[score-deal] Scoring aborted — ${financialDocs.length} document(s) uploaded (${docNames}) but no extracted_financials rows for deal_id: ${deal_id}. Run with extract_only=true first.`);
+        return new Response(JSON.stringify({ error: "no_financials_extracted" }), {
+          status: 422,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // Supplementary context for the scoring prompt
