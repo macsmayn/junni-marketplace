@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
-import { supabase, invokeFunction } from "../lib/supabase";
+import { supabase, invokeFunction, invokeFunctionWithDetails } from "../lib/supabase";
 import { checkFinancials } from "../lib/financialSanity";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
@@ -216,6 +216,19 @@ export default function NewAnalysis() {
     })();
   }, [user?.sub]);
 
+  useEffect(() => {
+    if (!showUpgradeScreen) return;
+    (async () => {
+      const { data } = await supabase
+        .from("billing_plans")
+        .select("plan_key, display_name, interval, included_deals, price_monthly_cad")
+        .eq("active", true)
+        .eq("interval", "monthly")
+        .order("included_deals", { ascending: true });
+      setUpgradePlans(data ?? []);
+    })();
+  }, [showUpgradeScreen]);
+
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   // Step 1
@@ -289,6 +302,10 @@ export default function NewAnalysis() {
   // Subscription gate — checked on mount, skipped for admins
   const [subChecked, setSubChecked] = useState(false);
   const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
+
+  // Upgrade screen — shown when trial_limit_reached or no_subscription returned mid-flow
+  const [showUpgradeScreen, setShowUpgradeScreen] = useState<null | "trial_limit_reached" | "no_subscription">(null);
+  const [upgradePlans, setUpgradePlans] = useState<Array<{ plan_key: string; display_name: string; interval: string; included_deals: number; price_monthly_cad: number | null }>>([]);
 
   // ── Step 1 ──────────────────────────────────────────────────────────
   async function handleStep1() {
@@ -423,16 +440,19 @@ export default function NewAnalysis() {
       }
     }
 
-    const { error: invokeErr } = await invokeFunction("score-deal", { deal_id: dealId, extract_only: true });
-    if (invokeErr) {
-      const body402 = await (invokeErr as any).context?.json().catch(() => null);
-      if (body402?.error === "no_subscription") {
-        setFileError("newAnalysis.errorNoSubscription");
-        setFileErrorDetail("");
+    const { data: extractBody, httpStatus: extractStatus } = await invokeFunctionWithDetails("score-deal", { deal_id: dealId, extract_only: true });
+    if (extractStatus !== 200) {
+      if (extractBody?.error === "trial_limit_reached") {
+        setShowUpgradeScreen("trial_limit_reached");
         setExtracting(false);
         return;
       }
-      console.error("[NewAnalysis] extraction:", invokeErr.message);
+      if (extractBody?.error === "no_subscription") {
+        setShowUpgradeScreen("no_subscription");
+        setExtracting(false);
+        return;
+      }
+      console.error("[NewAnalysis] extraction:", extractStatus, extractBody?.error);
       setFileError("newAnalysis.errorExtraction");
       setFileErrorDetail("");
       setExtracting(false);
@@ -708,15 +728,24 @@ export default function NewAnalysis() {
       }
     }
 
-    const { error: scoreErr } = await invokeFunction("score-deal", { deal_id: dealId });
-    if (scoreErr) {
-      const body402 = await (scoreErr as any).context?.json().catch(() => null);
-      if (body402?.error === "no_subscription") {
-        setConfirmError("newAnalysis.errorNoSubscription");
+    const { data: scoreBody, httpStatus: scoreStatus } = await invokeFunctionWithDetails("score-deal", { deal_id: dealId });
+    if (scoreStatus !== 200) {
+      if (scoreBody?.error === "trial_limit_reached") {
+        setShowUpgradeScreen("trial_limit_reached");
         setConfirming(false);
         return;
       }
-      console.error("[confirm] scoring:", scoreErr.message);
+      if (scoreBody?.error === "no_subscription") {
+        setShowUpgradeScreen("no_subscription");
+        setConfirming(false);
+        return;
+      }
+      if (scoreBody?.error === "no_financials_extracted") {
+        setConfirmError("newAnalysis.errorNoFinancialsExtracted");
+        setConfirming(false);
+        return;
+      }
+      console.error("[confirm] scoring:", scoreStatus, scoreBody?.error);
       setConfirmError("newAnalysis.errorScoring");
       setConfirming(false);
       return;
@@ -844,8 +873,53 @@ export default function NewAnalysis() {
         </div>
       )}
 
+      {subChecked && !!hasSubscription && showUpgradeScreen && (
+        <div style={{ maxWidth: 560, margin: "60px auto", padding: "0 24px" }}>
+          <h2 style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 26, color: NAVY, margin: "0 0 12px" }}>
+            {showUpgradeScreen === "trial_limit_reached" ? t("newAnalysis.upgradeTrialTitle") : t("newAnalysis.upgradeNoSubTitle")}
+          </h2>
+          <p style={{ color: MUTED, fontSize: 15, lineHeight: 1.6, margin: "0 0 28px" }}>
+            {showUpgradeScreen === "trial_limit_reached" ? t("newAnalysis.upgradeTrialBody") : t("newAnalysis.upgradeNoSubBody")}
+          </p>
+          {upgradePlans.length === 0 ? (
+            <p style={{ color: MUTED, fontSize: 14 }}>{t("newAnalysis.upgradeLoading")}</p>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+              {upgradePlans.map(plan => (
+                <div key={plan.plan_key} style={{ background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 14, padding: 24 }}>
+                  <div style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 20, color: NAVY, marginBottom: 8 }}>
+                    {plan.display_name}
+                  </div>
+                  {plan.price_monthly_cad != null && (
+                    <div style={{ fontSize: 20, fontWeight: 700, color: GOLD }}>
+                      ${plan.price_monthly_cad.toLocaleString("en-CA")} CAD
+                      <span style={{ fontSize: 14, fontWeight: 400, color: MUTED }}>/mo</span>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 13, color: MUTED, marginTop: 8 }}>
+                    {t("newAnalysis.upgradePlanIncluded").replace("{n}", String(plan.included_deals))}
+                  </div>
+                  <button
+                    onClick={() => setLocation("/billing")}
+                    style={{ marginTop: 16, background: GOLD, color: "#fff", border: "none", borderRadius: 8, padding: "10px 0", fontSize: 14, fontWeight: 600, cursor: "pointer", width: "100%", fontFamily: "Inter, sans-serif" }}
+                  >
+                    {t("newAnalysis.upgradePlanBtn").replace("{plan}", plan.display_name)}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={() => setShowUpgradeScreen(null)}
+            style={{ marginTop: 24, background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 14, fontFamily: "Inter, sans-serif", padding: 0 }}
+          >
+            {t("newAnalysis.upgradeDismiss")}
+          </button>
+        </div>
+      )}
+
       {/* STEP INDICATOR */}
-      {subChecked && !!hasSubscription && <div style={{
+      {subChecked && !!hasSubscription && !showUpgradeScreen && <div style={{
         display: "flex", alignItems: "flex-start", justifyContent: "center",
         padding: isMobile ? "24px 20px 4px" : "32px 40px 4px",
       }}>
@@ -888,7 +962,7 @@ export default function NewAnalysis() {
         })}
       </div>}
 
-      {subChecked && !!hasSubscription && <div style={{ maxWidth: 660, margin: "0 auto", padding: isMobile ? "24px 20px 80px" : "36px 40px 80px" }}>
+      {subChecked && !!hasSubscription && !showUpgradeScreen && <div style={{ maxWidth: 660, margin: "0 auto", padding: isMobile ? "24px 20px 80px" : "36px 40px 80px" }}>
 
         {/* ═══ STEP 1: Company & Terms ═══ */}
         {step === 1 && (

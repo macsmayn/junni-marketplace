@@ -1345,6 +1345,39 @@ const fr: Record<string, string> = {
   "terms.s16.emailLabel":               "Courriel :",
   "terms.s16.addressLabel":             "Adresse :",
   "terms.s16.address":                  "Appartement 301–1212, Avenue des Pins Ouest, Montréal (Québec) H3G 1A9",
+
+  // NewAnalysis — écran de mise à niveau (limite d'essai / aucun abonnement)
+  "newAnalysis.upgradeTrialTitle":          "Limite d'essai atteinte",
+  "newAnalysis.upgradeTrialBody":           "Vous avez utilisé toutes les analyses incluses dans votre essai gratuit. Abonnez-vous pour continuer.",
+  "newAnalysis.upgradeNoSubTitle":          "Abonnez-vous pour lancer des analyses",
+  "newAnalysis.upgradeNoSubBody":           "Le moteur de crédit de Junni est disponible sur abonnement payant. Commencez avec un essai gratuit de 14 jours.",
+  "newAnalysis.upgradePlanIncluded":        "{n} analyses / mois",
+  "newAnalysis.upgradePlanBtn":             "S'abonner au plan {plan} →",
+  "newAnalysis.upgradeDismiss":             "← Retour",
+  "newAnalysis.upgradeLoading":             "Chargement des forfaits…",
+  "newAnalysis.errorNoFinancialsExtracted": "Aucun des documents téléchargés n'a pu être lu. Essayez un document plus lisible ou un PDF en texte. Cela n'a pas consommé l'une de vos analyses.",
+
+  // Guide de démarrage — superposition à la première connexion
+  "walkthrough.step1Title": "Démarrer une analyse",
+  "walkthrough.step1Body":  "Téléchargez les états financiers d'un emprunteur pour commencer. Junni lit le document en entier — notes, analyse de gestion et toutes les années.",
+  "walkthrough.step2Title": "Confirmer les chiffres",
+  "walkthrough.step2Body":  "Après l'extraction, vérifiez et confirmez les chiffres avant la cotation. Junni ne cote jamais des données non confirmées.",
+  "walkthrough.step3Title": "Configurer vos seuils",
+  "walkthrough.step3Body":  "Définissez les seuils et niveaux qui correspondent à votre politique de crédit. C'est l'étape la plus importante — sans cela, vous cotez selon les valeurs par défaut de Junni.",
+  "walkthrough.step3Link":  "Ouvrir les seuils →",
+  "walkthrough.step4Title": "Exporter la note de crédit",
+  "walkthrough.step4Body":  "Une fois l'analyse terminée, exportez la note de crédit complète en PDF ou Word — prête à présenter ou à classer.",
+  "walkthrough.nextBtn":    "Suivant →",
+  "walkthrough.doneBtn":    "Terminer",
+  "walkthrough.skipBtn":    "Ignorer",
+  "walkthrough.stepOf":     "Étape {step} de {total}",
+
+  // Facturation — exportation des données
+  "billing.exportTitle": "Exporter vos données",
+  "billing.exportBody":  "Téléchargez toutes les opérations, données financières et analyses de votre organisation dans un fichier JSON.",
+  "billing.exportBtn":   "Exporter toutes les données",
+  "billing.exporting":   "Exportation…",
+  "billing.exportError": "L'exportation a échoué. Veuillez réessayer.",
 };
 
 export default fr;

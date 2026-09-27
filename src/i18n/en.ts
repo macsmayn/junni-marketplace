@@ -1345,6 +1345,39 @@ const en: Record<string, string> = {
   "history.pageTitle":       "Version {v} — Archived",
   "history.noStructureData": "This section was not captured for this version (predates the archiving feature).",
   "history.questionsAsOf":   "Diligence questions as they existed at the time this version was archived.",
+
+  // NewAnalysis — upgrade screen (trial limit / no subscription reached mid-flow)
+  "newAnalysis.upgradeTrialTitle":          "Trial limit reached",
+  "newAnalysis.upgradeTrialBody":           "You've used all analyses included in your free trial. Subscribe to a plan to run more.",
+  "newAnalysis.upgradeNoSubTitle":          "Subscribe to run analyses",
+  "newAnalysis.upgradeNoSubBody":           "Junni's credit engine is available on a paid subscription. Start with a 14-day free trial.",
+  "newAnalysis.upgradePlanIncluded":        "{n} analyses / month",
+  "newAnalysis.upgradePlanBtn":             "Subscribe to {plan} →",
+  "newAnalysis.upgradeDismiss":             "← Back",
+  "newAnalysis.upgradeLoading":             "Loading plans…",
+  "newAnalysis.errorNoFinancialsExtracted": "None of the uploaded documents could be read. Try a clearer scan or a text-based PDF. This did not use one of your analyses.",
+
+  // Walkthrough — 4-step first-login overlay
+  "walkthrough.step1Title": "Start an analysis",
+  "walkthrough.step1Body":  "Upload a borrower's financial statements to begin. Junni reads the full document — notes, MD&A, and all years.",
+  "walkthrough.step2Title": "Confirm the figures",
+  "walkthrough.step2Body":  "After extraction, review and confirm the numbers before scoring. Junni never scores unconfirmed data.",
+  "walkthrough.step3Title": "Set your thresholds",
+  "walkthrough.step3Body":  "Set the exact thresholds and metric tiers that match your credit policy. This is the most important step — without it you're scoring against Junni's defaults.",
+  "walkthrough.step3Link":  "Open Thresholds →",
+  "walkthrough.step4Title": "Export the memo",
+  "walkthrough.step4Body":  "When the analysis is done, export the full credit memo as a PDF or Word document — ready to present or file.",
+  "walkthrough.nextBtn":    "Next →",
+  "walkthrough.doneBtn":    "Done",
+  "walkthrough.skipBtn":    "Skip",
+  "walkthrough.stepOf":     "Step {step} of {total}",
+
+  // Billing — data export
+  "billing.exportTitle": "Export your data",
+  "billing.exportBody":  "Download all your organization's deals, financials, and analyses as a JSON file.",
+  "billing.exportBtn":   "Export all data",
+  "billing.exporting":   "Exporting…",
+  "billing.exportError": "Export failed. Please try again.",
 };
 
 export default en;

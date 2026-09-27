@@ -50,6 +50,8 @@ export default function LenderDashboard() {
   const [dbUser, setDbUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isOwner, setIsOwner] = useState(false);
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
+  const [walkthroughStep, setWalkthroughStep] = useState(1);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -82,6 +84,7 @@ export default function LenderDashboard() {
         .from('users').select('*').eq('auth0_id', user.sub).single();
       if (!userData) { setLoading(false); return; }
       setDbUser(userData);
+      if (!userData.walkthrough_completed_at) { setShowWalkthrough(true); }
       if (userData.active_org_id) {
         const { data: membership } = await supabase
           .from('organization_members')
@@ -100,6 +103,13 @@ export default function LenderDashboard() {
   const lenderName = user?.name || dbUser?.full_name || "Lender";
   const lenderInitials = lenderName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
   const firstName = lenderName.split(" ")[0];
+
+  async function dismissWalkthrough() {
+    setShowWalkthrough(false);
+    if (user?.sub) {
+      await supabase.from('users').update({ walkthrough_completed_at: new Date().toISOString() }).eq('auth0_id', user.sub);
+    }
+  }
 
   const fetchNotificationsNow = async () => {
     if (!dbUser?.id) return;
@@ -522,6 +532,66 @@ export default function LenderDashboard() {
 
 
       </div>
+
+      {/* WALKTHROUGH OVERLAY — shown on first login until dismissed */}
+      {showWalkthrough && (() => {
+        const TOTAL = 4;
+        const steps = [
+          { titleKey: "walkthrough.step1Title", bodyKey: "walkthrough.step1Body", linkKey: null as string | null, linkPath: null as string | null },
+          { titleKey: "walkthrough.step2Title", bodyKey: "walkthrough.step2Body", linkKey: null, linkPath: null },
+          { titleKey: "walkthrough.step3Title", bodyKey: "walkthrough.step3Body", linkKey: "walkthrough.step3Link", linkPath: "/thresholds" },
+          { titleKey: "walkthrough.step4Title", bodyKey: "walkthrough.step4Body", linkKey: null, linkPath: null },
+        ];
+        const current = steps[walkthroughStep - 1];
+        const isLast = walkthroughStep === TOTAL;
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.45)" }}>
+            <div style={{ background: "#fff", borderRadius: 18, padding: "36px 32px 28px", maxWidth: 440, width: "calc(100% - 48px)", boxShadow: "0 20px 60px rgba(0,0,0,0.2)", position: "relative" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#D4940A", fontFamily: "Inter, sans-serif", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                  {t("walkthrough.stepOf").replace("{step}", String(walkthroughStep)).replace("{total}", String(TOTAL))}
+                </span>
+                <button onClick={dismissWalkthrough} style={{ background: "none", border: "none", color: "#7A7060", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0, fontFamily: "Inter, sans-serif" }}>✕</button>
+              </div>
+              <h2 style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 24, color: "#1B2B4B", margin: "0 0 12px" }}>
+                {t(current.titleKey)}
+              </h2>
+              <p style={{ fontSize: 15, color: "#7A7060", lineHeight: 1.65, margin: "0 0 20px", fontFamily: "Inter, sans-serif" }}>
+                {t(current.bodyKey)}
+              </p>
+              {current.linkKey && current.linkPath && (
+                <button
+                  onClick={() => { dismissWalkthrough(); setLocation(current.linkPath!); }}
+                  style={{ fontSize: 14, color: "#D4940A", background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "Inter, sans-serif", fontWeight: 600, marginBottom: 20, display: "block" }}
+                >
+                  {t(current.linkKey)}
+                </button>
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {Array.from({ length: TOTAL }).map((_, i) => (
+                    <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: i + 1 === walkthroughStep ? "#D4940A" : "#E8E2D9" }} />
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={dismissWalkthrough} style={{ background: "none", border: "none", color: "#7A7060", cursor: "pointer", fontSize: 13, fontFamily: "Inter, sans-serif", padding: "8px 0" }}>
+                    {t("walkthrough.skipBtn")}
+                  </button>
+                  {isLast ? (
+                    <button onClick={dismissWalkthrough} style={{ background: "#D4940A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 22px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif" }}>
+                      {t("walkthrough.doneBtn")}
+                    </button>
+                  ) : (
+                    <button onClick={() => setWalkthroughStep(s => s + 1 as any)} style={{ background: "#D4940A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 22px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif" }}>
+                      {t("walkthrough.nextBtn")}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

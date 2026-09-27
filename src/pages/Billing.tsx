@@ -98,6 +98,8 @@ export default function Billing() {
   const [manageError, setManageError] = useState<string | null>(null);
   const [billingInterval, setBillingInterval] = useState<"monthly" | "annual">("monthly");
   const [isOwner, setIsOwner] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const checkoutResult = new URLSearchParams(
     typeof window !== "undefined" ? window.location.search : ""
@@ -189,6 +191,26 @@ export default function Billing() {
       setLoading(false);
     })();
   }, [user?.sub, auth0Loading]);
+
+  async function handleExport() {
+    setExporting(true);
+    setExportError(null);
+    const { data, error } = await invokeFunction("export-org-data", {});
+    setExporting(false);
+    if (error) {
+      setExportError(t("billing.exportError"));
+      return;
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `junni-export-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   async function handleSubscribe(planKey: string) {
     setSubscribeError(null);
@@ -560,6 +582,28 @@ export default function Billing() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* DATA EXPORT — owner only */}
+        {isOwner && (
+          <div style={{ marginTop: 40, padding: "28px 32px", background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 16 }}>
+            <h3 style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 20, color: NAVY, margin: "0 0 8px" }}>
+              {t("billing.exportTitle")}
+            </h3>
+            <p style={{ color: MUTED, fontSize: 14, lineHeight: 1.6, margin: "0 0 20px" }}>
+              {t("billing.exportBody")}
+            </p>
+            {exportError && (
+              <p style={{ color: RED, fontSize: 13, margin: "0 0 12px" }}>{exportError}</p>
+            )}
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              style={{ background: NAVY, color: "#fff", border: "none", borderRadius: 8, padding: "11px 22px", fontSize: 14, fontWeight: 600, cursor: exporting ? "default" : "pointer", opacity: exporting ? 0.6 : 1, fontFamily: "Inter, sans-serif" }}
+            >
+              {exporting ? t("billing.exporting") : t("billing.exportBtn")}
+            </button>
           </div>
         )}
 
