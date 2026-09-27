@@ -561,7 +561,7 @@ export default function LenderDashboard() {
               </p>
               {current.linkKey && current.linkPath && (
                 <button
-                  onClick={() => { dismissWalkthrough(); setLocation(current.linkPath!); }}
+                  onClick={() => window.open(current.linkPath!, '_blank')}
                   style={{ fontSize: 14, color: "#D4940A", background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "Inter, sans-serif", fontWeight: 600, marginBottom: 20, display: "block" }}
                 >
                   {t(current.linkKey)}

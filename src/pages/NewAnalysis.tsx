@@ -216,6 +216,11 @@ export default function NewAnalysis() {
     })();
   }, [user?.sub]);
 
+  // These must be declared before the useEffect below that reads showUpgradeScreen
+  // in its dependency array — declaring them after causes a TDZ crash on first render.
+  const [showUpgradeScreen, setShowUpgradeScreen] = useState<null | "trial_limit_reached" | "no_subscription">(null);
+  const [upgradePlans, setUpgradePlans] = useState<Array<{ plan_key: string; display_name: string; interval: string; included_deals: number; price_monthly_cad: number | null }>>([]);
+
   useEffect(() => {
     if (!showUpgradeScreen) return;
     (async () => {
@@ -302,10 +307,6 @@ export default function NewAnalysis() {
   // Subscription gate — checked on mount, skipped for admins
   const [subChecked, setSubChecked] = useState(false);
   const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
-
-  // Upgrade screen — shown when trial_limit_reached or no_subscription returned mid-flow
-  const [showUpgradeScreen, setShowUpgradeScreen] = useState<null | "trial_limit_reached" | "no_subscription">(null);
-  const [upgradePlans, setUpgradePlans] = useState<Array<{ plan_key: string; display_name: string; interval: string; included_deals: number; price_monthly_cad: number | null }>>([]);
 
   // ── Step 1 ──────────────────────────────────────────────────────────
   async function handleStep1() {
