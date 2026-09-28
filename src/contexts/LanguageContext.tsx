@@ -12,6 +12,13 @@ const LANG_KEY = "junni_lang";
 
 function detectLang(): Lang {
   try {
+    const param = new URLSearchParams(window.location.search).get("lang");
+    if (param === "fr" || param === "en") {
+      try { localStorage.setItem(LANG_KEY, param); } catch {}
+      return param;
+    }
+  } catch {}
+  try {
     const stored = localStorage.getItem(LANG_KEY);
     if (stored === "fr" || stored === "en") return stored;
   } catch {}
