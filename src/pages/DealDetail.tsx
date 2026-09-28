@@ -2,6 +2,7 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase } from "../lib/supabase";
 import { useParams } from "wouter";
+import { useLanguage } from "../contexts/LanguageContext";
 
 const LOGO_BEIGE = "/junni-logo-beige.png";
 
@@ -146,6 +147,7 @@ export default function DealDetail() {
   const dealId = params.id;
 
   const { user, isAuthenticated, logout } = useAuth0();
+  const { lang, t } = useLanguage();
   const [deal, setDeal] = useState<any>(null);
   const [dealBids, setDealBids] = useState<any[]>([]);
   const [dealDocs, setDealDocs] = useState<any[]>([]);
@@ -1287,27 +1289,27 @@ export default function DealDetail() {
               {computedMetrics.length > 0 && (() => {
                 const pit = computedMetrics.filter(m => m.fiscal_year != null);
                 const growth = computedMetrics.filter(m => m.fiscal_year == null);
-                const fyLabel = pit[0]?.fiscal_year ? ` — FY${pit[0].fiscal_year}` : "";
+                const fyLabel = pit[0]?.fiscal_year ? ` — ${t("common.fyPrefix")}${pit[0].fiscal_year}` : "";
                 return (
                   <div className="card">
-                    <div className="card-title">Key Financial Ratios</div>
+                    <div className="card-title">{t("dealDetail.keyFinancialRatios")}</div>
                     <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>
-                      From confirmed financial statements{fyLabel}
+                      {t("dealDetail.fromConfirmedStatements")}{fyLabel}
                     </div>
                     {pit.map(m => (
                       <div key={m.metric_key} className="ratio-row">
                         <span className="ratio-label">{m.metric_label}</span>
                         <div className="ratio-right">
                           <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--navy)" }}>{m.value}{m.unit}</span>
-                          {m.benchmark_status === "strong" && <span className="badge-strong">Strong</span>}
-                          {m.benchmark_status === "adequate" && <span className="badge-adequate">Adequate</span>}
-                          {m.benchmark_status === "weak" && <span className="badge-weak">Weak</span>}
+                          {m.benchmark_status === "strong" && <span className="badge-strong">{t("memo.gradeStrong")}</span>}
+                          {m.benchmark_status === "adequate" && <span className="badge-adequate">{t("memo.gradeAdequate")}</span>}
+                          {m.benchmark_status === "weak" && <span className="badge-weak">{t("memo.gradeWeak")}</span>}
                         </div>
                       </div>
                     ))}
                     {growth.length > 0 && (
                       <>
-                        <div className="ratio-subhead">Year-over-Year</div>
+                        <div className="ratio-subhead">{t("dealDetail.yearOverYear")}</div>
                         {growth.map(m => (
                           <div key={m.metric_key} className="ratio-row">
                             <span className="ratio-label">{m.metric_label}</span>
@@ -1441,24 +1443,24 @@ export default function DealDetail() {
                   {computedMetrics.length > 0 && (() => {
                     const pit = computedMetrics.filter(m => m.fiscal_year != null);
                     const growth = computedMetrics.filter(m => m.fiscal_year == null);
-                    const fyLabel = pit[0]?.fiscal_year ? ` — FY${pit[0].fiscal_year}` : "";
+                    const fyLabel = pit[0]?.fiscal_year ? ` — ${t("common.fyPrefix")}${pit[0].fiscal_year}` : "";
                     return (
                       <div className="card" style={{ marginTop: "20px" }}>
-                        <div className="card-title">Financial Ratios{fyLabel}</div>
+                        <div className="card-title">{t("dealDetail.financialRatios")}{fyLabel}</div>
                         {pit.map(m => (
                           <div key={m.metric_key} className="ratio-row">
                             <span className="ratio-label">{m.metric_label}</span>
                             <div className="ratio-right">
                               <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--navy)" }}>{m.value}{m.unit}</span>
-                              {m.benchmark_status === "strong" && <span className="badge-strong">Strong</span>}
-                              {m.benchmark_status === "adequate" && <span className="badge-adequate">Adequate</span>}
-                              {m.benchmark_status === "weak" && <span className="badge-weak">Weak</span>}
+                              {m.benchmark_status === "strong" && <span className="badge-strong">{t("memo.gradeStrong")}</span>}
+                              {m.benchmark_status === "adequate" && <span className="badge-adequate">{t("memo.gradeAdequate")}</span>}
+                              {m.benchmark_status === "weak" && <span className="badge-weak">{t("memo.gradeWeak")}</span>}
                             </div>
                           </div>
                         ))}
                         {growth.length > 0 && (
                           <>
-                            <div className="ratio-subhead">Year-over-Year</div>
+                            <div className="ratio-subhead">{t("dealDetail.yearOverYear")}</div>
                             {growth.map(m => (
                               <div key={m.metric_key} className="ratio-row">
                                 <span className="ratio-label">{m.metric_label}</span>

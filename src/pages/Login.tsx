@@ -8,7 +8,7 @@ const LOGO_BEIGE = "/junni-logo-beige.png";
 export default function Login() {
   const { loginWithRedirect, isAuthenticated, isLoading } = useAuth0();
   const [, setLocation] = useLocation();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const redirectCalled = useRef(false);
 
   useEffect(() => {
@@ -23,9 +23,9 @@ export default function Login() {
     const returnTo = sessionStorage.getItem("junni_return_to");
     if (returnTo) {
       sessionStorage.removeItem("junni_return_to");
-      loginWithRedirect({ appState: { returnTo } });
+      loginWithRedirect({ appState: { returnTo }, authorizationParams: { ui_locales: lang } });
     } else {
-      loginWithRedirect();
+      loginWithRedirect({ authorizationParams: { ui_locales: lang } });
     }
   }, [isLoading, isAuthenticated, loginWithRedirect]);
 
@@ -34,9 +34,9 @@ export default function Login() {
     const returnTo = sessionStorage.getItem("junni_return_to");
     if (returnTo) {
       sessionStorage.removeItem("junni_return_to");
-      loginWithRedirect({ appState: { returnTo } });
+      loginWithRedirect({ appState: { returnTo }, authorizationParams: { ui_locales: lang } });
     } else {
-      loginWithRedirect();
+      loginWithRedirect({ authorizationParams: { ui_locales: lang } });
     }
   };
 

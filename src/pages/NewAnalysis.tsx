@@ -111,9 +111,9 @@ const GROUP_LABEL_KEY: Record<string, string> = {
 
 const FIELDS = FIELD_GROUPS.flatMap(g => g.fields);
 
-function fmtNum(v: number | null | undefined): string {
+function fmtNum(v: number | null | undefined, lang = "en"): string {
   if (v === null || v === undefined) return "";
-  return Number(v).toLocaleString("en-CA", { maximumFractionDigits: 0 });
+  return Number(v).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA", { maximumFractionDigits: 0 });
 }
 
 function parseNum(s: string): number | null {
@@ -495,10 +495,10 @@ export default function NewAnalysis() {
     const initEdits: Record<number, Record<string, string>> = {};
     fr.forEach((r, i) => {
       initEdits[i] = {};
-      FIELDS.forEach(({ key }) => { initEdits[i][key] = fmtNum(r[key]); });
+      FIELDS.forEach(({ key }) => { initEdits[i][key] = fmtNum(r[key], lang); });
     });
     setEdits(initEdits);
-    setCapCash(prev => prev !== "" ? prev : (initEdits[0]?.["cash"] ?? fmtNum(rows[0]?.cash) ?? ""));
+    setCapCash(prev => prev !== "" ? prev : (initEdits[0]?.["cash"] ?? fmtNum(rows[0]?.cash, lang) ?? ""));
     setStep(3);
   }
 
@@ -599,7 +599,7 @@ export default function NewAnalysis() {
       const rowEdits = edits[i] || {};
       const values: Record<string, number | null> = {};
       FIELDS.forEach(({ key }) => {
-        values[key] = parseNum(rowEdits[key] ?? fmtNum(row[key]));
+        values[key] = parseNum(rowEdits[key] ?? fmtNum(row[key], lang));
       });
 
       if (row.id) {
@@ -628,8 +628,8 @@ export default function NewAnalysis() {
 
     const mrEdits = edits[0] || {};
     const mrRow = finRows[0];
-    const snapshotRevenue = parseNum(mrEdits["revenue"] ?? fmtNum(mrRow?.revenue));
-    const snapshotEbitda = parseNum(mrEdits["ebitda"] ?? fmtNum(mrRow?.ebitda));
+    const snapshotRevenue = parseNum(mrEdits["revenue"] ?? fmtNum(mrRow?.revenue, lang));
+    const snapshotEbitda = parseNum(mrEdits["ebitda"] ?? fmtNum(mrRow?.ebitda, lang));
 
     const { error: dealUpdateErr } = await supabase
       .from("deals")
@@ -1442,7 +1442,7 @@ export default function NewAnalysis() {
                   display: "flex", alignItems: "center", gap: 10,
                 }}>
                   <span style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 16 }}>
-                    FY{row.fiscal_year}
+                    {t("common.fyPrefix")}{row.fiscal_year}
                   </span>
                   {rowIdx === 0 && (
                     <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.65 }}>{t("newAnalysis.mostRecent")}</span>
@@ -1573,7 +1573,7 @@ export default function NewAnalysis() {
                     {!sourcesRows.some(r => r.label === "New loan facility (this request)" || r.label === "Nouvelle facilité de prêt (cette demande)") && (
                       <button type="button"
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", marginBottom: 10, display: "inline-block" }}
-                        onClick={() => setSourcesRows(prev => [...prev, { label: t("newAnalysis.defaultLoanLabel"), amount: fmtNum(parseNum(amountRequested) ?? 0) }])}>
+                        onClick={() => setSourcesRows(prev => [...prev, { label: t("newAnalysis.defaultLoanLabel"), amount: fmtNum(parseNum(amountRequested) ?? 0, lang) }])}>
                         {t("newAnalysis.newLoanFacilityBtn")} ({fmtAmt(parseNum(amountRequested) ?? 0)})
                       </button>
                     )}
@@ -1648,7 +1648,7 @@ export default function NewAnalysis() {
                     const sortedRows = [...capItemRows].map((r, i) => ({ ...r, origIdx: i }))
                       .sort((a, b) => (CAP_CATEGORY_ORDER[a.category] ?? 99) - (CAP_CATEGORY_ORDER[b.category] ?? 99));
                     const totalCap = capItemRows.reduce((s, r) => s + (parseNum(r.amount) ?? 0), 0);
-                    const ebitdaStr = edits[0]?.["ebitda"] ?? fmtNum(finRows[0]?.ebitda);
+                    const ebitdaStr = edits[0]?.["ebitda"] ?? fmtNum(finRows[0]?.ebitda, lang);
                     const ebitdaVal = parseNum(ebitdaStr ?? "");
                     const hasEbitda = ebitdaVal !== null && ebitdaVal > 0;
                     const totalDebt = capItemRows.filter(r => DEBT_CATEGORIES.includes(r.category)).reduce((s, r) => s + (parseNum(r.amount) ?? 0), 0);
@@ -1765,7 +1765,7 @@ export default function NewAnalysis() {
                     <div style={{ padding: "10px 18px", borderTop: `1px solid ${BORDER}` }}>
                       <button type="button"
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", display: "inline-block" }}
-                        onClick={() => setCapItemRows(prev => [...prev, { category: "Senior Debt", label: t("newAnalysis.defaultFacilityLabel"), amount: fmtNum(parseNum(amountRequested) ?? 0), rate: "", notes: "" }])}>
+                        onClick={() => setCapItemRows(prev => [...prev, { category: "Senior Debt", label: t("newAnalysis.defaultFacilityLabel"), amount: fmtNum(parseNum(amountRequested) ?? 0, lang), rate: "", notes: "" }])}>
                         {t("newAnalysis.newFacilityCapBtn")} ({fmtAmt(parseNum(amountRequested) ?? 0)})
                       </button>
                     </div>
@@ -1775,7 +1775,7 @@ export default function NewAnalysis() {
                     <div style={{ padding: "10px 18px", borderTop: `1px solid ${BORDER}` }}>
                       <button type="button"
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", display: "inline-block" }}
-                        onClick={() => setCapItemRows(prev => [...prev, { category: "Common Equity", label: t("newAnalysis.defaultEquityLabel"), amount: fmtNum(parseNum(edits[0]?.["equity"] ?? "") ?? 0), rate: "", notes: "" }])}>
+                        onClick={() => setCapItemRows(prev => [...prev, { category: "Common Equity", label: t("newAnalysis.defaultEquityLabel"), amount: fmtNum(parseNum(edits[0]?.["equity"] ?? "") ?? 0, lang), rate: "", notes: "" }])}>
                         {t("newAnalysis.commonEquityBtn")} ({fmtAmt(parseNum(edits[0]?.["equity"] ?? "") ?? 0)})
                       </button>
                     </div>

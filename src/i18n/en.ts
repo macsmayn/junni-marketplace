@@ -5,6 +5,7 @@ const en: Record<string, string> = {
   "common.back":    "Back",
   "common.close":   "Close",
   "common.loading": "Loading…",
+  "common.fyPrefix": "FY",
 
   // Navigation
   "nav.back":       "Back",
@@ -1378,6 +1379,20 @@ const en: Record<string, string> = {
   "billing.exportBtn":   "Export all data",
   "billing.exporting":   "Exporting…",
   "billing.exportError": "Export failed. Please try again.",
+
+  // FinancialReview
+  "financialReview.additionalContext": "Additional Context & Annotations",
+  "financialReview.general":           "General",
+
+  // DealDetail
+  "dealDetail.keyFinancialRatios":      "Key Financial Ratios",
+  "dealDetail.fromConfirmedStatements": "From confirmed financial statements",
+  "dealDetail.yearOverYear":            "Year-over-Year",
+  "dealDetail.financialRatios":         "Financial Ratios",
+
+  // Memo — additional
+  "memo.sectorFallback": "Sector",
+  "memo.notMeaningful":  "n/m",
 };
 
 export default en;

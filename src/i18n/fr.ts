@@ -5,6 +5,7 @@ const fr: Record<string, string> = {
   "common.back":    "Retour",
   "common.close":   "Fermer",
   "common.loading": "Chargement…",
+  "common.fyPrefix": "Année fiscale ",
 
   // Navigation
   "nav.back":       "Retour",
@@ -1378,6 +1379,20 @@ const fr: Record<string, string> = {
   "billing.exportBtn":   "Exporter toutes les données",
   "billing.exporting":   "Exportation…",
   "billing.exportError": "L'exportation a échoué. Veuillez réessayer.",
+
+  // FinancialReview
+  "financialReview.additionalContext": "Contexte additionnel et annotations",
+  "financialReview.general":           "Général",
+
+  // DealDetail
+  "dealDetail.keyFinancialRatios":      "Ratios financiers clés",
+  "dealDetail.fromConfirmedStatements": "D'après les états financiers confirmés",
+  "dealDetail.yearOverYear":            "D'une année à l'autre",
+  "dealDetail.financialRatios":         "Ratios financiers",
+
+  // Mémo — supplémentaire
+  "memo.sectorFallback": "Secteur",
+  "memo.notMeaningful":  "s.o.",
 };
 
 export default fr;

@@ -57,6 +57,18 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, secretKey);
 
+    // ── Resolve language from request body or Accept-Language header ───────────
+    let resolvedLanguage: string | null = null;
+    try {
+      const body = await req.clone().json();
+      if (body.language === 'en' || body.language === 'fr') resolvedLanguage = body.language;
+    } catch {}
+    if (!resolvedLanguage) {
+      const acceptLang = req.headers.get('Accept-Language') ?? '';
+      resolvedLanguage = acceptLang.startsWith('fr') ? 'fr' : 'en';
+    }
+    // ── End language resolution ────────────────────────────────────────────────
+
     // ── Caller verification via Auth0 /userinfo ────────────────────────────────
     // The anon key travels in Authorization (for Supabase's verify_jwt gate).
     // The caller's Auth0 ID token travels in X-Auth0-Token, verified here via
@@ -149,6 +161,7 @@ Deno.serve(async (req: Request) => {
         auth0_id: callerSub,
         email: callerEmail,
         active_org_id: inviteOrgId,
+        language: resolvedLanguage,
       };
       // Only write full_name if Auth0 provided a real name (not the email echoed back)
       if (callerName && callerName !== callerEmail) {
@@ -314,6 +327,7 @@ Deno.serve(async (req: Request) => {
       auth0_id: callerSub,
       email: callerEmail,
       active_org_id: orgId,
+      language: resolvedLanguage,
     };
     if (callerName) userPayload.full_name = callerName;
 

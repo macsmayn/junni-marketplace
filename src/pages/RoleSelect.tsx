@@ -2,10 +2,12 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase, setSupabaseAuthToken, invokeFunction } from '../lib/supabase';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export default function RoleSelect() {
   const [, setLocation] = useLocation();
   const { isLoading, user, getIdTokenClaims } = useAuth0();
+  const { lang } = useLanguage();
   const [checkingAdmin, setCheckingAdmin] = useState(true);
   const [readError, setReadError] = useState(false);
   const [provisionError, setProvisionError] = useState(false);
@@ -23,7 +25,7 @@ export default function RoleSelect() {
 
       // Provision the user atomically via edge function on every login.
       // Idempotent: returns already_provisioned:true immediately if org_id is already set.
-      const { data: provisionData, error: provisionErr } = await invokeFunction("provision-user", {});
+      const { data: provisionData, error: provisionErr } = await invokeFunction("provision-user", { language: lang });
       if (provisionErr) {
         console.error('[RoleSelect] provision-user failed:', provisionErr, 'data:', provisionData);
         setProvisionError(true);

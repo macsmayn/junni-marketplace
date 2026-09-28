@@ -908,14 +908,14 @@ export default function FinancialReview() {
         )}
 
         <div className="annotations-section">
-          <h3>Additional Context &amp; Annotations</h3>
+          <h3>{t("financialReview.additionalContext")}</h3>
 
           {annotations.length > 0 && (
             <div className="annotations-list">
               {annotations.map(ann => (
                 <div key={ann.id} className="annotation-item">
                   <div className="annotation-meta">
-                    {ann.fiscal_year ? `FY${ann.fiscal_year}` : "General"} · {new Date(ann.created_at).toLocaleDateString("en-CA")}
+                    {ann.fiscal_year ? `${t("common.fyPrefix")}${ann.fiscal_year}` : t("financialReview.general")} · {new Date(ann.created_at).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA")}
                   </div>
                   <div className="annotation-note">{ann.note}</div>
                 </div>
@@ -930,9 +930,9 @@ export default function FinancialReview() {
                 value={newNoteYear}
                 onChange={e => setNewNoteYear(e.target.value)}
               >
-                <option value="general">General</option>
+                <option value="general">{t("financialReview.general")}</option>
                 {financials.map(f => (
-                  <option key={f.id} value={String(f.fiscal_year)}>FY{f.fiscal_year}</option>
+                  <option key={f.id} value={String(f.fiscal_year)}>{t("common.fyPrefix")}{f.fiscal_year}</option>
                 ))}
               </select>
             </div>

@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { useLocation } from "wouter";
+import { useLanguage } from "../contexts/LanguageContext";
 
 /**
  * Home page — pixel-perfect conversion of Home.html (Junni Marketplace).
@@ -18,8 +19,8 @@ const DASHBOARD_MOCKUP = "/dashboard-mockup.png";
 export default function Home() {
   const { loginWithRedirect, isAuthenticated } = useAuth0();
   const [, setLocation] = useLocation();
+  const { lang, setLang } = useLanguage();
   const [scrolled, setScrolled] = useState(false);
-  const [lang, setLang] = useState<"en" | "fr">("en");
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 100);
@@ -65,7 +66,7 @@ export default function Home() {
             </button>
           ) : (
             <button
-              onClick={() => loginWithRedirect()}
+              onClick={() => loginWithRedirect({ authorizationParams: { ui_locales: lang } })}
               className="btn btn-ghost"
               style={{ background: "none", border: "1px solid var(--border)", cursor: "pointer", textDecoration: "none", padding: "8px 16px", borderRadius: "8px", fontSize: "13px", fontWeight: "500", color: "var(--text-secondary)" }}
             >

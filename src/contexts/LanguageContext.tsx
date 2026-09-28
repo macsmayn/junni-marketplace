@@ -8,6 +8,17 @@ type Lang = "en" | "fr";
 
 const DICTS: Record<Lang, Record<string, string>> = { en, fr };
 
+const LANG_KEY = "junni_lang";
+
+function detectLang(): Lang {
+  try {
+    const stored = localStorage.getItem(LANG_KEY);
+    if (stored === "fr" || stored === "en") return stored;
+  } catch {}
+  if (typeof navigator !== "undefined" && navigator.language?.startsWith("fr")) return "fr";
+  return "en";
+}
+
 interface LanguageContextValue {
   lang:    Lang;
   setLang: (l: Lang) => void;
@@ -22,9 +33,9 @@ const LanguageContext = createContext<LanguageContextValue>({
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, user } = useAuth0();
-  const [lang, setLangState] = useState<Lang>("en");
+  const [lang, setLangState] = useState<Lang>(detectLang);
 
-  // Read the user's stored language preference on auth
+  // DB takes priority: if user has a stored preference, override the detected value
   useEffect(() => {
     if (!isAuthenticated || !user?.sub) return;
     supabase
@@ -33,14 +44,16 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       .eq("auth0_id", user.sub)
       .maybeSingle()
       .then(({ data }) => {
-        if (data?.language === "fr") setLangState("fr");
+        if (data?.language === "fr" || data?.language === "en") {
+          setLangState(data.language as Lang);
+        }
       });
   }, [isAuthenticated, user?.sub]);
 
   const setLang = (l: Lang) => {
-    setLangState(l); // instant local update
+    setLangState(l);
+    try { localStorage.setItem(LANG_KEY, l); } catch {}
     if (!user?.sub) return;
-    // Persist in background — failure is non-fatal
     supabase
       .from("users")
       .update({ language: l })

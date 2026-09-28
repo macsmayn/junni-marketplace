@@ -619,7 +619,7 @@ function pdfBenchmark(data: MemoData, t: (k: string) => string, lang: string, fm
 
   // ── Canada sub-section ──────────────────────────────────────────────────
   if (hasCsbfp) {
-    const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
+    const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || t('memo.sectorFallback');
     const drPct  = (csbfp!.defaultRate * 100).toFixed(1) + '%';
     const lrPct  = (csbfp!.lossRate   * 100).toFixed(1) + '%';
     const drDenom = nLoans(csbfp!.totalLoans);
@@ -682,7 +682,7 @@ function pdfBenchmark(data: MemoData, t: (k: string) => string, lang: string, fm
   // ── US sub-section ──────────────────────────────────────────────────────
   if (hasSba) {
     const { base, stress, totalN } = bm!;
-    const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
+    const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || t('memo.sectorFallback');
     const dealSB    = sbaBand(data.deal.amount_requested ?? 0);
     const dealTB    = sbaTermBand(data.deal.term_months ?? 0, lang);
     const baseLGD   = Math.round(base!.sector!.lgd  * 100);
@@ -866,9 +866,9 @@ function pdfCapitalization(data: MemoData, t: (k: string) => string, fmt: (n: nu
   const capTable = { table: { widths: colW, headerRows: 1, body: [hdr, ...allRows] }, layout: thinLayout, margin: [0, 0, 0, 12] };
 
   const creditMetrics: Array<{ label: string; value: string }> = [
-    { label: t('memo.capSeniorDebtEbitda'),  value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal).toFixed(2)}x` : 'n/m' },
-    { label: t('memo.capTotalDebtEbitda'),   value: hasEbitda ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : 'n/m' },
-    { label: t('memo.capNetDebtEbitda'),     value: hasEbitda ? `${(netDebt   / ebitdaVal).toFixed(2)}x` : 'n/m' },
+    { label: t('memo.capSeniorDebtEbitda'),  value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal).toFixed(2)}x` : t('memo.notMeaningful') },
+    { label: t('memo.capTotalDebtEbitda'),   value: hasEbitda ? `${(totalDebt / ebitdaVal).toFixed(2)}x` : t('memo.notMeaningful') },
+    { label: t('memo.capNetDebtEbitda'),     value: hasEbitda ? `${(netDebt   / ebitdaVal).toFixed(2)}x` : t('memo.notMeaningful') },
     ...(rl != null ? [{ label: t('memo.capRevolverLimit'), value: fmt(rl) }] : []),
     { label: rl == null ? t('memo.capAvailLiqCashOnly') : t('memo.capAvailLiq'), value: fmt(availLiq) },
     evProv != null
@@ -1628,7 +1628,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
 
       // ── Canada sub-section ──
       if (hasCsbfpW) {
-        const cIndLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
+        const cIndLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || t('memo.sectorFallback');
         const drPct  = (csbfp!.defaultRate * 100).toFixed(1) + '%';
         const lrPct  = (csbfp!.lossRate   * 100).toFixed(1) + '%';
         const drDenom = nLoans(csbfp!.totalLoans);
@@ -1683,7 +1683,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
       // ── US sub-section ──
       if (hasSbaW) {
         const { base, stress, totalN } = bmW!;
-        const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Sector';
+        const industryLabel = (data.deal.industry ?? '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || t('memo.sectorFallback');
         const baseLGD   = Math.round(base!.sector!.lgd  * 100);
         const stressLGD = Math.round(stress!.sector!.lgd * 100);
         const dealSB    = sbaBand(data.deal.amount_requested ?? 0);
@@ -1802,9 +1802,9 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
     capRows.push(wTotalRow(totalRow, capColsW, 'E8E2D9'));
 
     const creditMetrics: Array<{ label: string; value: string }> = [
-      { label: t('memo.capSeniorDebtEbitda'),  value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt/ebitdaVal).toFixed(2)}x` : 'n/m' },
-      { label: t('memo.capTotalDebtEbitda'),   value: hasEbitda ? `${(totalDebt/ebitdaVal).toFixed(2)}x` : 'n/m' },
-      { label: t('memo.capNetDebtEbitda'),     value: hasEbitda ? `${(netDebt/ebitdaVal).toFixed(2)}x` : 'n/m' },
+      { label: t('memo.capSeniorDebtEbitda'),  value: hasEbitda && seniorDebt > 0 ? `${(seniorDebt/ebitdaVal).toFixed(2)}x` : t('memo.notMeaningful') },
+      { label: t('memo.capTotalDebtEbitda'),   value: hasEbitda ? `${(totalDebt/ebitdaVal).toFixed(2)}x` : t('memo.notMeaningful') },
+      { label: t('memo.capNetDebtEbitda'),     value: hasEbitda ? `${(netDebt/ebitdaVal).toFixed(2)}x` : t('memo.notMeaningful') },
       ...(rl != null ? [{ label: t('memo.capRevolverLimit'), value: fmt(rl) }] : []),
       { label: rl == null ? t('memo.capAvailLiqCashOnly') : t('memo.capAvailLiq'), value: fmt(availLiq) },
       evProv != null ? { label: t('memo.capEvProvided'), value: fmt(evProv) }
