@@ -23,9 +23,9 @@ export default function Login() {
     const returnTo = sessionStorage.getItem("junni_return_to");
     if (returnTo) {
       sessionStorage.removeItem("junni_return_to");
-      loginWithRedirect({ appState: { returnTo }, authorizationParams: { ui_locales: lang } });
+      loginWithRedirect({ appState: { returnTo }, authorizationParams: { ui_locales: lang === "fr" ? "fr-CA" : "en" } });
     } else {
-      loginWithRedirect({ authorizationParams: { ui_locales: lang } });
+      loginWithRedirect({ authorizationParams: { ui_locales: lang === "fr" ? "fr-CA" : "en" } });
     }
   }, [isLoading, isAuthenticated, loginWithRedirect]);
 
@@ -34,9 +34,9 @@ export default function Login() {
     const returnTo = sessionStorage.getItem("junni_return_to");
     if (returnTo) {
       sessionStorage.removeItem("junni_return_to");
-      loginWithRedirect({ appState: { returnTo }, authorizationParams: { ui_locales: lang } });
+      loginWithRedirect({ appState: { returnTo }, authorizationParams: { ui_locales: lang === "fr" ? "fr-CA" : "en" } });
     } else {
-      loginWithRedirect({ authorizationParams: { ui_locales: lang } });
+      loginWithRedirect({ authorizationParams: { ui_locales: lang === "fr" ? "fr-CA" : "en" } });
     }
   };
 

@@ -66,7 +66,7 @@ export default function Home() {
             </button>
           ) : (
             <button
-              onClick={() => loginWithRedirect({ authorizationParams: { ui_locales: lang } })}
+              onClick={() => loginWithRedirect({ authorizationParams: { ui_locales: lang === "fr" ? "fr-CA" : "en" } })}
               className="btn btn-ghost"
               style={{ background: "none", border: "1px solid var(--border)", cursor: "pointer", textDecoration: "none", padding: "8px 16px", borderRadius: "8px", fontSize: "13px", fontWeight: "500", color: "var(--text-secondary)" }}
             >
