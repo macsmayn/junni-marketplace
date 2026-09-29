@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pricing · Junni</title>
+<meta name="description" content="Junni pricing for lending teams. Solo from $500 CAD a month for 20 analyses, Growth from $750 for 50, and Enterprise by contract. Every plan includes a 14-day trial.">
+<link rel="canonical" href="https://junni.ca/pricing.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Junni">
+<meta property="og:locale" content="en_CA">
+<meta property="og:locale:alternate" content="fr_CA">
+<meta property="og:url" content="https://junni.ca/pricing.html">
+<meta property="og:title" content="Pricing · Junni">
+<meta property="og:description" content="One subscription per lending team, priced by volume. Every plan includes a 14-day trial.">
+<meta property="og:image" content="https://junni.ca/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Junni">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.png" sizes="64x64" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,800;9..144,900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="junni.css">
+</head>
+<body id="top">
+
+<header class="hdr">
+  <div class="wrap hdr-in">
+    <a class="brand" href="index.html">Junni</a>
+    <nav class="hdr-nav">
+      <a class="hdr-link" href="pricing.html" aria-current="page" data-t="nav.pricing">Pricing</a>
+      <a class="hdr-link" href="https://app.junni.ca/login" data-t="nav.login">Log in</a>
+      <div class="lang">
+        <button type="button" data-lang="en" aria-pressed="true" aria-label="English">EN</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" data-lang="fr" aria-pressed="false" aria-label="Français">FR</button>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <section style="padding-bottom:clamp(30px,4vw,48px)">
+    <div class="wrap">
+      <h1 style="max-width:16ch" data-t="pr.h1">Priced per lending team, by volume</h1>
+      <p class="lede" style="margin-top:22px" data-t="pr.lede">One subscription covers your whole team. Every plan includes a 14-day trial.</p>
+    </div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="wrap">
+
+      <div class="toggle-row">
+        <div class="toggle" role="group" aria-label="Billing period">
+          <button type="button" id="btn-monthly" data-period="monthly" aria-pressed="true" data-t="pr.monthly">Monthly</button>
+          <button type="button" id="btn-annual" data-period="annual" aria-pressed="false" data-t="pr.annual">Annual</button>
+        </div>
+        <span class="save" id="save-badge" hidden data-t="pr.save">2 months free</span>
+      </div>
+
+      <div class="plans">
+
+      <div class="plan">
+        <div>
+          <div class="plan-name" data-t="pr.solo">Solo</div>
+          <div class="plan-seats" data-t="pr.solo_seats">Up to 3 people</div>
+        </div>
+        <div>
+          <div class="plan-price"><span class="p-monthly" data-t="pr.solo_m">$500</span><span class="p-annual" hidden data-t="pr.solo_a">$5,000</span></div>
+          <div class="plan-per"><span class="p-monthly" data-t="pr.per_m">CAD per month</span><span class="p-annual" hidden data-t="pr.solo_eq">about $417 a month</span></div>
+        </div>
+        <div class="plan-detail" data-t="pr.solo_d"><b>20 analyses a month.</b></div>
+        <div class="plan-cta"><a class="btn-ghost" href="https://app.junni.ca/login"><span data-t="pr.start">Start trial</span> <span aria-hidden="true">&rarr;</span></a></div>
+      </div>
+
+      <div class="plan">
+        <div>
+          <div class="plan-name" data-t="pr.growth">Growth</div>
+          <div class="plan-seats" data-t="pr.growth_seats">Up to 10 people</div>
+        </div>
+        <div>
+          <div class="plan-price"><span class="p-monthly" data-t="pr.growth_m">$750</span><span class="p-annual" hidden data-t="pr.growth_a">$7,500</span></div>
+          <div class="plan-per"><span class="p-monthly" data-t="pr.per_m">CAD per month</span><span class="p-annual" hidden data-t="pr.growth_eq">about $625 a month</span></div>
+        </div>
+        <div class="plan-detail" data-t="pr.growth_d"><b>50 analyses a month.</b></div>
+        <div class="plan-cta"><a class="btn-ghost" href="https://app.junni.ca/login"><span data-t="pr.start">Start trial</span> <span aria-hidden="true">&rarr;</span></a></div>
+      </div>
+
+      <div class="plan">
+        <div>
+          <div class="plan-name" data-t="pr.ent">Enterprise</div>
+          <div class="plan-seats" data-t="pr.ent_seats">Unlimited people</div>
+        </div>
+        <div>
+          <div class="plan-price" data-t="pr.ent_p">From $1,500</div>
+          <div class="plan-per"><span class="p-monthly" data-t="pr.per_m">CAD per month</span><span class="p-annual" hidden data-t="pr.ent_a">CAD per month, billed annually</span></div>
+        </div>
+        <div class="plan-detail" data-t="pr.ent_d"><b>Volume set by contract.</b></div>
+        <div class="plan-cta"><a class="btn-ghost" href="mailto:info@junni.ca?subject=Junni%20Enterprise"><span data-t="pr.talk">Talk to us</span> <span aria-hidden="true">&rarr;</span></a></div>
+      </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="eyebrow"><b data-t="inc.eyebrow">In every plan</b><i aria-hidden="true"></i></div>
+      <div class="inc">
+        <div><h3 data-t="inc.1h">Statement spreading</h3><p data-t="inc.1b"></p></div>
+        <div><h3 data-t="inc.2h">Scoring across 21 industries</h3><p data-t="inc.2b"></p></div>
+        <div><h3 data-t="inc.3h">Historical benchmarks</h3><p data-t="inc.3b"></p></div>
+        <div><h3 data-t="inc.4h">Diligence questions</h3><p data-t="inc.4b"></p></div>
+        <div><h3 data-t="inc.5h">Memo export</h3><p data-t="inc.5b"></p></div>
+        <div><h3 data-t="inc.6h">English and French</h3><p data-t="inc.6b"></p></div>
+        <div><h3 data-t="inc.7h">Team accounts</h3><p data-t="inc.7b"></p></div>
+        <div><h3 data-t="inc.8h">Canadian hosting</h3><p data-t="inc.8b"></p></div>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top:0">
+    <div class="wrap">
+      <div class="eyebrow"><b data-t="faq.eyebrow">Questions</b><i aria-hidden="true"></i></div>
+      <div class="faq">
+        <details><summary data-t="faq.q1">What counts as an analysis?</summary><p data-t="faq.a1"></p></details>
+        <details><summary data-t="faq.q2">What happens when we go over?</summary><p data-t="faq.a2"></p></details>
+        <details><summary data-t="faq.q3">Do you need a credit card for the trial?</summary><p data-t="faq.a3"></p></details>
+        <details><summary data-t="faq.q4">Does Junni decide whether to lend?</summary><p data-t="faq.a4"></p></details>
+        <details><summary data-t="faq.q5">Where is our data held?</summary><p data-t="faq.a5"></p></details>
+        <details><summary data-t="faq.q6">Can we cancel?</summary><p data-t="faq.a6"></p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" style="padding:0">
+    <div class="wrap">
+      <h2 style="max-width:16ch" data-t="pr.cta_h">Start with your own file</h2>
+      <p class="body" style="margin-top:20px;max-width:48ch" data-t="pr.cta_p">The fastest way to judge this is to run a deal you already know the answer to.</p>
+      <div style="margin-top:36px">
+        <a class="btn" href="https://app.junni.ca/login"><span data-t="nav.launch">Launch app</span> <span aria-hidden="true">&rarr;</span></a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="ftr">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="index.html">Junni</a>
+      <div class="ftr-meta">
+        <span data-t="ftr.legal">Junni Technologies Inc. · Montréal, QC</span><br>
+        <span data-t="ftr.rights">© 2026 · All rights reserved</span>
+      </div>
+    </div>
+    <div>
+      <div class="ftr-links">
+        <a href="pricing.html" data-t="nav.pricing">Pricing</a>
+        <a href="https://app.junni.ca/privacy" data-t="ftr.privacy">Privacy</a>
+        <a href="https://app.junni.ca/terms" data-t="ftr.terms">Terms</a>
+        <a href="mailto:info@junni.ca" data-t="ftr.contact">Contact</a>
+      </div>
+      <div style="margin-top:18px">
+        <a class="ftr-cta" href="https://app.junni.ca/login"><span data-t="nav.launch">Launch app</span> <span aria-hidden="true">&rarr;</span></a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script src="junni.js"></script>
+<script>
+(function () {
+  var period = "monthly";
+  function render() {
+    document.querySelectorAll(".p-monthly").forEach(function (el) { el.hidden = period !== "monthly"; });
+    document.querySelectorAll(".p-annual").forEach(function (el) { el.hidden = period !== "annual"; });
+    document.getElementById("save-badge").hidden = period !== "annual";
+    document.querySelectorAll(".toggle button").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.period === period));
+    });
+  }
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll(".toggle button").forEach(function (b) {
+      b.addEventListener("click", function () { period = b.dataset.period; render(); });
+    });
+    render();
+  });
+  window.onJunniLang = render;
+})();
+</script>
+</body>
+</html>

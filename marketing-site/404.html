@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page not found · Junni</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.png" sizes="64x64" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,800;9..144,900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="junni.css">
+</head>
+<body>
+<header class="hdr">
+  <div class="wrap hdr-in">
+    <a class="brand" href="index.html">Junni</a>
+    <nav class="hdr-nav">
+      <a class="hdr-link" href="pricing.html" data-t="nav.pricing">Pricing</a>
+      <a class="hdr-link" href="https://app.junni.ca/login" data-t="nav.login">Log in</a>
+      <div class="lang">
+        <button type="button" data-lang="en" aria-pressed="true" aria-label="English">EN</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" data-lang="fr" aria-pressed="false" aria-label="Français">FR</button>
+      </div>
+    </nav>
+  </div>
+</header>
+<main>
+  <section style="padding-top:clamp(70px,11vw,150px);padding-bottom:clamp(70px,11vw,150px)">
+    <div class="wrap">
+      <div class="step-n" style="font-size:15px">404</div>
+      <h1 style="margin-top:14px;max-width:14ch" id="h">This page doesn't exist</h1>
+      <p class="lede" style="margin-top:22px" id="p">The link may be out of date, or the address may have a typo in it.</p>
+      <div style="margin-top:34px;display:flex;flex-wrap:wrap;gap:26px;align-items:center">
+        <a class="btn" href="index.html"><span id="b1">Back to the home page</span> <span aria-hidden="true">&rarr;</span></a>
+        <a class="btn-ghost" href="pricing.html" data-t="nav.pricing">Pricing</a>
+      </div>
+    </div>
+  </section>
+</main>
+<footer class="ftr">
+  <div class="wrap">
+    <div>
+      <a class="brand" href="index.html">Junni</a>
+      <div class="ftr-meta"><span data-t="ftr.legal">Junni Technologies Inc. · Montréal, QC</span><br><span data-t="ftr.rights">© 2026 · All rights reserved</span></div>
+    </div>
+    <div class="ftr-links">
+      <a href="pricing.html" data-t="nav.pricing">Pricing</a>
+      <a href="mailto:info@junni.ca" data-t="ftr.contact">Contact</a>
+    </div>
+  </div>
+</footer>
+<script src="junni.js"></script>
+<script>
+window.onJunniLang = function (lang) {
+  var fr = lang === "fr";
+  document.getElementById("h").textContent = fr ? "Cette page n'existe pas" : "This page doesn't exist";
+  document.getElementById("p").textContent = fr ? "Le lien est peut-être périmé, ou l'adresse contient une erreur." : "The link may be out of date, or the address may have a typo in it.";
+  document.getElementById("b1").textContent = fr ? "Retour à l'accueil" : "Back to the home page";
+};
+</script>
+</body>
+</html>
