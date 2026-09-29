@@ -935,6 +935,49 @@ Deno.serve(async (req: Request) => {
             throw new Error(`billing_customers delete: ${billingDelErr.message}`);
           }
 
+          // e2. Delete tables with RESTRICT FKs on users.id (invited_by / changed_by /
+          //     created_by). These must be removed before any user rows are deleted.
+          //     Also covers org_id → organizations RESTRICT (if applicable) before step h.
+          const { error: inviteDelErr } = await supabase
+            .from("org_invites")
+            .delete()
+            .eq("org_id", orgId);
+          if (inviteDelErr) {
+            throw new Error(`org_invites delete: ${inviteDelErr.message}`);
+          }
+
+          const { error: metricLogDelErr } = await supabase
+            .from("metric_override_log")
+            .delete()
+            .eq("org_id", orgId);
+          if (metricLogDelErr) {
+            throw new Error(`metric_override_log delete: ${metricLogDelErr.message}`);
+          }
+
+          const { error: thresholdLogDelErr } = await supabase
+            .from("threshold_override_log")
+            .delete()
+            .eq("org_id", orgId);
+          if (thresholdLogDelErr) {
+            throw new Error(`threshold_override_log delete: ${thresholdLogDelErr.message}`);
+          }
+
+          const { error: metricOvrDelErr } = await supabase
+            .from("lender_metric_overrides")
+            .delete()
+            .eq("org_id", orgId);
+          if (metricOvrDelErr) {
+            throw new Error(`lender_metric_overrides delete: ${metricOvrDelErr.message}`);
+          }
+
+          const { error: thresholdOvrDelErr } = await supabase
+            .from("lender_threshold_overrides")
+            .delete()
+            .eq("org_id", orgId);
+          if (thresholdOvrDelErr) {
+            throw new Error(`lender_threshold_overrides delete: ${thresholdOvrDelErr.message}`);
+          }
+
           // f. Delete users whose only org is this one.
           //    Remove their membership first in case the FK is not CASCADE.
           //    Deleting the users row cascades to notifications and lender_profiles.
