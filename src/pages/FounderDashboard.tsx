@@ -5,13 +5,11 @@ import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
 } from 'recharts';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type ItemStatus = 'live' | 'in_progress' | 'waiting' | 'planned' | 'deferred' | 'risk';
-type InvStatus = 'queued' | 'sent' | 'replied' | 'meeting' | 'term' | 'declined' | 'dropped';
 
 interface FounderItem {
   id: string;
@@ -24,16 +22,6 @@ interface FounderItem {
   waiting_since: string | null;
   due_on: string | null;
   needs_confirm: boolean;
-}
-
-interface InvestorRow {
-  id: string;
-  entity: string;
-  contacted_on: string | null;
-  what_sent: string | null;
-  route: string | null;
-  answer: string | null;
-  status: InvStatus;
 }
 
 interface LiveCounts {
@@ -88,13 +76,6 @@ const TIMELINE = [
 ];
 
 const CAL_MONTHS: Array<[number, number]> = [[2026, 8], [2026, 9], [2026, 10], [2026, 11]];
-
-const INV_STATUS_ORDER: InvStatus[] = ['queued', 'sent', 'replied', 'meeting', 'term', 'declined', 'dropped'];
-
-const PIE_COLORS: Record<InvStatus, string> = {
-  queued: '#8A93A3', sent: '#4C6A99', replied: '#D4940A', meeting: '#F0C56A',
-  term: '#1F7A55', declined: '#B4432E', dropped: '#B9AE9C',
-};
 
 const STATUS_CSS: Record<ItemStatus, { bg: string; color: string }> = {
   live:        { bg: '#E4F3EC', color: '#1F7A55' },
@@ -251,14 +232,6 @@ function pct(n: number, d: number): number {
   return d ? Math.round(100 * n / d) : 0;
 }
 
-function downloadCsv(filename: string, rows: string[][]): void {
-  const content = rows.map(r => r.map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([content], { type: 'text/csv' }));
-  a.download = filename;
-  a.click();
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function FounderDashboard() {
@@ -268,7 +241,6 @@ export default function FounderDashboard() {
 
   // Data state
   const [items, setItems] = useState<FounderItem[]>([]);
-  const [investors, setInvestors] = useState<InvestorRow[]>([]);
   const [liveCounts, setLiveCounts] = useState<LiveCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -276,10 +248,6 @@ export default function FounderDashboard() {
   // Items tab UI state
   const [itemFilter, setItemFilter] = useState<string>('all');
   const [itemSaveState, setItemSaveState] = useState<Record<string, 'saved' | 'failed'>>({});
-
-  // Investor tab UI state
-  const [invFilter, setInvFilter] = useState<string>('all');
-  const [invSaveState, setInvSaveState] = useState<Record<string, 'saved' | 'failed'>>({});
 
   // Calendar state
   const [calMonth, setCalMonth] = useState(0);
@@ -292,9 +260,8 @@ export default function FounderDashboard() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [itemsRes, invRes, orgsRes, dealsRes, scoresRes, subsRes, retRes] = await Promise.all([
+      const [itemsRes, orgsRes, dealsRes, scoresRes, subsRes, retRes] = await Promise.all([
         supabase.from('founder_dashboard_items').select('*').order('area').order('sort_order'),
-        supabase.from('investor_pipeline').select('*').order('contacted_on', { ascending: false }),
         supabase.from('organizations').select('id,created_at'),
         supabase.from('deals').select('id,created_at'),
         supabase.from('credit_scores').select('api_cost_cad,input_tokens,output_tokens'),
@@ -303,10 +270,8 @@ export default function FounderDashboard() {
       ]);
 
       if (itemsRes.error) throw itemsRes.error;
-      if (invRes.error) throw invRes.error;
 
       setItems((itemsRes.data as FounderItem[]) ?? []);
-      setInvestors((invRes.data as InvestorRow[]) ?? []);
 
       // Live counts
       const orgs = orgsRes.data ?? [];
@@ -396,34 +361,6 @@ export default function FounderDashboard() {
     if (!error) setItems(prev => prev.filter(it => it.id !== id));
   }
 
-  // ── Investor updates ───────────────────────────────────────────────────────
-
-  async function updateInvestor(id: string, field: keyof InvestorRow, value: unknown, oldValue: unknown) {
-    setInvestors(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
-    const { error } = await supabase.from('investor_pipeline').update({ [field]: value }).eq('id', id);
-    if (error) {
-      setInvestors(prev => prev.map(r => r.id === id ? { ...r, [field]: oldValue } : r));
-      setInvSaveState(s => ({ ...s, [id]: 'failed' }));
-    } else {
-      setInvSaveState(s => ({ ...s, [id]: 'saved' }));
-    }
-    setTimeout(() => setInvSaveState(s => { const n = { ...s }; delete n[id]; return n; }), 2000);
-  }
-
-  async function addInvestor() {
-    const { data, error } = await supabase.from('investor_pipeline')
-      .insert({ entity: 'New investor', status: 'queued', contacted_on: todayStr })
-      .select()
-      .single();
-    if (!error && data) setInvestors(prev => [data as InvestorRow, ...prev]);
-  }
-
-  async function deleteInvestor(id: string, name: string) {
-    if (!window.confirm(t('adminPanel.founderDashboard.confirmDeleteInvestor') + ' ' + name)) return;
-    const { error } = await supabase.from('investor_pipeline').delete().eq('id', id);
-    if (!error) setInvestors(prev => prev.filter(r => r.id !== id));
-  }
-
   // ── Derived values ─────────────────────────────────────────────────────────
 
   const statusLabel = (s: ItemStatus): string => {
@@ -434,19 +371,6 @@ export default function FounderDashboard() {
       planned: t('adminPanel.founderDashboard.statusPlanned'),
       deferred: t('adminPanel.founderDashboard.statusDeferred'),
       risk: t('adminPanel.founderDashboard.statusRisk'),
-    };
-    return map[s] ?? s;
-  };
-
-  const invStatusLabel = (s: InvStatus): string => {
-    const map: Record<InvStatus, string> = {
-      queued: t('adminPanel.founderDashboard.investorStatusQueued'),
-      sent: t('adminPanel.founderDashboard.investorStatusSent'),
-      replied: t('adminPanel.founderDashboard.investorStatusReplied'),
-      meeting: t('adminPanel.founderDashboard.investorStatusMeeting'),
-      term: t('adminPanel.founderDashboard.investorStatusTerm'),
-      declined: t('adminPanel.founderDashboard.investorStatusDeclined'),
-      dropped: t('adminPanel.founderDashboard.investorStatusDropped'),
     };
     return map[s] ?? s;
   };
@@ -467,8 +391,6 @@ export default function FounderDashboard() {
     const liveDone = items.filter(it => it.status === 'live').length;
     const waiting = items.filter(it => it.status === 'waiting');
     const risks = items.filter(it => it.status === 'risk');
-    const contacted = investors.filter(r => r.status !== 'queued' && r.status !== 'dropped').length;
-    const replies = investors.filter(r => ['replied', 'meeting', 'term', 'declined'].includes(r.status)).length;
     const avgCost = liveCounts?.costAvg ?? 0;
     const daysLeft = daysBetween(todayStr, LAUNCH_DATE);
     const areas = [...new Set(items.map(it => it.area))];
@@ -476,7 +398,7 @@ export default function FounderDashboard() {
     return (
       <div>
         {/* KPI row */}
-        <div className="fd-grid fd-g6 fd-section">
+        <div className="fd-grid fd-g3 fd-section">
           <div className="fd-kpi gold">
             <div className="v">{daysLeft}<small style={{ fontSize: 14, fontFamily: 'Inter,sans-serif', fontWeight: 500 }}> {t('adminPanel.founderDashboard.daysLabel')}</small></div>
             <div className="l">{t('adminPanel.founderDashboard.daysToLaunch')}</div>
@@ -486,16 +408,6 @@ export default function FounderDashboard() {
             <div className="v">{pct(liveDone, total)}<small style={{ fontSize: 14, fontFamily: 'Inter,sans-serif' }}>%</small></div>
             <div className="l">{t('adminPanel.founderDashboard.pctLive')}</div>
             <div className="d">{liveDone} / {total}</div>
-          </div>
-          <div className="fd-kpi">
-            <div className="v">{contacted}</div>
-            <div className="l">{t('adminPanel.founderDashboard.investorsContacted')}</div>
-            <div className="d">{investors.length} tracked</div>
-          </div>
-          <div className="fd-kpi">
-            <div className="v">{replies}</div>
-            <div className="l">{t('adminPanel.founderDashboard.investorReplies')}</div>
-            <div className="d">{contacted ? Math.round(100 * replies / contacted) : 0}% reply rate</div>
           </div>
           <div className="fd-kpi">
             <div className="v">${avgCost.toFixed(2)}</div>
@@ -686,141 +598,6 @@ export default function FounderDashboard() {
     );
   }
 
-  function renderInvestors() {
-    const counts: Record<string, number> = {};
-    for (const r of investors) counts[r.status] = (counts[r.status] ?? 0) + 1;
-    const contacted = investors.filter(r => r.status !== 'queued' && r.status !== 'dropped').length;
-    const replies = investors.filter(r => ['replied', 'meeting', 'term', 'declined'].includes(r.status)).length;
-
-    const filtered = invFilter === 'all' ? investors : investors.filter(r => r.status === invFilter);
-
-    // Chart data
-    const byDate: Record<string, number> = {};
-    for (const r of investors) {
-      if (r.status === 'queued') continue;
-      if (!r.contacted_on) continue;
-      byDate[r.contacted_on] = (byDate[r.contacted_on] ?? 0) + 1;
-    }
-    const outreachData = Object.keys(byDate).sort().map(d => ({ date: fmtDate(d), count: byDate[d] }));
-    const statusData = INV_STATUS_ORDER.map(s => ({ name: invStatusLabel(s), value: counts[s] ?? 0 })).filter(d => d.value > 0);
-
-    return (
-      <div>
-        {/* Stats */}
-        <div className="fd-grid fd-g4 fd-section" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-          {[
-            { v: investors.length, l: 'Tracked' },
-            { v: contacted, l: t('adminPanel.founderDashboard.investorsContacted') },
-            { v: replies, l: t('adminPanel.founderDashboard.investorReplies') },
-            { v: contacted ? Math.round(100 * replies / contacted) + '%' : '0%', l: 'Reply rate' },
-          ].map((k, i) => (
-            <div key={i} className="fd-kpi">
-              <div className="v" style={{ fontSize: 22 }}>{k.v}</div>
-              <div className="l">{k.l}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Charts */}
-        <div className="fd-grid fd-g2 fd-section">
-          <div className="fd-card">
-            <h3 style={{ fontSize: 13, marginBottom: 8 }}>{t('adminPanel.founderDashboard.outreachChartTitle')}</h3>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={outreachData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#EFEAE2" />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#1B2B4B" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="fd-card">
-            <h3 style={{ fontSize: 13, marginBottom: 8 }}>{t('adminPanel.founderDashboard.statusChartTitle')}</h3>
-            <ResponsiveContainer width="100%" height={180}>
-              <PieChart>
-                <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} paddingAngle={2}>
-                  {statusData.map((entry, i) => {
-                    const key = INV_STATUS_ORDER.find(s => invStatusLabel(s) === entry.name) ?? 'sent';
-                    return <Cell key={i} fill={PIE_COLORS[key as InvStatus] ?? '#8A93A3'} />;
-                  })}
-                </Pie>
-                <Legend iconSize={9} wrapperStyle={{ fontSize: 11 }} />
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Filters + table */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div className="fd-filters" style={{ marginBottom: 0 }}>
-            <button className={`fd-filter-btn ${invFilter === 'all' ? 'active' : ''}`} onClick={() => setInvFilter('all')}>
-              All {investors.length}
-            </button>
-            {INV_STATUS_ORDER.map(s => (
-              <button key={s} className={`fd-filter-btn ${invFilter === s ? 'active' : ''}`} onClick={() => setInvFilter(s)}>
-                {invStatusLabel(s)} {counts[s] ?? 0}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="fd-add-btn" onClick={addInvestor}>{t('adminPanel.founderDashboard.addInvestor')}</button>
-            <button className="fd-ghost-btn" onClick={() => {
-              const rows: string[][] = [['Entity', 'Contacted', 'What Sent', 'Route', 'Answer', 'Status']];
-              for (const r of investors) rows.push([r.entity, r.contacted_on ?? '', r.what_sent ?? '', r.route ?? '', r.answer ?? '', r.status]);
-              downloadCsv('investor_pipeline.csv', rows);
-            }}>{t('adminPanel.founderDashboard.exportCsv')}</button>
-          </div>
-        </div>
-
-        <div style={{ overflowX: 'auto' }}>
-          <table className="fd-table">
-            <thead>
-              <tr>
-                <th style={{ minWidth: 180 }}>{t('adminPanel.founderDashboard.colEntity')}</th>
-                <th style={{ minWidth: 110 }}>{t('adminPanel.founderDashboard.colContacted')}</th>
-                <th style={{ minWidth: 200 }}>{t('adminPanel.founderDashboard.colWhatSent')}</th>
-                <th style={{ minWidth: 160 }}>{t('adminPanel.founderDashboard.colRoute')}</th>
-                <th style={{ minWidth: 180 }}>{t('adminPanel.founderDashboard.colAnswer')}</th>
-                <th>{t('adminPanel.founderDashboard.colStatus')}</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(r => {
-                const saveS = invSaveState[r.id];
-                return (
-                  <tr key={r.id}>
-                    <td><input className="fd-input" defaultValue={r.entity} onBlur={e => { const v = e.target.value; if (v !== r.entity) updateInvestor(r.id, 'entity', v, r.entity); }} /></td>
-                    <td><input type="date" className="fd-input" defaultValue={r.contacted_on ?? ''} onBlur={e => { const v = e.target.value || null; if (v !== r.contacted_on) updateInvestor(r.id, 'contacted_on', v, r.contacted_on); }} /></td>
-                    <td><input className="fd-input" defaultValue={r.what_sent ?? ''} onBlur={e => { const v = e.target.value || null; if (v !== r.what_sent) updateInvestor(r.id, 'what_sent', v, r.what_sent); }} /></td>
-                    <td><input className="fd-input" defaultValue={r.route ?? ''} onBlur={e => { const v = e.target.value || null; if (v !== r.route) updateInvestor(r.id, 'route', v, r.route); }} /></td>
-                    <td><input className="fd-input" defaultValue={r.answer ?? ''} onBlur={e => { const v = e.target.value || null; if (v !== r.answer) updateInvestor(r.id, 'answer', v, r.answer); }} /></td>
-                    <td>
-                      <select
-                        className="fd-select"
-                        value={r.status}
-                        onChange={e => updateInvestor(r.id, 'status', e.target.value, r.status)}
-                      >
-                        {INV_STATUS_ORDER.map(s => <option key={s} value={s}>{invStatusLabel(s)}</option>)}
-                      </select>
-                    </td>
-                    <td>
-                      {saveS === 'saved' && <span className="fd-saved">{t('adminPanel.founderDashboard.saved')}</span>}
-                      {saveS === 'failed' && <span className="fd-failed">{t('adminPanel.founderDashboard.saveFailed')}</span>}
-                      <button className="fd-del-btn" onClick={() => deleteInvestor(r.id, r.entity)}>×</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  }
-
   function renderLiveCounts() {
     if (!liveCounts) return null;
     const { orgsTotal, orgsLast30, dealsTotal, dealsLast30, scoresTotal, costTotal, costAvg, tokensTotal, subsByStatus, subsByPlan, retentionLog, dealsPerWeek } = liveCounts;
@@ -987,7 +764,6 @@ export default function FounderDashboard() {
   const TABS = [
     { label: t('adminPanel.founderDashboard.tabOverview'),    render: renderOverview },
     { label: t('adminPanel.founderDashboard.tabItems'),       render: renderItems },
-    { label: t('adminPanel.founderDashboard.tabInvestors'),   render: renderInvestors },
     { label: t('adminPanel.founderDashboard.tabLiveCounts'),  render: renderLiveCounts },
     { label: t('adminPanel.founderDashboard.tabTimeline'),    render: renderTimeline },
     { label: t('adminPanel.founderDashboard.tabCalendar'),    render: renderCalendar },

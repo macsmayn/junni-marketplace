@@ -7,3 +7,6 @@ dist/
 .DS_Store
 Thumbs.db
 supabase/.temp/
+
+# CSV exports — may contain sensitive data; keep local only
+*.csv
