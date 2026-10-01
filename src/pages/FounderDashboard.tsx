@@ -24,6 +24,19 @@ interface FounderItem {
   needs_confirm: boolean;
 }
 
+type ImpStatus = 'not_started' | 'in_progress' | 'done' | 'parked';
+
+interface ImprovementRow {
+  id: string;
+  title: string;
+  description: string | null;
+  tier: number | null;
+  category: string | null;
+  status: ImpStatus;
+  rationale: string | null;
+  sort_order: number;
+}
+
 interface LiveCounts {
   orgsTotal: number;
   orgsLast30: number;
@@ -85,6 +98,24 @@ const STATUS_CSS: Record<ItemStatus, { bg: string; color: string }> = {
   deferred:    { bg: '#F3F0EA', color: '#7C7262' },
   risk:        { bg: '#F8E6E2', color: '#B4432E' },
 };
+
+const IMP_STATUSES: ImpStatus[] = ['not_started', 'in_progress', 'done', 'parked'];
+
+const IMP_STATUS_CSS: Record<ImpStatus, { bg: string; color: string }> = {
+  not_started: { bg: '#EFF0F2', color: '#5B6472' },
+  in_progress: { bg: '#FBF0D6', color: '#B57F08' },
+  done:        { bg: '#E4F3EC', color: '#1F7A55' },
+  parked:      { bg: '#F3F0EA', color: '#7C7262' },
+};
+
+// Group keys: 1 to 4 are tiers, 0 is the parked (tier null) group.
+const IMP_GROUPS: Array<{ key: number; titleKey: string }> = [
+  { key: 1, titleKey: 'adminPanel.founderDashboard.piTier1' },
+  { key: 2, titleKey: 'adminPanel.founderDashboard.piTier2' },
+  { key: 3, titleKey: 'adminPanel.founderDashboard.piTier3' },
+  { key: 4, titleKey: 'adminPanel.founderDashboard.piTier4' },
+  { key: 0, titleKey: 'adminPanel.founderDashboard.piParked' },
+];
 
 // ── CSS ───────────────────────────────────────────────────────────────────────
 
@@ -198,6 +229,20 @@ const CSS = `
   .cal-cell.pad { background: transparent; border-color: transparent; }
   .cal-cell.today { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
   .cal-event { display: block; margin-top: 2px; background: var(--gold-wash); color: var(--gold-dark); border-radius: 3px; padding: 1px 3px; font-size: 10px; font-weight: 600; line-height: 1.3; word-break: break-word; }
+  .pi-group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 28px 0 10px; padding-bottom: 8px; border-bottom: 2px solid var(--gold); }
+  .pi-group-head:first-child { margin-top: 0; }
+  .pi-group-head h3 { font-family: Fraunces, Georgia, serif; font-weight: 700; font-size: 18px; color: var(--navy); margin: 0; }
+  .pi-group-meta { font-size: 12px; color: var(--ink-3); }
+  .pi-item { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin-bottom: 10px; }
+  .pi-row { display: grid; grid-template-columns: 1fr 180px 160px auto; gap: 10px; align-items: center; }
+  .pi-title { font-family: Fraunces, Georgia, serif; font-weight: 700; font-size: 15px; }
+  .pi-desc { font-size: 13px; color: var(--ink-2); line-height: 1.55; margin: 10px 0 6px; white-space: pre-wrap; }
+  .pi-desc.clamped { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .pi-label { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin: 12px 0 4px; }
+  .pi-textarea { font: inherit; font-size: 13px; line-height: 1.55; width: 100%; box-sizing: border-box; min-height: 130px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); resize: vertical; }
+  .pi-textarea:focus { outline: none; border-color: var(--gold); background: var(--gold-wash); }
+  .pi-toggle { background: none; border: none; color: var(--gold-dark); font-size: 12px; font-weight: 600; cursor: pointer; padding: 0; font-family: Inter, sans-serif; }
+  .pi-toggle:hover { text-decoration: underline; }
   .fd-muted { color: var(--ink-3); }
   .fd-small { font-size: 12px; }
   .fd-loading { color: var(--ink-2); padding: 40px 0; text-align: center; }
@@ -207,6 +252,8 @@ const CSS = `
     .fd-main { padding: 16px 14px 50px; }
     .fd-table { display: block; overflow-x: auto; }
     .ws-row { grid-template-columns: 120px 1fr 40px; }
+    .pi-row { grid-template-columns: 1fr 1fr; }
+    .pi-row > :first-child { grid-column: 1 / -1; }
   }
   @media (max-width: 520px) {
     .fd-g2, .fd-g3, .fd-g4, .fd-g5, .fd-g6 { grid-template-columns: 1fr; }
@@ -249,6 +296,11 @@ export default function FounderDashboard() {
   const [itemFilter, setItemFilter] = useState<string>('all');
   const [itemSaveState, setItemSaveState] = useState<Record<string, 'saved' | 'failed'>>({});
 
+  // Product improvements tab UI state
+  const [improvements, setImprovements] = useState<ImprovementRow[]>([]);
+  const [impExpanded, setImpExpanded] = useState<Record<string, boolean>>({});
+  const [impSaveState, setImpSaveState] = useState<Record<string, 'saved' | 'failed'>>({});
+
   // Calendar state
   const [calMonth, setCalMonth] = useState(0);
 
@@ -260,8 +312,9 @@ export default function FounderDashboard() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [itemsRes, orgsRes, dealsRes, scoresRes, subsRes, retRes] = await Promise.all([
+      const [itemsRes, impRes, orgsRes, dealsRes, scoresRes, subsRes, retRes] = await Promise.all([
         supabase.from('founder_dashboard_items').select('*').order('area').order('sort_order'),
+        supabase.from('product_improvements').select('*').order('sort_order'),
         supabase.from('organizations').select('id,created_at'),
         supabase.from('deals').select('id,created_at'),
         supabase.from('credit_scores').select('api_cost_cad,input_tokens,output_tokens'),
@@ -270,8 +323,10 @@ export default function FounderDashboard() {
       ]);
 
       if (itemsRes.error) throw itemsRes.error;
+      if (impRes.error) throw impRes.error;
 
       setItems((itemsRes.data as FounderItem[]) ?? []);
+      setImprovements((impRes.data as ImprovementRow[]) ?? []);
 
       // Live counts
       const orgs = orgsRes.data ?? [];
@@ -359,6 +414,41 @@ export default function FounderDashboard() {
     if (!window.confirm(t('adminPanel.founderDashboard.confirmDeleteItem'))) return;
     const { error } = await supabase.from('founder_dashboard_items').delete().eq('id', id);
     if (!error) setItems(prev => prev.filter(it => it.id !== id));
+  }
+
+  // ── Product improvement updates ────────────────────────────────────────────
+
+  async function updateImprovement(id: string, field: keyof ImprovementRow, value: unknown, oldValue: unknown) {
+    setImprovements(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    const { error } = await supabase.from('product_improvements').update({ [field]: value }).eq('id', id);
+    if (error) {
+      setImprovements(prev => prev.map(r => r.id === id ? { ...r, [field]: oldValue } : r));
+      setImpSaveState(s => ({ ...s, [id]: 'failed' }));
+    } else {
+      setImpSaveState(s => ({ ...s, [id]: 'saved' }));
+    }
+    setTimeout(() => setImpSaveState(s => { const n = { ...s }; delete n[id]; return n; }), 2000);
+  }
+
+  async function addImprovement(groupKey: number) {
+    const inGroup = improvements.filter(r => (r.tier ?? 0) === groupKey);
+    const nextSort = inGroup.reduce((m, r) => Math.max(m, r.sort_order), groupKey === 0 ? 900 : groupKey * 100) + 10;
+    const { data, error } = await supabase.from('product_improvements')
+      .insert({
+        title: t('adminPanel.founderDashboard.piNewItem'),
+        tier: groupKey === 0 ? null : groupKey,
+        status: groupKey === 0 ? 'parked' : 'not_started',
+        sort_order: nextSort,
+      })
+      .select()
+      .single();
+    if (!error && data) setImprovements(prev => [...prev, data as ImprovementRow].sort((a, b) => a.sort_order - b.sort_order));
+  }
+
+  async function deleteImprovement(id: string) {
+    if (!window.confirm(t('adminPanel.founderDashboard.confirmDeleteItem'))) return;
+    const { error } = await supabase.from('product_improvements').delete().eq('id', id);
+    if (!error) setImprovements(prev => prev.filter(r => r.id !== id));
   }
 
   // ── Derived values ─────────────────────────────────────────────────────────
@@ -598,6 +688,103 @@ export default function FounderDashboard() {
     );
   }
 
+  function impStatusLabel(s: ImpStatus): string {
+    const map: Record<ImpStatus, string> = {
+      not_started: t('adminPanel.founderDashboard.piStatusNotStarted'),
+      in_progress: t('adminPanel.founderDashboard.piStatusInProgress'),
+      done: t('adminPanel.founderDashboard.piStatusDone'),
+      parked: t('adminPanel.founderDashboard.piStatusParked'),
+    };
+    return map[s] ?? s;
+  }
+
+  function renderProductImprovements() {
+    return (
+      <div>
+        {IMP_GROUPS.map(group => {
+          const rows = improvements.filter(r => (r.tier ?? 0) === group.key);
+          const doneCount = rows.filter(r => r.status === 'done').length;
+          return (
+            <div key={group.key}>
+              <div className="pi-group-head">
+                <h3>{t(group.titleKey)}</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span className="pi-group-meta">
+                    {rows.length} {t('adminPanel.founderDashboard.piItemCount')}
+                    {group.key !== 0 && ` · ${doneCount} ${t('adminPanel.founderDashboard.piDoneCount')}`}
+                  </span>
+                  <button className="fd-add-btn" onClick={() => addImprovement(group.key)}>{t('adminPanel.founderDashboard.addItem')}</button>
+                </div>
+              </div>
+
+              {rows.length === 0 && <p className="fd-muted fd-small">{t('adminPanel.founderDashboard.piEmpty')}</p>}
+
+              {rows.map(r => {
+                const css = IMP_STATUS_CSS[r.status];
+                const open = !!impExpanded[r.id];
+                const saveS = impSaveState[r.id];
+                return (
+                  <div key={r.id} className="pi-item">
+                    <div className="pi-row">
+                      <input
+                        className="fd-input pi-title"
+                        defaultValue={r.title}
+                        onBlur={e => { const v = e.target.value; if (v !== r.title) updateImprovement(r.id, 'title', v, r.title); }}
+                      />
+                      <input
+                        className="fd-input"
+                        placeholder={t('adminPanel.founderDashboard.piCategory')}
+                        defaultValue={r.category ?? ''}
+                        onBlur={e => { const v = e.target.value || null; if (v !== r.category) updateImprovement(r.id, 'category', v, r.category); }}
+                      />
+                      <select
+                        className="fd-select"
+                        value={r.status}
+                        style={{ background: css.bg, color: css.color, fontWeight: 600 }}
+                        onChange={e => updateImprovement(r.id, 'status', e.target.value, r.status)}
+                      >
+                        {IMP_STATUSES.map(s => <option key={s} value={s}>{impStatusLabel(s)}</option>)}
+                      </select>
+                      <div>
+                        {saveS === 'saved' && <span className="fd-saved">{t('adminPanel.founderDashboard.saved')}</span>}
+                        {saveS === 'failed' && <span className="fd-failed">{t('adminPanel.founderDashboard.saveFailed')}</span>}
+                        <button className="fd-del-btn" onClick={() => deleteImprovement(r.id)}>×</button>
+                      </div>
+                    </div>
+
+                    {!open && r.description && <p className="pi-desc clamped">{r.description}</p>}
+
+                    {open && (
+                      <div>
+                        <div className="pi-label">{t('adminPanel.founderDashboard.piDescription')}</div>
+                        <textarea
+                          className="pi-textarea"
+                          defaultValue={r.description ?? ''}
+                          onBlur={e => { const v = e.target.value || null; if (v !== r.description) updateImprovement(r.id, 'description', v, r.description); }}
+                        />
+                        <div className="pi-label">{t('adminPanel.founderDashboard.piRationale')}</div>
+                        <textarea
+                          className="pi-textarea"
+                          style={{ minHeight: 70 }}
+                          defaultValue={r.rationale ?? ''}
+                          onBlur={e => { const v = e.target.value || null; if (v !== r.rationale) updateImprovement(r.id, 'rationale', v, r.rationale); }}
+                        />
+                      </div>
+                    )}
+
+                    <button className="pi-toggle" style={{ marginTop: 6 }} onClick={() => setImpExpanded(s => ({ ...s, [r.id]: !s[r.id] }))}>
+                      {open ? t('adminPanel.founderDashboard.piHideDetail') : t('adminPanel.founderDashboard.piShowDetail')}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   function renderLiveCounts() {
     if (!liveCounts) return null;
     const { orgsTotal, orgsLast30, dealsTotal, dealsLast30, scoresTotal, costTotal, costAvg, tokensTotal, subsByStatus, subsByPlan, retentionLog, dealsPerWeek } = liveCounts;
@@ -764,6 +951,7 @@ export default function FounderDashboard() {
   const TABS = [
     { label: t('adminPanel.founderDashboard.tabOverview'),    render: renderOverview },
     { label: t('adminPanel.founderDashboard.tabItems'),       render: renderItems },
+    { label: t('adminPanel.founderDashboard.tabProductImprovements'), render: renderProductImprovements },
     { label: t('adminPanel.founderDashboard.tabLiveCounts'),  render: renderLiveCounts },
     { label: t('adminPanel.founderDashboard.tabTimeline'),    render: renderTimeline },
     { label: t('adminPanel.founderDashboard.tabCalendar'),    render: renderCalendar },
