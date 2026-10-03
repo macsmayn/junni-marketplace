@@ -5,6 +5,7 @@ import { supabase, invokeFunction, invokeFunctionWithDetails } from "../lib/supa
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { translateBandUnits } from "../lib/bandUnits";
+import { FINANCIAL_DOC_ACCEPT, validateFiles } from "../lib/uploadRules";
 import { fmtValue } from "../lib/metricFormat";
 import type { MemoSections } from "../lib/memoExport";
 import {
@@ -109,6 +110,7 @@ export default function DealAnalysis() {
   const [docTypes, setDocTypes] = useState<any[]>([]);
   const [uploadDocType, setUploadDocType] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState("");
   const [showRescorePrompt, setShowRescorePrompt] = useState(false);
   const [isRescoring, setIsRescoring] = useState(false);
   const [rescoreError, setRescoreError] = useState<string | null>(null);
@@ -176,7 +178,7 @@ export default function DealAnalysis() {
         supabase.from("collateral_assets").select("asset_type,description,market_value,advance_rate,lending_value").eq("deal_id", dealId),
         supabase.from("extracted_financials").select("cash").eq("deal_id", dealId).eq("borrower_confirmed", true).order("fiscal_year", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("credit_questions").select("*").eq("deal_id", dealId).order("created_at"),
-        supabase.from("documents").select("id,file_name,file_type,storage_path,doc_category,created_at,size_bytes").eq("deal_id", dealId).order("created_at", { ascending: true }),
+        supabase.from("documents").select("id,file_name,file_type,storage_path,doc_category,created_at,size_bytes,extraction_status,extraction_error").eq("deal_id", dealId).order("created_at", { ascending: true }),
         supabase.from("extracted_financials").select("updated_at").eq("deal_id", dealId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("extracted_financials").select("fiscal_year,revenue,cogs,gross_profit,operating_expenses,ebitda,net_income,cash,current_assets,total_assets,current_liabilities,total_debt,total_liabilities,equity,cfo,capex,debt_principal_repayment,ffo,distributions").eq("deal_id", dealId).eq("borrower_confirmed", true).order("fiscal_year", { ascending: true }),
       ]);
@@ -628,16 +630,28 @@ export default function DealAnalysis() {
 
   const handleUploadDocs = async (files: FileList) => {
     if (!currentUser?.id || !dealId || !uploadDocType || isUploading) return;
+    const { accepted, rejected } = validateFiles(files);
+    const msgs: string[] = [];
+    if (rejected.length > 0) {
+      msgs.push(`${t("newAnalysis.dropzoneReject")} ${rejected.map(r => `${r.name} (${t(r.reason === "type" ? "upload.reasonType" : "upload.reasonSize")})`).join(", ")}`);
+    }
+    setUploadMsg(msgs.join("\n"));
+    if (accepted.length === 0) return;
     setIsUploading(true);
     try {
       const newDocs: any[] = [];
-      for (const file of Array.from(files)) {
+      for (const file of accepted) {
         const path = `${currentUser.id}/${Date.now()}_${file.name}`;
         const { error: upErr } = await supabase.storage
           .from("documents")
           .upload(path, file, { contentType: file.type });
-        if (upErr) { console.error("[DealAnalysis] upload failed:", file.name, upErr.message); continue; }
-        const { data: inserted } = await supabase.from("documents").insert({
+        if (upErr) {
+          console.error("[DealAnalysis] upload failed:", file.name, upErr.message);
+          msgs.push(`${t("upload.failedFile")} ${file.name}`);
+          setUploadMsg(msgs.join("\n"));
+          continue;
+        }
+        const { data: inserted, error: insErr } = await supabase.from("documents").insert({
           deal_id: dealId,
           uploaded_by: currentUser.id,
           file_name: file.name,
@@ -646,6 +660,12 @@ export default function DealAnalysis() {
           storage_path: path,
           doc_category: uploadDocType,
         }).select().single();
+        if (insErr) {
+          console.error("[DealAnalysis] document record insert failed:", file.name, insErr.message);
+          msgs.push(`${t("upload.failedRecord")} ${file.name}`);
+          setUploadMsg(msgs.join("\n"));
+          continue;
+        }
         if (inserted) newDocs.push(inserted);
       }
       if (newDocs.length > 0) {
@@ -2220,6 +2240,12 @@ export default function DealAnalysis() {
                             {dt && !dt.is_extracted && (
                               <div style={{ fontSize: 10, color: MUTED, fontStyle: "italic", marginTop: 1 }}>{t("analysis.docNotAnalysed")}</div>
                             )}
+                            {doc.extraction_status && (
+                              <div
+                                title={doc.extraction_error ?? undefined}
+                                style={{ fontSize: 10, marginTop: 1, fontWeight: 600, color: doc.extraction_status === "extracted" ? "#059669" : "#DC2626" }}
+                              >{t(`extraction.status.${doc.extraction_status}`)}</div>
+                            )}
                           </div>
                           <button
                             onClick={async () => {
@@ -2307,12 +2333,16 @@ export default function DealAnalysis() {
                     <input
                       type="file"
                       multiple
-                      accept=".pdf,.xlsx,.xls,.csv,.docx,.doc"
+                      accept={FINANCIAL_DOC_ACCEPT}
                       disabled={!uploadDocType || isUploading}
                       style={{ display: "none" }}
                       onChange={e => e.target.files && handleUploadDocs(e.target.files)}
                     />
                   </label>
+                  <div style={{ fontSize: 11, color: MUTED }}>{t("upload.rejectedHint")}</div>
+                  {uploadMsg && (
+                    <div style={{ whiteSpace: "pre-line", padding: "6px 10px", background: "#FEF2F2", border: "1px solid #DC262630", borderRadius: 6, color: "#DC2626", fontSize: 12 }}>{uploadMsg}</div>
+                  )}
                   {selectedDt && !selectedDt.is_extracted && (
                     <span style={{ fontSize: 11, color: MUTED, fontStyle: "italic" }}>{t("analysis.docNotAnalysed")}</span>
                   )}

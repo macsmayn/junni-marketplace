@@ -1,6 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
+import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { runDeterministicScore, persistEngineResult } from "./scoreDealIntegration.ts";
+
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+// Legacy free-text categories used by onboarding / NewAnalysis / BorrowerDashboard.
+// document_types keys flagged is_extracted (fs_audited, fs_interim, fs_ntr, fs_review, mda, tax_t2) are added at runtime.
+const LEGACY_EXTRACTABLE_CATEGORIES = ["Financial Statement", "Tax Return / T2"];
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -467,14 +473,27 @@ Deno.serve(async (req: Request) => {
     // ─────────────────────────────────────────────────────────────
     // PHASE 2a: Financial statement document extraction
     // ─────────────────────────────────────────────────────────────
+    const { data: extractedTypeRows } = await supabase
+      .from("document_types")
+      .select("key")
+      .eq("is_extracted", true);
+    const EXTRACTABLE_CATEGORIES = [
+      ...LEGACY_EXTRACTABLE_CATEGORIES,
+      ...((extractedTypeRows ?? []) as { key: string }[]).map((r) => r.key),
+    ];
+
     const { data: financialDocs } = await supabase
       .from("documents")
-      .select("id, file_name, file_type, storage_path, doc_category")
+      .select("id, file_name, file_type, storage_path, doc_category, size_bytes")
       .eq("deal_id", deal_id)
-      .in("doc_category", ["Financial Statement", "Tax Return / T2"])
+      .in("doc_category", EXTRACTABLE_CATEGORIES)
       .order("created_at", { ascending: true });
 
     let totalYearsExtracted = 0;
+    const fileResults = new Map<string, { document_id: string; file_name: string; status: string | null; error: string | null }>();
+    const setFileStatus = (docId: string, fileName: string, status: string, error: string | null = null) => {
+      fileResults.set(docId, { document_id: docId, file_name: fileName, status, error: error ? error.slice(0, 300) : null });
+    };
 
     if (!financialDocs || financialDocs.length === 0) {
       console.log(`[score-deal] No financial statements — using structured data.`);
@@ -662,6 +681,13 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
 
           if (!isPDF && !isExcel) {
             console.log(`[score-deal] Skipped "${doc.file_name}" (unsupported type: ${doc.file_type})`);
+            setFileStatus(doc.id, doc.file_name, "skipped_unsupported");
+            continue;
+          }
+
+          if (typeof doc.size_bytes === "number" && doc.size_bytes > MAX_UPLOAD_BYTES) {
+            console.log(`[score-deal] Skipped "${doc.file_name}" (too large: ${doc.size_bytes} bytes)`);
+            setFileStatus(doc.id, doc.file_name, "too_large");
             continue;
           }
 
@@ -670,16 +696,14 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
             .download(doc.storage_path);
           if (downloadError || !blob) {
             console.error(`[score-deal] Download failed for "${doc.file_name}":`, downloadError);
+            setFileStatus(doc.id, doc.file_name, "failed", `Download failed: ${downloadError?.message ?? "no data"}`);
             continue;
           }
 
           const arrayBuffer = await blob.arrayBuffer();
 
           if (isPDF) {
-            const uint8Array = new Uint8Array(arrayBuffer);
-            let binary = "";
-            for (let i = 0; i < uint8Array.byteLength; i++) binary += String.fromCharCode(uint8Array[i]);
-            const base64Data = btoa(binary);
+            const base64Data = encodeBase64(new Uint8Array(arrayBuffer));
             preparedDocs.push({ docId: doc.id, fileName: doc.file_name, isPDF: true, content: base64Data, size: base64Data.length });
             totalPayloadSize += base64Data.length;
           } else {
@@ -695,6 +719,7 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
               }
               if (sheetTexts.length === 0) {
                 console.log(`[score-deal] Excel "${doc.file_name}" contained no readable sheet data — skipped.`);
+                setFileStatus(doc.id, doc.file_name, "failed", "Spreadsheet contained no readable sheet data");
                 continue;
               }
               const combinedText = `=== DOCUMENT: ${doc.file_name} ===\n` + sheetTexts.join("\n\n");
@@ -703,10 +728,12 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
               console.log(`[score-deal] Excel parsed ${workbook.SheetNames.length} sheet(s) from "${doc.file_name}".`);
             } catch (xlsErr) {
               console.error(`[score-deal] Excel parse failed for "${doc.file_name}":`, xlsErr);
+              setFileStatus(doc.id, doc.file_name, "failed", `Excel parse failed: ${(xlsErr as Error)?.message ?? xlsErr}`);
             }
           }
         } catch (docErr) {
           console.error(`[score-deal] Error preparing "${doc.file_name}":`, docErr);
+          setFileStatus(doc.id, doc.file_name, "failed", `Error preparing file: ${(docErr as Error)?.message ?? docErr}`);
         }
       }
 
@@ -729,8 +756,11 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
                 ] }];
             const { stmts, mda_digest } = await callExtractionApi(messages, doc.fileName);
             await upsertStatements(stmts, doc.docId, mda_digest);
+            if (stmts.length > 0) setFileStatus(doc.docId, doc.fileName, "extracted");
+            else setFileStatus(doc.docId, doc.fileName, "failed", "Extraction returned no statements");
           } catch (err) {
             console.error(`[score-deal] Per-document extraction error for "${doc.fileName}":`, err);
+            setFileStatus(doc.docId, doc.fileName, "failed", `Extraction error: ${(err as Error)?.message ?? err}`);
           }
         }
 
@@ -755,12 +785,27 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
           );
           const firstDocId = preparedDocs[0]?.docId ?? null;
           await upsertStatements(stmts, firstDocId, mda_digest);
+          for (const d of preparedDocs) {
+            if (stmts.length > 0) setFileStatus(d.docId, d.fileName, "extracted");
+            else setFileStatus(d.docId, d.fileName, "failed", "Extraction returned no statements");
+          }
         } catch (consolidatedErr) {
           console.error(`[score-deal] Consolidated extraction error:`, consolidatedErr);
+          for (const d of preparedDocs) {
+            setFileStatus(d.docId, d.fileName, "failed", `Extraction error: ${(consolidatedErr as Error)?.message ?? consolidatedErr}`);
+          }
         }
       }
 
       console.log(`[score-deal] Phase 2a complete — ${totalYearsExtracted} fiscal year(s) extracted.`);
+
+      for (const r of fileResults.values()) {
+        const { error: statusUpdErr } = await supabase
+          .from("documents")
+          .update({ extraction_status: r.status, extraction_error: r.error })
+          .eq("id", r.document_id);
+        if (statusUpdErr) console.error(`[score-deal] Failed to save extraction status for "${r.file_name}":`, statusUpdErr);
+      }
 
       if (totalYearsExtracted > 0 && deal.financials_status !== "confirmed") {
         const { error: statusErr } = await supabase
@@ -775,7 +820,14 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
 
     if (extract_only) {
       return new Response(
-        JSON.stringify({ extract_only: true, years_extracted: totalYearsExtracted }),
+        JSON.stringify({
+          extract_only: true,
+          years_extracted: totalYearsExtracted,
+          files: ((financialDocs ?? []) as any[]).map((d: any) => {
+            const r = fileResults.get(d.id);
+            return { document_id: d.id, file_name: d.file_name, status: r?.status ?? null, error: r?.error ?? null };
+          }),
+        }),
         { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
       );
     }

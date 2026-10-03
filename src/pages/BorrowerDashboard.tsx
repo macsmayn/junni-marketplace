@@ -2,6 +2,8 @@
 import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase, invokeFunction } from "../lib/supabase";
+import { useLanguage } from "../contexts/LanguageContext";
+import { FINANCIAL_DOC_ACCEPT, validateFiles } from "../lib/uploadRules";
 
 const LOGO_NAVY = "/junni-logo-navy.png";
 
@@ -139,6 +141,8 @@ function timeAgo(dateStr: string): string {
 export default function BorrowerDashboard() {
   const [location, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: auth0Loading, logout } = useAuth0();
+  const { t } = useLanguage();
+  const [uploadMsg, setUploadMsg] = useState("");
   const [persona, setPersona] = useState("borrower");
   const [lang, setLang] = useState("en");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -535,7 +539,14 @@ export default function BorrowerDashboard() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !dbUser) return;
-    setPendingFile(file);
+    const { accepted, rejected } = validateFiles([file]);
+    if (rejected.length > 0) {
+      setUploadMsg(`${t("newAnalysis.dropzoneReject")} ${rejected[0].name} (${t(rejected[0].reason === "type" ? "upload.reasonType" : "upload.reasonSize")})`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    setUploadMsg("");
+    setPendingFile(accepted[0]);
     setShowCategoryModal(true);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -549,7 +560,10 @@ export default function BorrowerDashboard() {
       const { error: uploadError } = await supabase.storage
         .from("documents")
         .upload(path, pendingFile);
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        setUploadMsg(`${t("upload.failedFile")} ${pendingFile.name}`);
+        throw uploadError;
+      }
       const { error: insertError } = await supabase.from("documents").insert({
         file_name: pendingFile.name,
         file_type: pendingFile.type,
@@ -559,7 +573,10 @@ export default function BorrowerDashboard() {
         deal_id: deals[0]?.id ?? null,
         doc_category: docCategory,
       });
-      if (insertError) throw insertError;
+      if (insertError) {
+        setUploadMsg(`${t("upload.failedRecord")} ${pendingFile.name}`);
+        throw insertError;
+      }
       const { data: docsData } = await supabase
         .from("documents")
         .select("*")
@@ -580,6 +597,10 @@ export default function BorrowerDashboard() {
     setPendingFile(null);
     setDocCategory("Financial Statement");
   };
+
+  const uploadMsgEl = uploadMsg ? (
+    <div style={{ margin: "0 0 10px", padding: "8px 12px", background: "#FEF2F2", border: "1px solid rgba(220,38,38,0.25)", borderRadius: "8px", color: "#DC2626", fontSize: "13px" }}>{uploadMsg}</div>
+  ) : null;
 
   const personas: Record<string, any> = {
     borrower: {
@@ -1124,7 +1145,8 @@ export default function BorrowerDashboard() {
           </div>
 
           <div id="documents">
-            <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileUpload} />
+            <input type="file" ref={fileInputRef} accept={FINANCIAL_DOC_ACCEPT} style={{ display: "none" }} onChange={handleFileUpload} />
+            {uploadMsgEl}
             <div className="section-head">
               <div className="section-title">Uploaded Documents</div>
               <button className="section-link" onClick={() => fileInputRef.current?.click()} disabled={uploading}>{uploading ? "Uploading..." : "Upload New"}</button>
@@ -1636,7 +1658,8 @@ export default function BorrowerDashboard() {
 
         {/* DOCUMENTS */}
         <div id="documents" className="d-section">
-          <input type="file" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileUpload} />
+          <input type="file" ref={fileInputRef} accept={FINANCIAL_DOC_ACCEPT} style={{ display: "none" }} onChange={handleFileUpload} />
+            {uploadMsgEl}
           <div className="d-section-head">
             <div className="d-section-title">Uploaded Documents</div>
             <button className="d-section-link" onClick={() => fileInputRef.current?.click()} disabled={uploading}>{uploading ? "Uploading..." : "Upload New Document"}</button>

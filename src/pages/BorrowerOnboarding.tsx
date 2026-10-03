@@ -2,12 +2,16 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase, invokeFunction } from '../lib/supabase';
 import { useLocation } from "wouter";
+import { useLanguage } from "../contexts/LanguageContext";
+import { FINANCIAL_DOC_ACCEPT, validateFiles } from "../lib/uploadRules";
 
 const LOGO_BEIGE = "/junni-logo-beige.png";
 
 export default function BorrowerOnboarding() {
   const [, setLocation] = useLocation();
   const { user, logout } = useAuth0();
+  const { t } = useLanguage();
+  const [fileRejectMsg, setFileRejectMsg] = useState("");
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [financialFiles, setFinancialFiles] = useState<File[]>([]);
@@ -55,7 +59,10 @@ export default function BorrowerOnboarding() {
   const handleFinancialFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    const newFiles = Array.from(files);
+    const { accepted: newFiles, rejected } = validateFiles(files);
+    setFileRejectMsg(rejected.length > 0
+      ? `${t("newAnalysis.dropzoneReject")} ${rejected.map(r => `${r.name} (${t(r.reason === "type" ? "upload.reasonType" : "upload.reasonSize")})`).join(", ")}`
+      : "");
     const newNames = newFiles.map(f => f.name);
     setFinancialFiles(prev => [...prev, ...newFiles]);
     setFormData(prev => ({
@@ -128,6 +135,8 @@ export default function BorrowerOnboarding() {
       const newDealId = dealData.id;
 
       // Upload financial statement files and insert documents rows before scoring
+      const uploadFailures: string[] = [];
+      const recordFailures: string[] = [];
       for (const file of financialFiles) {
         try {
           const storagePath = `${userData.id}/${Date.now()}_${file.name}`;
@@ -136,6 +145,7 @@ export default function BorrowerOnboarding() {
             .upload(storagePath, file, { contentType: file.type });
           if (uploadError) {
             console.error(`Upload failed for "${file.name}":`, uploadError);
+            uploadFailures.push(file.name);
             continue;
           }
           const { error: docError } = await supabase.from("documents").insert({
@@ -149,10 +159,18 @@ export default function BorrowerOnboarding() {
           });
           if (docError) {
             console.error(`Document row insert failed for "${file.name}":`, docError);
+            recordFailures.push(file.name);
           }
         } catch (uploadErr) {
           console.error(`Unhandled upload error for "${file.name}":`, uploadErr);
+          uploadFailures.push(file.name);
         }
+      }
+      if (uploadFailures.length > 0 || recordFailures.length > 0) {
+        const lines: string[] = [];
+        if (uploadFailures.length > 0) lines.push(`${t("upload.failedFile")} ${uploadFailures.join(", ")}`);
+        if (recordFailures.length > 0) lines.push(`${t("upload.failedRecord")} ${recordFailures.join(", ")}`);
+        alert(lines.join("\n"));
       }
 
       // Trigger AI scoring — fires after uploads so extraction finds the documents
@@ -860,8 +878,11 @@ export default function BorrowerOnboarding() {
             <div className="form-grid cols-1">
               <div className="field">
                 <label>Upload Financial Statements <span style={{ color: "var(--green)", fontSize: "11px", fontWeight: 500 }}>(Recommended)</span></label>
-                <input type="file" multiple accept=".pdf,.xlsx,.xls" onChange={handleFinancialFilesChange} />
-                <div className="field-hint">Upload 2–3 years of financial statements for the most accurate AI credit analysis. We'll analyze trends across all uploaded statements.</div>
+                <input type="file" multiple accept={FINANCIAL_DOC_ACCEPT} onChange={handleFinancialFilesChange} />
+                <div className="field-hint">Upload 2–3 years of financial statements for the most accurate AI credit analysis. We'll analyze trends across all uploaded statements. {t("upload.rejectedHint")}</div>
+                {fileRejectMsg && (
+                  <div style={{ marginTop: "8px", padding: "8px 12px", background: "#FEF2F2", border: "1px solid rgba(220,38,38,0.25)", borderRadius: "6px", color: "var(--red)", fontSize: "13px" }}>{fileRejectMsg}</div>
+                )}
                 {formData.financialStatementFiles.length > 0 && (
                   <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
                     {formData.financialStatementFiles.map((name, i) => (

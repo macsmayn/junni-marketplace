@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth0 } from "@auth0/auth0-react";
 import { supabase, invokeFunction, invokeFunctionWithDetails } from "../lib/supabase";
 import { checkFinancials } from "../lib/financialSanity";
+import { FINANCIAL_DOC_ACCEPT, validateFiles } from "../lib/uploadRules";
 import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
 
@@ -263,6 +264,7 @@ export default function NewAnalysis() {
   const [fileErrorDetail, setFileErrorDetail] = useState(""); // file names appended after key
   const [extracting, setExtracting] = useState(false);
   const [noFinancials, setNoFinancials] = useState(false);
+  const [fileResults, setFileResults] = useState<{ document_id: string; file_name: string; status: string | null; error: string | null }[] | null>(null);
 
   // Step 1 — additional optional fields
   const [existingDebt, setExistingDebt] = useState("");
@@ -378,19 +380,15 @@ export default function NewAnalysis() {
   function processFiles(fileList: FileList | null) {
     if (!fileList) return;
     const selected = Array.from(fileList);
-    const allowed = ["pdf", "xlsx", "xls"];
-    const rejected = selected.filter(f => {
-      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
-      return !allowed.includes(ext);
-    });
+    const { accepted, rejected } = validateFiles(selected);
     if (rejected.length > 0) {
       setFileError("newAnalysis.dropzoneReject");
-      setFileErrorDetail(rejected.map(f => f.name).join(", "));
-      return;
+      setFileErrorDetail(rejected.map(r => `${r.name} (${t(r.reason === "type" ? "upload.reasonType" : "upload.reasonSize")})`).join(", "));
+    } else {
+      setFileError("");
+      setFileErrorDetail("");
     }
-    setFileError("");
-    setFileErrorDetail("");
-    setFiles(prev => [...prev, ...selected]);
+    if (accepted.length > 0) setFiles(prev => [...prev, ...accepted]);
   }
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -409,6 +407,7 @@ export default function NewAnalysis() {
     setFileError("");
     setFileErrorDetail("");
     setNoFinancials(false);
+    setFileResults(null);
     setExtracting(true);
 
     for (const file of files) {
@@ -419,7 +418,7 @@ export default function NewAnalysis() {
       if (upErr) {
         console.error("[NewAnalysis] upload:", file.name, upErr.message);
         setFileError("newAnalysis.errorUploadFailed");
-        setFileErrorDetail("");
+        setFileErrorDetail(file.name);
         setExtracting(false);
         return;
       }
@@ -435,7 +434,7 @@ export default function NewAnalysis() {
       if (docErr) {
         console.error("[NewAnalysis] doc record:", file.name, docErr.message);
         setFileError("newAnalysis.errorDocRecord");
-        setFileErrorDetail("");
+        setFileErrorDetail(file.name);
         setExtracting(false);
         return;
       }
@@ -459,6 +458,8 @@ export default function NewAnalysis() {
       setExtracting(false);
       return;
     }
+
+    setFileResults(Array.isArray(extractBody?.files) ? extractBody.files : null);
 
     const { data: rows, error: rowsErr } = await supabase
       .from("extracted_financials")
@@ -1197,7 +1198,7 @@ export default function NewAnalysis() {
               <input
                 id="na-file-input"
                 type="file"
-                accept=".pdf,.xlsx,.xls"
+                accept={FINANCIAL_DOC_ACCEPT}
                 multiple
                 style={{ display: "none" }}
                 onChange={handleFileSelect}
@@ -1263,6 +1264,39 @@ export default function NewAnalysis() {
                 <div style={{ fontWeight: 600, color: NAVY, marginBottom: 4 }}>{t("newAnalysis.extractingTitle")}</div>
                 <div style={{ fontSize: 13, color: MUTED }}>
                   {t("newAnalysis.extractingSub")}
+                </div>
+              </div>
+            )}
+
+            {/* Per-file extraction results */}
+            {!extracting && fileResults && fileResults.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                {fileResults.some(f => f.status !== "extracted") && !noFinancials && (
+                  <div style={{
+                    marginBottom: 12, padding: "10px 14px",
+                    background: "#FFF9EC", border: `1px solid ${GOLD}40`,
+                    borderRadius: 8, color: NAVY, fontSize: 13, lineHeight: 1.5,
+                  }}>
+                    ⚠ {t("newAnalysis.partialWarning")}
+                  </div>
+                )}
+                <div style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6 }}>{t("newAnalysis.filesHeading")}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {fileResults.map(f => {
+                    const ok = f.status === "extracted";
+                    return (
+                      <div key={f.document_id} style={{
+                        display: "flex", justifyContent: "space-between", gap: 12,
+                        padding: "8px 12px", background: "#fff", borderRadius: 8,
+                        border: `1px solid ${ok ? BORDER : RED + "40"}`, fontSize: 13,
+                      }}>
+                        <span style={{ color: NAVY, wordBreak: "break-all" }}>{f.file_name}</span>
+                        <span style={{ color: ok ? "#059669" : RED, fontWeight: 600, textAlign: "right" }}>
+                          {t(`extraction.status.${f.status ?? "none"}`)}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
