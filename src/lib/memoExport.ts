@@ -4,7 +4,8 @@
 import frauncesWoffUrl from '@fontsource/fraunces/files/fraunces-latin-700-normal.woff?url';
 import { translateBandUnits } from './bandUnits';
 import { tRiskLabel } from './riskLabel';
-import { fmtValue } from './metricFormat';
+import { fmtValue, nmDetailKey } from './metricFormat';
+import { buildProForma, pickLatestConfirmed, EXISTING_CAT, type LatestFin, type ProForma } from './proForma';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ export interface MemoData {
     use_of_funds?: string | null;
     existing_debt?: number | null;
     ebitda?: number | null;
+    annual_revenue?: number | null;
     revolver_limit?: number | null;
     revolver_drawn?: number | null;
     enterprise_value?: number | null;
@@ -73,8 +75,9 @@ export interface MemoData {
   } | null;
   metrics: MemoMetric[];
   confirmedCash?: number | null;
-  suEntries?: Array<{ side: string; label: string; amount: number; sort_order?: number }> | null;
-  capItems?: Array<{ category: string; label: string; amount: number; rate?: number | null; notes?: string | null }> | null;
+  latestFin?: LatestFin | null;
+  suEntries?: Array<{ side: string; label: string; label_key?: string | null; amount: number; sort_order?: number }> | null;
+  capItems?: Array<{ category: string; label: string; label_key?: string | null; amount: number; amount_auto?: boolean | null; rate?: number | null; notes?: string | null }> | null;
   collateral?: Array<{ asset_type: string; description?: string | null; market_value: number; advance_rate: number; lending_value: number }> | null;
   benchmarks?: {
     base?: { sector: any; segment: any } | null;
@@ -129,9 +132,33 @@ const GRADE_PTS: Record<string, number> = { Strong: 100, Adequate: 60, Weak: 20 
 const TIER_W:    Record<string, number>  = { Critical: 3.0, Important: 2.0, Supplementary: 1.0, Optional: 0.5 };
 const TIER_ORDER = ['Critical', 'Important', 'Supplementary', 'Optional'];
 
-const DEBT_CATS = ['Senior Debt', 'Subordinated Debt', 'Shareholder Loans'];
+const suLabel = (e: any, t: (k: string) => string): string => (e?.label_key ? t(e.label_key) : (e?.label ?? ''));
+
+function memoProForma(data: MemoData): ProForma {
+  const latest = data.latestFin ?? pickLatestConfirmed(data.financials as any);
+  return buildProForma({ deal: data.deal as any, latest, capItems: data.capItems, suEntries: data.suEntries });
+}
+function pfRowLabel(r: any, pf: ProForma, t: (k: string) => string): string {
+  if (r.isExisting) return r.existingSource === 'analyst'
+    ? t('capx.existingAnalyst')
+    : t('capx.existingStatements').replace('{year}', String(pf.fiscalYear ?? ''));
+  return r.labelKey ? t(r.labelKey) : r.label;
+}
+function pfFooter(pf: ProForma, t: (k: string) => string, fmt: (n: number | null | undefined) => string): string {
+  if (pf.fiscalYear === null) return '';
+  const y = String(pf.fiscalYear);
+  return [
+    pf.ebitda !== null ? t('capx.ebitdaFy').replace('{year}', y) + ' ' + fmt(pf.ebitda) : null,
+    pf.equity !== null ? t('capx.equityFy').replace('{year}', y) + ' ' + fmt(pf.equity) : null,
+    pf.cash   !== null ? t('capx.cashFy').replace('{year}', y) + ' ' + fmt(pf.cash) : null,
+  ].filter(Boolean).join('  ·  ');
+}
+function pfMismatchNote(pf: ProForma, t: (k: string) => string, fmt: (n: number | null | undefined) => string): string {
+  if (!pf.existing.mismatch || pf.existing.statementDebt === null) return '';
+  return t('capx.existingMismatch').replace('{year}', String(pf.fiscalYear ?? '')).replace('{a}', fmt(pf.existing.gross)).replace('{b}', fmt(pf.existing.statementDebt));
+}
 const CAT_ORDER: Record<string, number> = {
-  'Senior Debt': 0, 'Subordinated Debt': 1, 'Shareholder Loans': 2,
+  [EXISTING_CAT]: -1, 'Senior Debt': 0, 'Subordinated Debt': 1, 'Shareholder Loans': 2,
   'Preferred Equity': 3, 'Common Equity': 4, 'Other': 5,
 };
 
@@ -347,7 +374,7 @@ function pdfScoredMetricsTable(rows: MemoMetric[], t: (k: string) => string, lan
     return [
       nameCell,
       cell(tTier(r.tier, t), { fontSize: 7.5, color: MUTED }, bg),
-      cell(fmtValue(r.value, r.metric_name, r.strong_band, lang), {}, bg),
+      cell(nmDetailKey(r.value, r.compute_detail) ? t('metric.nmValue') : fmtValue(r.value, r.metric_name, r.strong_band, lang), {}, bg),
       cell(tGrade(r.grade, t), { bold: true, color: gradeColor(r.grade) }, bg),
       cell(translateBandUnits(r.strong_band, lang),   { fontSize: 7.5, color: STRONG }, bg),
       cell(translateBandUnits(r.adequate_band, lang), { fontSize: 7.5, color: AMBER  }, bg),
@@ -773,9 +800,9 @@ function pdfSourcesUses(data: MemoData, t: (k: string) => string, fmt: (n: numbe
     const u = uses[i]; const s = srcs[i];
     const bg = i % 2 === 1 ? '#F8F6F3' : undefined;
     return [
-      cell(u?.label ?? '', {}, bg),
+      cell(suLabel(u, t), {}, bg),
       cell(u ? fmt(Number(u.amount)) : '', { alignment: 'right' }, bg),
-      cell(s?.label ?? '', {}, bg),
+      cell(suLabel(s, t), {}, bg),
       cell(s ? fmt(Number(s.amount)) : '', { alignment: 'right' }, bg),
     ];
   });
@@ -801,21 +828,17 @@ function pdfSourcesUses(data: MemoData, t: (k: string) => string, fmt: (n: numbe
 }
 
 function pdfCapitalization(data: MemoData, t: (k: string) => string, fmt: (n: number | null | undefined) => string): any[] {
-  const items = data.capItems ?? [];
-  if (!items.length) return [];
-
-  const ebitdaVal  = Number(data.deal?.ebitda);
-  const hasEbitda  = ebitdaVal > 0;
-  const cashVal    = Number(data.confirmedCash) || 0;
+  if (!(data.capItems ?? []).length) return [];
+  const pf         = memoProForma(data);
+  const ebitdaVal  = pf.ebitda ?? 0;
+  const hasEbitda  = pf.ebitda !== null && pf.ebitda > 0;
+  const cashVal    = Number(pf.cash ?? data.confirmedCash) || 0;
   const rl         = data.deal?.revolver_limit  != null ? Number(data.deal.revolver_limit)  : null;
   const rd         = data.deal?.revolver_drawn  != null ? Number(data.deal.revolver_drawn)   : null;
   const evProv     = data.deal?.enterprise_value != null ? Number(data.deal.enterprise_value) : null;
 
-  const sorted    = [...items].sort((a, b) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99));
-  const totalCap  = items.reduce((s, r) => s + Number(r.amount), 0);
-  const totalDebt = items.filter(r => DEBT_CATS.includes(r.category)).reduce((s, r) => s + Number(r.amount), 0);
-  const seniorDebt= items.filter(r => r.category === 'Senior Debt').reduce((s, r) => s + Number(r.amount), 0);
-  const totalEquity = totalCap - totalDebt;
+  const sorted    = [...pf.rows].sort((a, b) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99));
+  const { totalCap, totalDebt, seniorDebt, totalEquity } = pf;
   const netDebt   = totalDebt - cashVal;
   const availLiq  = cashVal + (rl != null ? (rl - (rd ?? 0)) : 0);
   const evProxy   = totalCap - cashVal;
@@ -829,15 +852,16 @@ function pdfCapitalization(data: MemoData, t: (k: string) => string, fmt: (n: nu
     const amt    = Number(r.amount);
     const pctCap = totalCap > 0 ? `${(amt / totalCap * 100).toFixed(1)}%` : '—';
     let xE = '—';
-    if (hasEbitda && DEBT_CATS.includes(r.category)) { cumDebt += amt; xE = `${(cumDebt / ebitdaVal).toFixed(2)}x`; }
+    if (hasEbitda && r.isDebt) { cumDebt += amt; xE = `${(cumDebt / ebitdaVal).toFixed(2)}x`; }
     const bg = i % 2 === 1 ? '#F8F6F3' : undefined;
+    const refiNote = r.isExisting && pf.existing.refinanced > 0 ? '  (' + t('capx.netOfRefi').replace('{amount}', fmt(pf.existing.refinanced)) + ')' : '';
     const row = [
-      cell(r.label, { color: NAVY }, bg),
-      cell(r.category, { color: MUTED }, bg),
+      cell(pfRowLabel(r, pf, t) + refiNote, { color: NAVY }, bg),
+      cell(r.isExisting ? t('capx.catExisting') : r.category, { color: MUTED }, bg),
       cell(fmt(amt), { alignment: 'right' }, bg),
       cell(pctCap, { alignment: 'right', color: MUTED }, bg),
     ];
-    if (hasEbitda) row.push(cell(xE, { alignment: 'right', color: DEBT_CATS.includes(r.category) ? NAVY : MUTED }, bg));
+    if (hasEbitda) row.push(cell(xE, { alignment: 'right', color: r.isDebt ? NAVY : MUTED }, bg));
     return row;
   });
 
@@ -891,11 +915,11 @@ function pdfCapitalization(data: MemoData, t: (k: string) => string, fmt: (n: nu
     capTable,
     metricsTable,
   ];
-  if (hasEbitda) {
-    const ebitdaRef = t('memo.capEbitdaRef').replace('{amount}', fmt(ebitdaVal));
-    const cashRef   = cashVal > 0 ? `  ·  ${t('memo.capCashRef').replace('{amount}', fmt(cashVal))}` : '';
-    blockItems.push({ text: `${ebitdaRef}${cashRef}`, fontSize: 8, color: MUTED, italics: true, margin: [0, 4, 0, 0] });
-  }
+  const mismatchNote = pfMismatchNote(pf, t, fmt);
+  if (mismatchNote) blockItems.push({ text: mismatchNote, fontSize: 8.5, color: '#92400E', bold: true, margin: [0, 4, 0, 0] });
+  if (pf.ebitda !== null && pf.ebitda <= 0) blockItems.push({ text: t('capx.negEbitdaNote'), fontSize: 8, color: MUTED, italics: true, margin: [0, 4, 0, 0] });
+  const footer = pfFooter(pf, t, fmt);
+  if (footer) blockItems.push({ text: footer, fontSize: 8, color: MUTED, italics: true, margin: [0, 4, 0, 0] });
 
   // The whole cap section — heading, pro-forma note, cap table, credit metrics — stays together.
   return [{ stack: blockItems, unbreakable: true }];
@@ -1430,7 +1454,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
           return wDataRow([
             r.band_is_override ? displayName + ' †' : displayName,
             tTier(r.tier, t),
-            fmtValue(r.value, r.metric_name, r.strong_band, lang),
+            nmDetailKey(r.value, r.compute_detail) ? t('metric.nmValue') : fmtValue(r.value, r.metric_name, r.strong_band, lang),
             tGrade(r.grade, t),
             translateBandUnits(r.strong_band, lang) ?? '—',
             translateBandUnits(r.adequate_band, lang) ?? '—',
@@ -1755,7 +1779,7 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
     const maxLen = Math.max(uses.length, srcs.length);
     const suRows: any[] = [wHdrRow([t('memo.colUseOfFunds'), t('memo.colAmount'), t('memo.colSourceOfFunds'), t('memo.colAmount')], suCols)];
     for (let i = 0; i < maxLen; i++) {
-      suRows.push(wDataRow([uses[i]?.label ?? '', uses[i] ? fmt(Number(uses[i].amount)) : '', srcs[i]?.label ?? '', srcs[i] ? fmt(Number(srcs[i].amount)) : ''], suCols, i % 2 === 1));
+      suRows.push(wDataRow([suLabel(uses[i], t), uses[i] ? fmt(Number(uses[i].amount)) : '', suLabel(srcs[i], t), srcs[i] ? fmt(Number(srcs[i].amount)) : ''], suCols, i % 2 === 1));
     }
     suRows.push(wTotalRow([t('memo.totalUses'), fmt(totalU), t('memo.totalSources'), fmt(totalS)], suCols));
     children.push(wHead1(t('memo.secSourcesUses').replace(/^[A-Z &]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())), new Table({ width: { size: TW_CONT, type: WidthType.DXA }, rows: suRows }), wSpacer(200));
@@ -1764,20 +1788,17 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
 
   // ── Capitalization ──
   if (sec.capitalization) {
-  const capItems = data.capItems ?? [];
-  if (capItems.length) {
-    const ebitdaVal  = Number(data.deal?.ebitda);
-    const hasEbitda  = ebitdaVal > 0;
-    const cashVal    = Number(data.confirmedCash) || 0;
+  if ((data.capItems ?? []).length) {
+    const pf         = memoProForma(data);
+    const ebitdaVal  = pf.ebitda ?? 0;
+    const hasEbitda  = pf.ebitda !== null && pf.ebitda > 0;
+    const cashVal    = Number(pf.cash ?? data.confirmedCash) || 0;
     const rl         = data.deal?.revolver_limit  != null ? Number(data.deal.revolver_limit)  : null;
     const rd         = data.deal?.revolver_drawn  != null ? Number(data.deal.revolver_drawn)   : null;
     const evProv     = data.deal?.enterprise_value != null ? Number(data.deal.enterprise_value) : null;
 
-    const sorted     = [...capItems].sort((a, b) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99));
-    const totalCap   = capItems.reduce((s, r) => s + Number(r.amount), 0);
-    const totalDebt  = capItems.filter(r => DEBT_CATS.includes(r.category)).reduce((s, r) => s + Number(r.amount), 0);
-    const seniorDebt = capItems.filter(r => r.category === 'Senior Debt').reduce((s, r) => s + Number(r.amount), 0);
-    const totalEquity= totalCap - totalDebt;
+    const sorted     = [...pf.rows].sort((a, b) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99));
+    const { totalCap, totalDebt, seniorDebt, totalEquity } = pf;
     const netDebt    = totalDebt - cashVal;
     const availLiq   = cashVal + (rl != null ? (rl - (rd ?? 0)) : 0);
     const evProxy    = totalCap - cashVal;
@@ -1791,8 +1812,9 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
       const amt    = Number(r.amount);
       const pctCap = totalCap > 0 ? `${(amt / totalCap * 100).toFixed(1)}%` : '—';
       let xE = '—';
-      if (hasEbitda && DEBT_CATS.includes(r.category)) { cumDebt2 += amt; xE = `${(cumDebt2 / ebitdaVal).toFixed(2)}x`; }
-      capRows.push(wDataRow([r.label, r.category, fmt(amt), pctCap, ...(hasEbitda ? [xE] : [])], capColsW, i % 2 === 1));
+      if (hasEbitda && r.isDebt) { cumDebt2 += amt; xE = `${(cumDebt2 / ebitdaVal).toFixed(2)}x`; }
+      const refiNote = r.isExisting && pf.existing.refinanced > 0 ? ' (' + t('capx.netOfRefi').replace('{amount}', fmt(pf.existing.refinanced)) + ')' : '';
+      capRows.push(wDataRow([pfRowLabel(r, pf, t) + refiNote, r.isExisting ? t('capx.catExisting') : r.category, fmt(amt), pctCap, ...(hasEbitda ? [xE] : [])], capColsW, i % 2 === 1));
     });
     const debtRow  = [t('memo.totalDebt'),  '', fmt(totalDebt),  totalCap > 0 ? `${(totalDebt /totalCap*100).toFixed(1)}%` : '—', ...(hasEbitda ? [totalDebt  > 0 ? `${(totalDebt /ebitdaVal).toFixed(2)}x` : '—'] : [])];
     const eqRow    = [t('memo.totalEquity'),'', fmt(totalEquity),totalCap > 0 ? `${(totalEquity/totalCap*100).toFixed(1)}%` : '—', ...(hasEbitda ? ['—'] : [])];
@@ -1815,7 +1837,9 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
     const mCols2 = [6200, 2460];
     const mRows  = creditMetrics.map((m, i) => wDataRow([m.label, m.value], mCols2, i % 2 === 1));
 
-    const ebitdaRef = hasEbitda ? `${t('memo.capEbitdaRef').replace('{amount}', fmt(ebitdaVal))}${cashVal > 0 ? `  ·  ${t('memo.capCashRef').replace('{amount}', fmt(cashVal))}` : ''}` : '';
+    const ebitdaRef = pfFooter(pf, t, fmt);
+    const mismatchNote = pfMismatchNote(pf, t, fmt);
+    const negNote = pf.ebitda !== null && pf.ebitda <= 0 ? t('capx.negEbitdaNote') : '';
 
     children.push(
       wHead1(t('memo.secCapitalization').replace(/^[A-Z ]+$/, s => s.charAt(0) + s.slice(1).toLowerCase())),
@@ -1824,7 +1848,9 @@ export async function downloadDocx(data: MemoData, questions: MemoQuestion[], t:
       wSpacer(160),
       wHead2(t('memo.secCreditMetrics')),
       new Table({ width: { size: TW_CONT, type: WidthType.DXA }, rows: mRows }),
-      ...(hasEbitda ? [wSpacer(80), wPara(ebitdaRef, { italics: true, color: '888888', spaceAfter: 0 })] : []),
+      ...(mismatchNote ? [wSpacer(80), wPara(mismatchNote, { color: '92400E', bold: true, spaceAfter: 0 })] : []),
+      ...(negNote ? [wSpacer(80), wPara(negNote, { italics: true, color: '888888', spaceAfter: 0 })] : []),
+      ...(ebitdaRef ? [wSpacer(80), wPara(ebitdaRef, { italics: true, color: '888888', spaceAfter: 0 })] : []),
       wSpacer(200),
     );
   }

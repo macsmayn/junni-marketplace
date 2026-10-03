@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 import { runDeterministicScore, persistEngineResult } from "./scoreDealIntegration.ts";
+import { fetchLatestConfirmedFinancials, buildProForma } from "./proForma.ts";
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 // Legacy free-text categories used by onboarding / NewAnalysis / BorrowerDashboard.
@@ -1173,10 +1174,10 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
 
     // Supplementary context for the scoring prompt
     const [{ data: suEntries }, { data: capItemsRows }, { data: collateralRows }, { data: mrFin }] = await Promise.all([
-      supabase.from("sources_uses_entries").select("side, label, amount").eq("deal_id", deal_id).order("sort_order"),
-      supabase.from("capitalization_items").select("category, label, amount, rate").eq("deal_id", deal_id).order("sort_order"),
+      supabase.from("sources_uses_entries").select("side, label, label_key, amount").eq("deal_id", deal_id).order("sort_order"),
+      supabase.from("capitalization_items").select("category, label, label_key, amount, amount_auto, rate").eq("deal_id", deal_id).order("sort_order"),
       supabase.from("collateral_assets").select("asset_type, market_value, advance_rate, lending_value").eq("deal_id", deal_id),
-      supabase.from("extracted_financials").select("cash").eq("deal_id", deal_id).eq("borrower_confirmed", true).order("fiscal_year", { ascending: false }).limit(1).maybeSingle(),
+      fetchLatestConfirmedFinancials(supabase, deal_id).then((row: any) => ({ data: row })),
     ]);
 
     let collateralLine = "";
@@ -1200,19 +1201,21 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
       sourcesUsesLine = `\n- Sources & Uses: uses total $${Math.round(totalUses).toLocaleString()} (${top3Uses}); sources total $${Math.round(totalSources).toLocaleString()} (${srcList})${balanceWarn}.`;
     }
 
+    // Single source for financial figures: latest confirmed extracted_financials year.
+    const scorePf = buildProForma({ deal, latest: mrFin as any, capItems: capItemsRows as any, suEntries: suEntries as any });
+    const fyTag = scorePf.fiscalYear !== null ? ` (FY${scorePf.fiscalYear})` : "";
+    const money = (n: number) => `$${Math.round(n).toLocaleString()}`;
+
     let capLine = "";
     if (capItemsRows && capItemsRows.length > 0) {
-      const DEBT_CATS = ["Senior Debt", "Subordinated Debt", "Shareholder Loans"];
-      const debtRows = (capItemsRows as any[]).filter((r: any) => DEBT_CATS.includes(r.category));
-      const seniorRows = (capItemsRows as any[]).filter((r: any) => r.category === "Senior Debt");
-      const equityRows = (capItemsRows as any[]).filter((r: any) => !DEBT_CATS.includes(r.category));
-      const totalDebt = debtRows.reduce((s: number, r: any) => s + Number(r.amount), 0);
-      const seniorDebt = seniorRows.reduce((s: number, r: any) => s + Number(r.amount), 0);
-      const totalEquity = equityRows.reduce((s: number, r: any) => s + Number(r.amount), 0);
-      const totalCap = totalDebt + totalEquity;
-      const ebitdaVal = Number(deal.ebitda);
+      const debtRows = scorePf.rows.filter(r => r.isDebt);
+      const totalDebt = scorePf.totalDebt;
+      const seniorDebt = scorePf.seniorDebt;
+      const totalEquity = scorePf.totalEquity;
+      const totalCap = scorePf.totalCap;
+      const ebitdaVal = scorePf.ebitda ?? 0;
       const hasEbitda = ebitdaVal > 0;
-      const cashVal = Number((mrFin as any)?.cash) || 0;
+      const cashVal = Number(scorePf.cash) || 0;
       const netDebt = totalDebt - cashVal;
       const rl = deal.revolver_limit != null ? Number(deal.revolver_limit) : null;
       const rd = deal.revolver_drawn != null ? Number(deal.revolver_drawn) : null;
@@ -1221,9 +1224,25 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
       const seniorEbitda = hasEbitda && seniorDebt > 0 ? `${(seniorDebt / ebitdaVal).toFixed(2)}x` : "n/m";
       const netDebtEbitda = hasEbitda ? `${(netDebt / ebitdaVal).toFixed(2)}x` : "n/m";
       const debtPct = totalCap > 0 ? `${(totalDebt / totalCap * 100).toFixed(1)}%` : "0%";
-      const stack = (capItemsRows as any[]).map((r: any) => `${r.category} $${Math.round(Number(r.amount)).toLocaleString()}${r.rate ? ` @${r.rate}%` : ""}`).join(", ");
-      capLine = `\n- Pro-forma capitalization: total debt $${Math.round(totalDebt).toLocaleString()} across ${debtRows.length} tranche(s) (${debtPct} of total cap), equity $${Math.round(totalEquity).toLocaleString()}. Stack: [${stack}]. Senior Debt/EBITDA: ${seniorEbitda}. Total Debt/EBITDA: ${debtEbitda}. Net Debt/EBITDA: ${netDebtEbitda} (Net Debt = $${Math.round(netDebt).toLocaleString()}). Available liquidity: $${Math.round(availLiquidity).toLocaleString()}${rl !== null ? ` (cash $${Math.round(cashVal).toLocaleString()} + revolver availability $${Math.round(rl - (rd ?? 0)).toLocaleString()})` : " (cash only)"}.`;
+      const stack = scorePf.rows.map(r => `${r.isExisting ? "Existing debt" : r.category} ${money(r.amount)}${r.rate ? ` @${r.rate}%` : ""}`).join(", ");
+      const ex = scorePf.existing;
+      const exSrc = ex.source === "analyst" ? "analyst-entered" : `FY${scorePf.fiscalYear} statements`;
+      const exLine = ex.source === "none" || ex.gross <= 0 ? "" : ` Existing debt ${money(ex.amount)} (${exSrc}${ex.refinanced > 0 ? `; ${money(ex.gross)} less ${money(ex.refinanced)} refinanced in this transaction` : ""}) is included in total debt.`;
+      const mmLine = ex.mismatch && ex.statementDebt !== null ? ` NOTE: Existing debt entered differs from the FY${scorePf.fiscalYear} statements (${money(ex.gross)} vs ${money(ex.statementDebt)}). Please reconcile.` : "";
+      const lossNote = scorePf.ebitda !== null && scorePf.ebitda <= 0 ? ` EBITDA${fyTag} is not positive, so leverage multiples are not meaningful.` : "";
+      capLine = `
+- Pro-forma capitalization (EBITDA${fyTag} ${scorePf.ebitda !== null ? money(scorePf.ebitda) : "N/A"}; equity${fyTag} ${scorePf.equity !== null ? money(scorePf.equity) : "N/A"}): total debt ${money(totalDebt)} across ${debtRows.length} tranche(s) (${debtPct} of total cap), equity ${money(totalEquity)}.${exLine}${mmLine}${lossNote} Stack: [${stack}]. Senior Debt/EBITDA: ${seniorEbitda}. Total Debt/EBITDA: ${debtEbitda}. Net Debt/EBITDA: ${netDebtEbitda} (Net Debt = ${money(netDebt)}). Available liquidity: ${money(availLiquidity)}${rl !== null ? ` (cash ${money(cashVal)} + revolver availability ${money(rl - (rd ?? 0))})` : " (cash only)"}.`;
     }
+
+    // Latest-year figures and loss-year flag for the scoring and executive-summary prompts.
+    const latestNetIncome = mrFin && (mrFin as any).net_income != null ? Number((mrFin as any).net_income) : null;
+    const isLossYear = scorePf.fiscalYear !== null && ((scorePf.ebitda !== null && scorePf.ebitda < 0) || (latestNetIncome !== null && latestNetIncome < 0));
+    const lossYearLine = isLossYear ? `Latest fiscal year (FY${scorePf.fiscalYear}) is a loss year.` : "";
+    const negMetricsLine = scorePf.ebitda !== null && scorePf.ebitda <= 0
+      ? "Coverage and leverage metrics (DSCR, Net Debt/EBITDA, Gross Leverage, and Interest Coverage where EBIT is negative) are NOT MEANINGFUL because the base is negative; the scoring engine grades them Weak. Do NOT describe them as healthy, adequate or acceptable."
+      : "";
+    const promptRevenue = scorePf.revenue ?? Number(deal.annual_revenue ?? 0);
+    const promptEbitda = scorePf.ebitda ?? Number(deal.ebitda ?? 0);
 
     // ─────────────────────────────────────────────────────────────
     // PHASE 2c PART 1: Compute financial ratios, benchmark against
@@ -1980,9 +1999,11 @@ DEAL DETAILS:
 - Amount Requested: $${Number(deal.amount_requested ?? 0).toLocaleString()} CAD
 - Loan Term: ${deal.term_months ?? "N/A"} months
 - Target Interest Rate: ${deal.interest_rate ?? "N/A"}%
-- Annual Revenue: $${Number(deal.annual_revenue ?? 0).toLocaleString()} CAD
-- EBITDA: $${Number(deal.ebitda ?? 0).toLocaleString()} CAD
-- Use of Funds: ${deal.use_of_funds?.trim() ? deal.use_of_funds : "Not specified by the applicant."}
+- Annual Revenue${fyTag}: $${Number(promptRevenue).toLocaleString()} CAD
+- EBITDA${fyTag}: $${Number(promptEbitda).toLocaleString()} CAD
+${lossYearLine ? `- ${lossYearLine}
+` : ""}${negMetricsLine ? `- ${negMetricsLine}
+` : ""}- Use of Funds: ${deal.use_of_funds?.trim() ? deal.use_of_funds : "Not specified by the applicant."}
 If Use of Funds is 'Not specified by the applicant', you MUST include the unspecified use of funds as one of the risks.${collateralLine}${sourcesUsesLine || capLine ? `\n\nIMPORTANT FRAMING NOTE: The capitalization and sources-&-uses figures below are LENDER-ENTERED PRO-FORMA deal structure for the proposed transaction. They are NOT from the borrower's historical statements and are EXPECTED to differ from the computed historical ratios. Do NOT treat differences between pro-forma capitalization and historical computed leverage as a discrepancy, red flag, or reconciliation item. Do NOT flag the requested loan amount differing from total sources & uses as an inconsistency — a facility may fund only part of a transaction.` : ""}${sourcesUsesLine}${capLine}${currentFacilityLines.length > 0 ? `\n\nCURRENT POSITION — LENDER-CONFIRMED FIGURES (AUTHORITATIVE):\n${currentFacilityLines.join("\n")}\n\nThe figures above are the authoritative source for the borrower's CURRENT facility position as entered and confirmed by the lender. Do NOT state any conflicting figure from the historical financial statements, extraction notes, or MD&A as the current fact — those reflect historical or unverified extracted positions only. If a figure in the historical data appears to conflict with a lender-entered figure, you may raise the conflict as a risk but MUST phrase it as a discrepancy to reconcile: cite both figures and their sources explicitly (e.g. "The lender-entered revolver limit is $X, but the FY20XX statements show $Y — this should be reconciled before closing"). Never assert the extracted figure as the current authoritative amount.` : ""}
 
 ${selfReportedEstimate ? selfReportedEstimate + "\n\n" : ""}${computedRatiosBlock ? `When computed ratios are present below, base your financial assessment primarily on them — they are calculated directly from the borrower's confirmed financial statements and are more reliable than self-reported summary figures. Weight each ratio according to what matters most for this borrower's industry.\n\n${computedRatiosBlock}\n\n` : ""}${qnaBlock ? qnaBlock + "\n\n" : ""}${mdaBlock}${disabledMetricConstraint ? "\n\n" + disabledMetricConstraint : ""}\n\nAlso provide French translations of the summary, strengths, and risks. The French arrays MUST have exactly the same number of elements in the same order as their English counterparts, each element being the translation of the corresponding English element. Write proper standard French suitable for a credit professional in both Quebec and France. Do not use "courriel". Keep established finance terms that are used in English in French-language finance (EBITDA, DSCR, SAFE, ARR) as-is rather than translating them.\n\nReturn ONLY valid JSON — no markdown fences, no preamble, no commentary. The JSON must have exactly this shape:
@@ -2184,8 +2205,10 @@ Each metric score is 0-100 where 100 is best.`;
       const location = [deal.city, deal.province].filter(Boolean).join(", ");
       if (location)                    companyLines.push(`Location: ${location}`);
       if (deal.years_in_business != null) companyLines.push(`Years in business: ${deal.years_in_business}`);
-      if (deal.annual_revenue    != null) companyLines.push(`Annual revenue: $${Number(deal.annual_revenue).toLocaleString()}`);
-      if (deal.ebitda            != null) companyLines.push(`EBITDA: $${Number(deal.ebitda).toLocaleString()}`);
+      if (scorePf.revenue !== null || deal.annual_revenue != null) companyLines.push(`Annual revenue${fyTag}: $${Number(promptRevenue).toLocaleString()}`);
+      if (scorePf.ebitda !== null || deal.ebitda != null) companyLines.push(`EBITDA${fyTag}: $${Number(promptEbitda).toLocaleString()}`);
+      if (lossYearLine) companyLines.push(lossYearLine);
+      if (negMetricsLine) companyLines.push(negMetricsLine);
       if (companyLines.length) execParts.push("COMPANY:\n" + companyLines.join("\n"));
 
       const requestLines: string[] = [];

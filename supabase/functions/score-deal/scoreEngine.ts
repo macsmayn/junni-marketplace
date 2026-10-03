@@ -140,7 +140,10 @@ export async function runScoreEngine(
     let grade = "NeedsInput";
     let gradeReason = resolved.detail;
 
-    if (resolved.status === "computed" && resolved.value !== null) {
+    if (resolved.forcedGrade) {
+      grade = resolved.forcedGrade;
+      gradeReason = resolved.detail;
+    } else if (resolved.status === "computed" && resolved.value !== null) {
       const g = gradeValue(
         resolved.value,
         m.strong_band ?? "",

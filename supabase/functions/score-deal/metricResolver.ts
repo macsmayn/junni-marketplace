@@ -50,6 +50,9 @@ export interface ResolveResult {
   value: number | null;
   status: ResolveStatus;
   detail: string;
+  // Set when the metric is mathematically undefined because the base is negative:
+  // the engine grades it Weak (status computed, value null) instead of skipping it.
+  forcedGrade?: "Weak";
 }
 
 // ---------- primitives ----------
@@ -111,23 +114,31 @@ function ratio(
 }
 
 // ---------- computation functions ----------
+function nmWeak(base: "EBITDA" | "EBIT" | "equity"): ResolveResult {
+  return {
+    value: null,
+    status: "computed",
+    forcedGrade: "Weak",
+    detail: `Not meaningful: negative ${base}, graded Weak`,
+  };
+}
 type Fn = (f: Financials, d: DealTerms) => ResolveResult;
 
 const fNetDebtEbitda: Fn = (f) => {
   const e = deriveEbitda(f);
   if (e !== null && e <= 0)
-    return { value: null, status: "needs_review", detail: "EBITDA <= 0 (leverage not meaningful)" };
+    return nmWeak("EBITDA");
   return ratio(deriveNetDebt(f), e, "NetDebt / EBITDA");
 };
 const fTotalDebtEbitda: Fn = (f) => {
   const e = deriveEbitda(f);
-  if (e !== null && e <= 0) return { value: null, status: "needs_review", detail: "EBITDA <= 0" };
+  if (e !== null && e <= 0) return nmWeak("EBITDA");
   return ratio(num(f.total_debt), e, "TotalDebt / EBITDA");
 };
 const fDebtEquity: Fn = (f) => {
   const eq = num(f.equity);
   if (eq !== null && eq <= 0)
-    return { value: null, status: "needs_review", detail: "equity <= 0 (negative book equity)" };
+    return nmWeak("equity");
   return ratio(num(f.total_debt), eq, "Debt / Equity");
 };
 const fDebtAssets: Fn = (f) => ratio(num(f.total_debt), num(f.total_assets), "Debt / TotalAssets", true);
@@ -138,7 +149,7 @@ const fInterestCoverage: Fn = (f) => {
     return { value: null, status: "needs_review", detail: "interest <= 0 (coverage n/a)" };
   const ebit = deriveEbit(f);
   if (ebit !== null && ebit <= 0)
-    return { value: null, status: "needs_review", detail: "EBIT <= 0 (coverage not meaningful)" };
+    return nmWeak("EBIT");
   return ratio(ebit, ie, "EBIT / Interest");
 };
 const fDscr: Fn = (f, d) => {
@@ -146,7 +157,7 @@ const fDscr: Fn = (f, d) => {
   const interest = num(f.interest_expense);
   const principal = num(d?.annual_principal);
   if (e !== null && e <= 0)
-    return { value: null, status: "needs_review", detail: "EBITDA <= 0 (coverage not meaningful)" };
+    return nmWeak("EBITDA");
   if (e === null || interest === null || principal === null)
     return { value: null, status: "needs_input", detail: "requires EBITDA, interest, principal (deal terms)" };
   const denom = interest + principal;

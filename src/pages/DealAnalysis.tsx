@@ -6,8 +6,9 @@ import { useLanguage } from "../contexts/LanguageContext";
 import { LanguageToggle } from "../components/LanguageToggle";
 import { translateBandUnits } from "../lib/bandUnits";
 import { FINANCIAL_DOC_ACCEPT, validateFiles } from "../lib/uploadRules";
-import { fmtValue } from "../lib/metricFormat";
+import { fmtValue, nmDetailKey } from "../lib/metricFormat";
 import type { MemoSections } from "../lib/memoExport";
+import { fetchLatestConfirmedFinancials, buildProForma, EXISTING_CAT, type LatestFin } from "../lib/proForma";
 import {
   NAVY, GOLD, CREAM, GREEN, RED, MUTED, TIER_ORDER,
   gradeChip, riskChip, humanizeNotScoredReason, statusLabelKey, DefContent,
@@ -82,6 +83,7 @@ export default function DealAnalysis() {
   const [capItems, setCapItems] = useState<any[]>([]);
   const [collateral, setCollateral] = useState<any[]>([]);
   const [confirmedCash, setConfirmedCash] = useState<number | null>(null);
+  const [latestFin, setLatestFin] = useState<LatestFin | null>(null);
   const [questions, setQuestions] = useState<any[]>([]);
   const [questionsLoading, setQuestionsLoading] = useState(true);
   const [showResolved, setShowResolved] = useState(false);
@@ -190,14 +192,14 @@ export default function DealAnalysis() {
     (async () => {
       setLoading(true);
       const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }, { data: qsData }, { data: docsData }, { data: latestFinRow }, { data: finAllRows }] = await Promise.all([
-        supabase.from("deals").select("title,deal_label,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,created_by,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr,updated_at,org_id,financials_status").eq("id", dealId).single(),
+        supabase.from("deals").select("title,deal_label,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,created_by,use_of_funds,existing_debt,ebitda,annual_revenue,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr,updated_at,org_id,financials_status").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source,summary_fr,strengths_fr,risks_fr,generated_at").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
         supabase.from("users").select("id,role,active_org_id").eq("auth0_id", user?.sub ?? "").maybeSingle(),
-        supabase.from("sources_uses_entries").select("side,label,amount,sort_order").eq("deal_id", dealId).order("sort_order"),
-        supabase.from("capitalization_items").select("category,label,amount,rate,notes,sort_order").eq("deal_id", dealId).order("sort_order"),
+        supabase.from("sources_uses_entries").select("side,label,label_key,amount,sort_order").eq("deal_id", dealId).order("sort_order"),
+        supabase.from("capitalization_items").select("category,label,label_key,amount,amount_auto,rate,notes,sort_order").eq("deal_id", dealId).order("sort_order"),
         supabase.from("collateral_assets").select("asset_type,description,market_value,advance_rate,lending_value").eq("deal_id", dealId),
-        supabase.from("extracted_financials").select("cash").eq("deal_id", dealId).eq("borrower_confirmed", true).order("fiscal_year", { ascending: false }).limit(1).maybeSingle(),
+        fetchLatestConfirmedFinancials(supabase, dealId).then(row => ({ data: row })),
         supabase.from("credit_questions").select("*").eq("deal_id", dealId).order("created_at"),
         supabase.from("documents").select("id,file_name,file_type,storage_path,doc_category,created_at,size_bytes,extraction_status,extraction_error").eq("deal_id", dealId).order("created_at", { ascending: true }),
         supabase.from("extracted_financials").select("updated_at").eq("deal_id", dealId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
@@ -229,7 +231,8 @@ export default function DealAnalysis() {
       setSourcesUses(su ?? []);
       setCapItems(ci ?? []);
       setCollateral(coll ?? []);
-      setConfirmedCash(finMR?.cash ?? null);
+      setConfirmedCash(finMR?.cash != null ? Number(finMR.cash) : null);
+      setLatestFin(finMR ?? null);
       const loadedQs = qsData ?? [];
       setQuestions(loadedQs);
       const initAnswers: Record<string, string> = {};
@@ -606,7 +609,7 @@ export default function DealAnalysis() {
         ...m,
         metric_name_fr: definitions[m.metric_name]?.metric_name_fr ?? null,
       }));
-      const memoData = { deal, score, metrics: metricsWithFr, confirmedCash, suEntries: sourcesUses, capItems, collateral, benchmarks, lang, financials };
+      const memoData = { deal, score, metrics: metricsWithFr, confirmedCash, latestFin, suEntries: sourcesUses, capItems, collateral, benchmarks, lang, financials };
       if (format === 'pdf') await downloadPDF(memoData, filteredQ, t, memoSections);
       else await downloadDocx(memoData, filteredQ, t, memoSections);
       setMemoOpen(false);
@@ -1325,7 +1328,7 @@ export default function DealAnalysis() {
                           onClick={() => setExpandedRow(isExpanded ? null : row.metric_name)}
                         >
                           <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{mName(row.metric_name)}</span>
-                          <span style={{ fontSize: 13, color: MUTED, textAlign: "right" }}>{fmtValue(row.value, row.metric_name, row.strong_band, lang)}</span>
+                          <span style={{ fontSize: 13, color: MUTED, textAlign: "right" }}>{nmDetailKey(row.value, row.compute_detail) ? t("metric.nmValue") : fmtValue(row.value, row.metric_name, row.strong_band, lang)}</span>
                           <span>{gradeChip(row.grade, t)}</span>
                           <span
                             style={{ fontSize: 14, color: hasDef ? GOLD : "#C8C0B0", userSelect: "none", cursor: hasDef ? "pointer" : "default", lineHeight: 1 }}
@@ -1354,8 +1357,8 @@ export default function DealAnalysis() {
                         {isExpanded && (
                           <div style={{ padding: isMobile ? "0 14px 14px" : "0 18px 16px", borderTop: "1px solid #F0EDE8", background: CREAM }}>
                             <div style={{ fontSize: 12, color: MUTED, marginTop: 10, lineHeight: 1.7 }}>
-                              {row.compute_detail && <div><strong>{t("analysis.formulaLabel")}</strong> {row.compute_detail}</div>}
-                              {row.grade_reason && <div style={{ marginTop: 4 }}><strong>{t("analysis.gradeReasonLabel")}</strong> {row.grade_reason}</div>}
+                              {row.compute_detail && <div><strong>{t("analysis.formulaLabel")}</strong> {nmDetailKey(row.value, row.compute_detail) ? t(nmDetailKey(row.value, row.compute_detail)!) : row.compute_detail}</div>}
+                              {row.grade_reason && <div style={{ marginTop: 4 }}><strong>{t("analysis.gradeReasonLabel")}</strong> {nmDetailKey(row.value, row.grade_reason) ? t(nmDetailKey(row.value, row.grade_reason)!) : row.grade_reason}</div>}
                               {(row.strong_band || row.adequate_band || row.weak_band) && (
                                 <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: "4px 16px", alignItems: "center" }}>
                                   {row.strong_band && <span style={{ color: GREEN }}>{t("analysis.bandStrong")}: {translateBandUnits(row.strong_band, lang)}</span>}
@@ -1607,7 +1610,7 @@ export default function DealAnalysis() {
                       <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>{t("analysis.uses")}</div>
                       {uses.map((e: any, i: number) => (
                         <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < uses.length - 1 ? "1px solid #E8E2D9" : "none", fontSize: 13 }}>
-                          <span style={{ color: NAVY }}>{e.label}</span>
+                          <span style={{ color: NAVY }}>{e.label_key ? t(e.label_key) : e.label}</span>
                           <span style={{ color: NAVY, fontWeight: 500 }}>{fmtAmt(Number(e.amount))}</span>
                         </div>
                       ))}
@@ -1619,7 +1622,7 @@ export default function DealAnalysis() {
                       <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: MUTED, marginBottom: 10 }}>{t("analysis.sources")}</div>
                       {sources.map((e: any, i: number) => (
                         <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: i < sources.length - 1 ? "1px solid #E8E2D9" : "none", fontSize: 13 }}>
-                          <span style={{ color: NAVY }}>{e.label}</span>
+                          <span style={{ color: NAVY }}>{e.label_key ? t(e.label_key) : e.label}</span>
                           <span style={{ color: NAVY, fontWeight: 500 }}>{fmtAmt(Number(e.amount))}</span>
                         </div>
                       ))}
@@ -1644,16 +1647,17 @@ export default function DealAnalysis() {
 
         {/* ── Capitalization ── */}
         {capItems.length > 0 && (() => {
-          const DEBT_CATS = ["Senior Debt", "Subordinated Debt", "Shareholder Loans"];
-          const CAT_ORDER: Record<string, number> = { "Senior Debt": 0, "Subordinated Debt": 1, "Shareholder Loans": 2, "Preferred Equity": 3, "Common Equity": 4, "Other": 5 };
-          const sorted = [...capItems].sort((a: any, b: any) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99));
-          const totalCap = capItems.reduce((s: number, r: any) => s + Number(r.amount), 0);
-          const totalDebt = capItems.filter((r: any) => DEBT_CATS.includes(r.category)).reduce((s: number, r: any) => s + Number(r.amount), 0);
-          const seniorDebt = capItems.filter((r: any) => r.category === "Senior Debt").reduce((s: number, r: any) => s + Number(r.amount), 0);
-          const totalEquity = totalCap - totalDebt;
-          const ebitdaVal = Number(deal?.ebitda);
-          const hasEbitda = ebitdaVal > 0;
-          const cashVal = Number(confirmedCash) || 0;
+          const pf = buildProForma({ deal, latest: latestFin, capItems, suEntries: sourcesUses });
+          const CAT_ORDER: Record<string, number> = { [EXISTING_CAT]: -1, "Senior Debt": 0, "Subordinated Debt": 1, "Shareholder Loans": 2, "Preferred Equity": 3, "Common Equity": 4, "Other": 5 };
+          const sorted = [...pf.rows].sort((a, b) => (CAT_ORDER[a.category] ?? 99) - (CAT_ORDER[b.category] ?? 99));
+          const { totalCap, totalDebt, seniorDebt, totalEquity } = pf;
+          const fyTag = pf.fiscalYear !== null ? String(pf.fiscalYear) : "";
+          const ebitdaVal = pf.ebitda ?? 0;
+          const hasEbitda = pf.ebitda !== null && pf.ebitda > 0;
+          const cashVal = Number(pf.cash ?? confirmedCash) || 0;
+          const rowLabel = (r: any) => r.isExisting
+            ? (r.existingSource === "analyst" ? t("capx.existingAnalyst") : t("capx.existingStatements").replace("{year}", fyTag))
+            : (r.labelKey ? t(r.labelKey) : r.label);
           const netDebt = totalDebt - cashVal;
           const rl = deal?.revolver_limit != null ? Number(deal.revolver_limit) : null;
           const rd = deal?.revolver_drawn != null ? Number(deal.revolver_drawn) : null;
@@ -1681,11 +1685,11 @@ export default function DealAnalysis() {
                       const amt = Number(row.amount);
                       const pctCap = totalCap > 0 ? `${(amt / totalCap * 100).toFixed(1)}%` : "—";
                       let xEbitda = "";
-                      if (hasEbitda && DEBT_CATS.includes(row.category)) { cumDebt += amt; xEbitda = `${(cumDebt / ebitdaVal).toFixed(2)}x`; }
+                      if (hasEbitda && row.isDebt) { cumDebt += amt; xEbitda = `${(cumDebt / ebitdaVal).toFixed(2)}x`; }
                       return (
                         <tr key={i} style={{ borderBottom: i < sorted.length - 1 ? "1px solid #E8E2D9" : "none" }}>
-                          <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{row.label}</td>
-                          <td style={{ padding: "8px 10px", color: MUTED }}>{row.category}</td>
+                          <td style={{ padding: "8px 10px", fontWeight: 500, color: NAVY }}>{rowLabel(row)}{row.isExisting && pf.existing.refinanced > 0 ? <div style={{ fontSize: 11, fontWeight: 400, color: MUTED }}>{t("capx.netOfRefi").replace("{amount}", fmtAmt(pf.existing.refinanced))}</div> : null}</td>
+                          <td style={{ padding: "8px 10px", color: MUTED }}>{row.isExisting ? t("capx.catExisting") : row.category}</td>
                           <td style={{ padding: "8px 10px", color: NAVY }}>{fmtAmt(amt)}</td>
                           <td style={{ padding: "8px 10px", color: MUTED }}>{pctCap}</td>
                           {hasEbitda && <td style={{ padding: "8px 10px", color: xEbitda ? NAVY : MUTED }}>{xEbitda || "—"}</td>}
@@ -1735,8 +1739,21 @@ export default function DealAnalysis() {
                 {totalEquity === 0 && (
                   <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>{t("analysis.capNoEquity")}</div>
                 )}
-                {!hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>{t("analysis.capNoEbitda")}</div>}
-                {hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7 }}>EBITDA {fmtAmt(ebitdaVal)}{cashVal > 0 ? ` · ${t("analysis.cashWord")} ${fmtAmt(cashVal)}` : ""}</div>}
+                {!hasEbitda && <div style={{ fontSize: 11, color: MUTED, opacity: 0.7, marginTop: 2 }}>{pf.ebitda === null ? t("analysis.capNoEbitda") : t("capx.negEbitdaNote")}</div>}
+                {pf.existing.mismatch && pf.existing.statementDebt !== null && (
+                  <div style={{ fontSize: 12, color: "#92400E", background: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: 8, padding: "8px 10px", marginTop: 4 }}>
+                    {t("capx.existingMismatch").replace("{year}", fyTag).replace("{a}", fmtAmt(pf.existing.gross)).replace("{b}", fmtAmt(pf.existing.statementDebt))}
+                  </div>
+                )}
+                {pf.fiscalYear !== null && (
+                  <div style={{ fontSize: 11, color: MUTED, opacity: 0.7 }}>
+                    {[
+                      pf.ebitda !== null ? `${t("capx.ebitdaFy").replace("{year}", fyTag)} ${fmtAmt(pf.ebitda)}` : null,
+                      pf.equity !== null ? `${t("capx.equityFy").replace("{year}", fyTag)} ${fmtAmt(pf.equity)}` : null,
+                      pf.cash !== null ? `${t("capx.cashFy").replace("{year}", fyTag)} ${fmtAmt(pf.cash)}` : null,
+                    ].filter(Boolean).join(" · ")}
+                  </div>
+                )}
               </div>
             </div>
           );

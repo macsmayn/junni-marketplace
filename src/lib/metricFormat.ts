@@ -47,3 +47,13 @@ export function fmtValue(
   if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
   return `${sign}$${(abs / 1_000).toFixed(1)}K`;
 }
+
+// Metrics graded Weak because their base (EBITDA/EBIT/equity) is negative carry a null value
+// and a "Not meaningful: negative X, graded Weak" detail from the scoring engine.
+export function nmDetailKey(value: number | null | undefined, detail: string | null | undefined): string | null {
+  if (value != null || !detail || !detail.startsWith('Not meaningful: negative ')) return null;
+  if (detail.includes('EBITDA')) return 'metric.nmEbitda';
+  if (detail.includes('EBIT')) return 'metric.nmEbit';
+  if (detail.includes('equity')) return 'metric.nmEquity';
+  return null;
+}

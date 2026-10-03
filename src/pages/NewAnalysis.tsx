@@ -133,6 +133,7 @@ interface FinRow {
 interface SuRow {
   label: string;
   amount: string;
+  labelKey?: string;
 }
 
 interface CapItemRow {
@@ -141,6 +142,8 @@ interface CapItemRow {
   amount: string;
   rate: string;
   notes: string;
+  labelKey?: string;
+  amountAuto?: boolean;
 }
 
 interface CollRow {
@@ -658,10 +661,10 @@ export default function NewAnalysis() {
       }
       const suInsert: any[] = [
         ...validUsesRows.map((r, i) => ({
-          deal_id: dealId, side: "use", label: r.label.trim(), amount: parseNum(r.amount) ?? 0, sort_order: i,
+          deal_id: dealId, side: "use", label: r.label.trim(), label_key: r.labelKey ?? null, amount: parseNum(r.amount) ?? 0, sort_order: i,
         })),
         ...sourcesRows.filter(r => r.label.trim() && r.amount.trim()).map((r, i) => ({
-          deal_id: dealId, side: "source", label: r.label.trim(), amount: parseNum(r.amount) ?? 0, sort_order: i,
+          deal_id: dealId, side: "source", label: r.label.trim(), label_key: r.labelKey ?? null, amount: parseNum(r.amount) ?? 0, sort_order: i,
         })),
       ];
       if (suInsert.length > 0) {
@@ -686,6 +689,8 @@ export default function NewAnalysis() {
       deal_id: dealId,
       category: r.category,
       label: r.label.trim(),
+      label_key: r.labelKey ?? null,
+      amount_auto: !!r.amountAuto,
       amount: parseNum(r.amount) ?? 0,
       rate: r.rate.trim() ? parseFloat(r.rate) : null,
       notes: r.notes.trim() || null,
@@ -1547,7 +1552,7 @@ export default function NewAnalysis() {
                             <input
                               style={{ ...inputStyle, fontSize: 13, padding: "6px 10px" }}
                               value={row.label}
-                              onChange={e => setUsesRows(prev => prev.map((r, j) => j === i ? { ...r, label: e.target.value } : r))}
+                              onChange={e => setUsesRows(prev => prev.map((r, j) => j === i ? { ...r, label: e.target.value, labelKey: undefined } : r))}
                             />
                             <input
                               style={{ ...inputStyle, fontSize: 13, padding: "6px 10px" }}
@@ -1591,7 +1596,7 @@ export default function NewAnalysis() {
                             <input
                               style={{ ...inputStyle, fontSize: 13, padding: "6px 10px" }}
                               value={row.label}
-                              onChange={e => setSourcesRows(prev => prev.map((r, j) => j === i ? { ...r, label: e.target.value } : r))}
+                              onChange={e => setSourcesRows(prev => prev.map((r, j) => j === i ? { ...r, label: e.target.value, labelKey: undefined } : r))}
                             />
                             <input
                               style={{ ...inputStyle, fontSize: 13, padding: "6px 10px" }}
@@ -1604,10 +1609,10 @@ export default function NewAnalysis() {
                         ))}
                       </div>
                     )}
-                    {!sourcesRows.some(r => r.label === "New loan facility (this request)" || r.label === "Nouvelle facilité de prêt (cette demande)") && (
+                    {!sourcesRows.some(r => r.labelKey === "newAnalysis.defaultLoanLabel" || r.label === "New loan facility (this request)" || r.label === "Nouvelle facilité de prêt (cette demande)") && (
                       <button type="button"
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", marginBottom: 10, display: "inline-block" }}
-                        onClick={() => setSourcesRows(prev => [...prev, { label: t("newAnalysis.defaultLoanLabel"), amount: fmtNum(parseNum(amountRequested) ?? 0, lang) }])}>
+                        onClick={() => setSourcesRows(prev => [...prev, { label: t("newAnalysis.defaultLoanLabel"), labelKey: "newAnalysis.defaultLoanLabel", amount: fmtNum(parseNum(amountRequested) ?? 0, lang) }])}>
                         {t("newAnalysis.newLoanFacilityBtn")} ({fmtAmt(parseNum(amountRequested) ?? 0)})
                       </button>
                     )}
@@ -1724,7 +1729,7 @@ export default function NewAnalysis() {
                               <input
                                 style={{ ...inputStyle, fontSize: 13, padding: "5px 8px" }}
                                 value={row.label}
-                                onChange={e => setCapItemRows(prev => prev.map((r, j) => j === row.origIdx ? { ...r, label: e.target.value } : r))}
+                                onChange={e => setCapItemRows(prev => prev.map((r, j) => j === row.origIdx ? { ...r, label: e.target.value, labelKey: undefined } : r))}
                               />
                               <select
                                 style={{ ...inputStyle, fontSize: 12, padding: "5px 6px" }}
@@ -1736,7 +1741,7 @@ export default function NewAnalysis() {
                               <input
                                 style={{ ...inputStyle, fontSize: 13, padding: "5px 8px" }}
                                 value={row.amount}
-                                onChange={e => setCapItemRows(prev => prev.map((r, j) => j === row.origIdx ? { ...r, amount: e.target.value } : r))}
+                                onChange={e => setCapItemRows(prev => prev.map((r, j) => j === row.origIdx ? { ...r, amount: e.target.value, amountAuto: false } : r))}
                               />
                               <span style={{ fontSize: 13, color: MUTED, padding: "0 4px" }}>{pctCap}</span>
                               <span style={{ fontSize: 13, color: DEBT_CATEGORIES.includes(row.category) && hasEbitda ? NAVY : MUTED, padding: "0 4px" }}>{xEbitda}</span>
@@ -1795,11 +1800,11 @@ export default function NewAnalysis() {
                     );
                   })()}
                   {/* Ghost chip for new facility */}
-                  {!capItemRows.some(r => r.label === "New facility (this request)" || r.label === "Nouvelle facilité (cette demande)") && (
+                  {!capItemRows.some(r => r.labelKey === "newAnalysis.defaultFacilityLabel" || r.label === "New facility (this request)" || r.label === "Nouvelle facilité (cette demande)") && (
                     <div style={{ padding: "10px 18px", borderTop: `1px solid ${BORDER}` }}>
                       <button type="button"
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", display: "inline-block" }}
-                        onClick={() => setCapItemRows(prev => [...prev, { category: "Senior Debt", label: t("newAnalysis.defaultFacilityLabel"), amount: fmtNum(parseNum(amountRequested) ?? 0, lang), rate: "", notes: "" }])}>
+                        onClick={() => setCapItemRows(prev => [...prev, { category: "Senior Debt", label: t("newAnalysis.defaultFacilityLabel"), labelKey: "newAnalysis.defaultFacilityLabel", amount: fmtNum(parseNum(amountRequested) ?? 0, lang), rate: "", notes: "" }])}>
                         {t("newAnalysis.newFacilityCapBtn")} ({fmtAmt(parseNum(amountRequested) ?? 0)})
                       </button>
                     </div>
@@ -1809,7 +1814,7 @@ export default function NewAnalysis() {
                     <div style={{ padding: "10px 18px", borderTop: `1px solid ${BORDER}` }}>
                       <button type="button"
                         style={{ background: "none", border: `1px dashed ${BORDER}`, borderRadius: 20, padding: "4px 12px", fontSize: 12, color: MUTED, cursor: "pointer", display: "inline-block" }}
-                        onClick={() => setCapItemRows(prev => [...prev, { category: "Common Equity", label: t("newAnalysis.defaultEquityLabel"), amount: fmtNum(parseNum(edits[0]?.["equity"] ?? "") ?? 0, lang), rate: "", notes: "" }])}>
+                        onClick={() => setCapItemRows(prev => [...prev, { category: "Common Equity", label: t("newAnalysis.defaultEquityLabel"), labelKey: "newAnalysis.defaultEquityLabel", amountAuto: true, amount: fmtNum(parseNum(edits[0]?.["equity"] ?? "") ?? 0, lang), rate: "", notes: "" }])}>
                         {t("newAnalysis.commonEquityBtn")} ({fmtAmt(parseNum(edits[0]?.["equity"] ?? "") ?? 0)})
                       </button>
                     </div>
