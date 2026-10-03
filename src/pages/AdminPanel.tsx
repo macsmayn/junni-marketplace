@@ -192,7 +192,6 @@ export default function AdminPanel() {
       ai_score: deal.ai_score ?? "",
       status: deal.status ?? "pending",
     });
-    setRescoreFailedDealId(null);
   };
 
   const handleDealEditSave = async () => {

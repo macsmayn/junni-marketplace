@@ -677,6 +677,7 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
       let mergeFieldsFilled = 0;
       const mergeConflicts: { fiscal_year: number; field: string; confirmed_value: number; new_value: number }[] = [];
       let mergeRows: Map<number, any> | null = null;
+      let mergeDigestAdded = false;
 
       const mergeStatements = async (statements: any[], sourceDocId: string | null, mda_digest: string | null, sourceLabel: string) => {
         if (!mergeRows) {
@@ -742,6 +743,20 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
               const differs = oldV === 0 ? newV !== 0 : Math.abs(newV - oldV) / Math.abs(oldV) > CONFLICT_THRESHOLD;
               if (differs) mergeConflicts.push({ fiscal_year: fy, field: f, confirmed_value: oldV, new_value: newV });
             }
+            // The only permitted write to a confirmed row: append the MD&A digest.
+            const confirmedDigest = withDigest(existing.mda_digest ?? null);
+            if (confirmedDigest !== (existing.mda_digest ?? null)) {
+              const { data: digestRow, error: digestErr } = await supabase
+                .from("extracted_financials")
+                .update({ mda_digest: confirmedDigest })
+                .eq("deal_id", deal_id)
+                .eq("fiscal_year", fy)
+                .eq("borrower_confirmed", true)
+                .select("*")
+                .maybeSingle();
+              if (digestErr) console.error(`[score-deal] merge digest error (FY${fy}):`, digestErr);
+              else if (digestRow) { rows.set(fy, digestRow); mergeDigestAdded = true; }
+            }
             continue;
           }
 
@@ -755,7 +770,7 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
             if (existing[f] == null && stmt[f] != null) patch[f] = stmt[f];
           }
           const newDigest = withDigest(existing.mda_digest ?? null);
-          if (newDigest !== (existing.mda_digest ?? null)) patch.mda_digest = newDigest;
+          if (newDigest !== (existing.mda_digest ?? null)) { patch.mda_digest = newDigest; mergeDigestAdded = true; }
           if (Object.keys(patch).length === 0) continue;
           const { data: updated, error: updErr } = await supabase
             .from("extracted_financials")
@@ -992,6 +1007,7 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
           merge_mode: true,
           years_added: [...mergeYearsAdded].sort((a, b) => a - b),
           fields_filled: mergeFieldsFilled,
+          digest_added: mergeDigestAdded,
           conflicts: mergeConflicts,
           files,
         }),

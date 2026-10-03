@@ -61,7 +61,7 @@ export async function invokeFunction(
 ): Promise<{ data: unknown; error: Error | null }> {
   const accessToken = await resolveAccessToken();
   return supabase.functions.invoke(name, {
-    body,
+    body: body as Record<string, any>,
     headers: {
       Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       'X-Auth0-Token': accessToken,

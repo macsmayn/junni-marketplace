@@ -38,6 +38,22 @@ interface WiEditState {
   enabled:  boolean;
 }
 
+async function loadYearCurrencies(dealId: string): Promise<Record<number, string>> {
+  const { data } = await supabase.from("extracted_financials").select("fiscal_year,currency").eq("deal_id", dealId);
+  const out: Record<number, string> = {};
+  for (const r of data ?? []) if (r.currency) out[r.fiscal_year] = r.currency;
+  return out;
+}
+
+function fmtMoney(v: number | string, currency: string | undefined, lang: string): string {
+  const locale = lang === "fr" ? "fr-CA" : "en-CA";
+  try {
+    return Number(v).toLocaleString(locale, { style: "currency", currency: currency || "CAD", maximumFractionDigits: 0 });
+  } catch {
+    return Number(v).toLocaleString(locale, { style: "currency", currency: "CAD", maximumFractionDigits: 0 });
+  }
+}
+
 export default function DealAnalysis() {
   const { dealId } = useParams<{ dealId: string }>();
   const [, setLocation] = useLocation();
@@ -112,7 +128,9 @@ export default function DealAnalysis() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
   const [showRescorePrompt, setShowRescorePrompt] = useState(false);
-  const [mergeOutcome, setMergeOutcome] = useState<"review" | "nothing" | "error" | null>(null);
+  const [mergeOutcome, setMergeOutcome] = useState<"digest" | "nothing" | "error" | null>(null);
+  const [finStatus, setFinStatus] = useState<string | null>(null);
+  const [conflictCurrency, setConflictCurrency] = useState<Record<number, string>>({});
   const [extractingDocIds, setExtractingDocIds] = useState<string[]>([]);
   const [openConflicts, setOpenConflicts] = useState<any[]>([]);
   const [isRescoring, setIsRescoring] = useState(false);
@@ -172,7 +190,7 @@ export default function DealAnalysis() {
     (async () => {
       setLoading(true);
       const [{ data: d }, { data: s, error: sErr }, { data: m }, { data: cu }, { data: su }, { data: ci }, { data: coll }, { data: finMR }, { data: qsData }, { data: docsData }, { data: latestFinRow }, { data: finAllRows }] = await Promise.all([
-        supabase.from("deals").select("title,deal_label,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,created_by,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr,updated_at,org_id").eq("id", dealId).single(),
+        supabase.from("deals").select("title,deal_label,industry,city,province,years_in_business,amount_requested,term_months,interest_rate,created_by,use_of_funds,existing_debt,ebitda,revolver_limit,revolver_drawn,enterprise_value,executive_summary,executive_summary_fr,updated_at,org_id,financials_status").eq("id", dealId).single(),
         supabase.from("credit_scores").select("overall_score,risk_label,summary,strengths,risks,coverage_pct,critical_floor_applied,capped_reason,score_source,summary_fr,strengths_fr,risks_fr,generated_at").eq("deal_id", dealId).maybeSingle(),
         supabase.from("score_metric_results").select("*").eq("deal_id", dealId).order("tier").order("metric_name"),
         supabase.from("users").select("id,role,active_org_id").eq("auth0_id", user?.sub ?? "").maybeSingle(),
@@ -187,6 +205,7 @@ export default function DealAnalysis() {
       ]);
       if (sErr) console.error("credit_scores fetch:", sErr);
       setDeal(d);
+      setFinStatus(d?.financials_status ?? null);
       setCurrentUser(cu ?? null);
       if (d?.org_id) {
         setDealOrgId(d.org_id);
@@ -249,6 +268,7 @@ export default function DealAnalysis() {
         .eq("status", "open")
         .order("fiscal_year", { ascending: true });
       setOpenConflicts(conflictRows ?? []);
+      if ((conflictRows ?? []).length > 0) setConflictCurrency(await loadYearCurrencies(dealId));
 
       setLoading(false);
     })();
@@ -617,6 +637,7 @@ export default function DealAnalysis() {
   };
 
   const handleRescore = async () => {
+    if (finStatus === "extracted") return;
     setIsRescoring(true);
     setRescoreError(null);
     setShowRescorePrompt(false);
@@ -711,8 +732,10 @@ export default function DealAnalysis() {
                   .eq("status", "open")
                   .order("fiscal_year", { ascending: true });
                 setOpenConflicts(conflictRows ?? []);
+                setConflictCurrency(await loadYearCurrencies(dealId));
               }
-              if (added > 0) setMergeOutcome("review");
+              if (added > 0) setFinStatus("extracted");
+              else if (body.digest_added) setMergeOutcome("digest");
               else if (!(body.conflicts?.length > 0)) setMergeOutcome("nothing");
             }
           } catch (err) {
@@ -768,7 +791,7 @@ export default function DealAnalysis() {
               {t("analysis.editFinancials")}
             </button>
           )}
-          {deal && (
+          {deal && finStatus !== "extracted" && (
             <button
               onClick={handleRescore}
               disabled={isRescoring}
@@ -919,7 +942,7 @@ export default function DealAnalysis() {
             (deal?.updated_at != null && new Date(deal.updated_at).getTime() > gen) ||
             (latestFinUpdatedAt != null && new Date(latestFinUpdatedAt).getTime() > gen) ||
             (documents.length > 0 && Math.max(...documents.map((doc: any) => new Date(doc.created_at).getTime())) > gen);
-          if (!stale) return null;
+          if (!stale || finStatus === "extracted") return null;
           return (
             <div style={{
               background: "#FFFBEB", border: `1px solid ${GOLD}`, borderRadius: 12,
@@ -2333,7 +2356,7 @@ export default function DealAnalysis() {
                     {docViewError}
                   </div>
                 )}
-                {mergeOutcome === "review" && (
+                {finStatus === "extracted" && (
                   <div style={{
                     background: "#FFFBEB", border: `1px solid ${GOLD}`, borderRadius: 8,
                     padding: "10px 12px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8,
@@ -2344,6 +2367,21 @@ export default function DealAnalysis() {
                         padding: "4px 10px", borderRadius: 6, border: "none", background: GOLD,
                         color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
                       }}>{t("analysis.mergeReviewBtn")}</button>
+                    </div>
+                  </div>
+                )}
+                {mergeOutcome === "digest" && finStatus !== "extracted" && (
+                  <div style={{
+                    background: "#FFFBEB", border: `1px solid ${GOLD}`, borderRadius: 8,
+                    padding: "10px 12px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8,
+                  }}>
+                    <span style={{ fontSize: 12, color: "#92400E" }}>{t("analysis.mergeDigestAdded")}</span>
+                    <div>
+                      <button onClick={handleRescore} disabled={isRescoring} style={{
+                        padding: "4px 10px", borderRadius: 6, border: "none", background: GOLD,
+                        color: "#fff", fontSize: 11, fontWeight: 700, cursor: isRescoring ? "wait" : "pointer",
+                        fontFamily: "Inter, sans-serif", opacity: isRescoring ? 0.7 : 1,
+                      }}>{isRescoring ? t("analysis.rescoring") : t("analysis.docRescoreBtn")}</button>
                     </div>
                   </div>
                 )}
@@ -2364,9 +2402,9 @@ export default function DealAnalysis() {
                     {openConflicts.map((c: any) => (
                       <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, padding: "6px 0", borderTop: "1px solid #FED7AA" }}>
                         <div style={{ fontSize: 11, color: NAVY, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700 }}>{c.fiscal_year} · {String(c.field).replace(/_/g, " ")}</div>
-                          <div>{t("analysis.conflictsConfirmed")}: {"$" + Number(c.confirmed_value).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA", { maximumFractionDigits: 0 })}</div>
-                          <div>{t("analysis.conflictsNewDoc")}: {"$" + Number(c.new_value).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA", { maximumFractionDigits: 0 })}</div>
+                          <div style={{ fontWeight: 700 }}>{c.fiscal_year} · {t(`financialField.${c.field}`)}</div>
+                          <div>{t("analysis.conflictsConfirmed")}: {fmtMoney(c.confirmed_value, conflictCurrency[c.fiscal_year], lang)}</div>
+                          <div>{t("analysis.conflictsNewDoc")}: {fmtMoney(c.new_value, conflictCurrency[c.fiscal_year], lang)}</div>
                         </div>
                         <button
                           onClick={async () => {
@@ -2380,7 +2418,7 @@ export default function DealAnalysis() {
                     ))}
                   </div>
                 )}
-                {showRescorePrompt && (
+                {showRescorePrompt && finStatus !== "extracted" && (
                   <div style={{
                     background: "#FFFBEB", border: `1px solid ${GOLD}`, borderRadius: 8,
                     padding: "10px 12px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8,

@@ -25,6 +25,14 @@ const NUMERIC_FIELDS: { key: string; label: string }[] = [
   { key: "distributions",             label: "Distributions" },
 ];
 
+function fmtMoney(v: number | string, currency: string | null | undefined, locale: string): string {
+  try {
+    return Number(v).toLocaleString(locale, { style: "currency", currency: currency || "CAD", maximumFractionDigits: 0 });
+  } catch {
+    return Number(v).toLocaleString(locale, { style: "currency", currency: "CAD", maximumFractionDigits: 0 });
+  }
+}
+
 type Edits = Record<string, Record<string, number | null>>;
 
 type DebtFields = {
@@ -174,13 +182,13 @@ export default function FinancialReview() {
           .eq("id", row.id);
         if (error) console.error(`extracted_financials update error (FY${row.fiscal_year}):`, error);
       }
-      const { error: resolveErr } = await supabase
-        .from("extraction_conflicts")
-        .update({ status: "resolved" })
-        .eq("deal_id", dealId)
-        .eq("status", "open");
-      if (resolveErr) console.error("extraction_conflicts resolve error:", resolveErr);
       if (confirm) {
+        const { error: resolveErr } = await supabase
+          .from("extraction_conflicts")
+          .update({ status: "resolved" })
+          .eq("deal_id", dealId)
+          .eq("status", "open");
+        if (resolveErr) console.error("extraction_conflicts resolve error:", resolveErr);
         const { error } = await supabase
           .from("deals")
           .update({ financials_status: "confirmed" })
@@ -834,7 +842,7 @@ export default function FinancialReview() {
                           />
                           {fieldConflict && (
                             <span style={{ fontSize: 11, color: "#9A3412" }}>
-                              {t("financialReview.newDocValue")} ${Number(fieldConflict.new_value).toLocaleString(dateLocale, { maximumFractionDigits: 0 })}
+                              {t("financialReview.newDocValue")} {fmtMoney(fieldConflict.new_value, row.currency, dateLocale)}
                             </span>
                           )}
                         </div>
@@ -849,7 +857,7 @@ export default function FinancialReview() {
                     <div style={{ padding: "0 24px 12px", fontSize: 12, color: "#9A3412" }}>
                       <div style={{ fontWeight: 600, marginBottom: 2 }}>{t("financialReview.conflictsOther")}</div>
                       {others.map(c => (
-                        <div key={c.id}>{String(c.field).replace(/_/g, " ")}: {t("financialReview.newDocValue")} ${Number(c.new_value).toLocaleString(dateLocale, { maximumFractionDigits: 0 })}</div>
+                        <div key={c.id}>{t(`financialField.${c.field}`)}: {t("financialReview.newDocValue")} {fmtMoney(c.new_value, row.currency, dateLocale)}</div>
                       ))}
                     </div>
                   );
