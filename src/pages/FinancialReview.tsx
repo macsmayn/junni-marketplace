@@ -46,6 +46,7 @@ export default function FinancialReview() {
   const dateLocale = lang === "fr" ? "fr-CA" : "en-CA";
   const [deal, setDeal] = useState<any>(null);
   const [financials, setFinancials] = useState<any[]>([]);
+  const [conflicts, setConflicts] = useState<any[]>([]);
   const [edits, setEdits] = useState<Edits>({});
   const [debtEdits, setDebtEdits] = useState<DebtEdits>({});
   const [annotations, setAnnotations] = useState<any[]>([]);
@@ -60,7 +61,7 @@ export default function FinancialReview() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const [dealRes, financialsRes, annotationsRes] = await Promise.all([
+      const [dealRes, financialsRes, annotationsRes, conflictsRes] = await Promise.all([
         supabase.from("deals").select("id, title, financials_status").eq("id", dealId).single(),
         supabase
           .from("extracted_financials")
@@ -72,6 +73,11 @@ export default function FinancialReview() {
           .select("*")
           .eq("deal_id", dealId)
           .order("created_at", { ascending: true }),
+        supabase
+          .from("extraction_conflicts")
+          .select("id,fiscal_year,field,new_value")
+          .eq("deal_id", dealId)
+          .eq("status", "open"),
       ]);
 
       if (dealRes.data) setDeal(dealRes.data);
@@ -100,6 +106,7 @@ export default function FinancialReview() {
       }
 
       if (annotationsRes.data) setAnnotations(annotationsRes.data);
+      if (conflictsRes.data) setConflicts(conflictsRes.data);
 
       if (user?.sub) {
         const { data: userData } = await supabase
@@ -167,6 +174,12 @@ export default function FinancialReview() {
           .eq("id", row.id);
         if (error) console.error(`extracted_financials update error (FY${row.fiscal_year}):`, error);
       }
+      const { error: resolveErr } = await supabase
+        .from("extraction_conflicts")
+        .update({ status: "resolved" })
+        .eq("deal_id", dealId)
+        .eq("status", "open");
+      if (resolveErr) console.error("extraction_conflicts resolve error:", resolveErr);
       if (confirm) {
         const { error } = await supabase
           .from("deals")
@@ -800,23 +813,47 @@ export default function FinancialReview() {
                   </div>
                 </div>
 
+                {row.raw_notes && String(row.raw_notes).includes("Units uncertain") && (
+                  <div className="confidence-callout" style={{ margin: "16px 24px 0" }}>⚠ {t("financialReview.unitsUncertain")}</div>
+                )}
+
                 <div className="fields-grid">
                   {NUMERIC_FIELDS.map(({ key, label }) => {
                     const val = edits[row.id]?.[key];
+                    const fieldConflict = conflicts.find(c => c.fiscal_year === row.fiscal_year && c.field === key);
                     return (
                       <div key={key} className="field-row">
                         <label className="field-label">{label}</label>
-                        <input
-                          type="number"
-                          className={`field-input${isLowConf ? " low-conf-input" : ""}`}
-                          value={val ?? ""}
-                          onChange={e => handleFieldChange(row.id, key, e.target.value)}
-                          placeholder="—"
-                        />
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                          <input
+                            type="number"
+                            className={`field-input${isLowConf ? " low-conf-input" : ""}`}
+                            value={val ?? ""}
+                            onChange={e => handleFieldChange(row.id, key, e.target.value)}
+                            placeholder="—"
+                          />
+                          {fieldConflict && (
+                            <span style={{ fontSize: 11, color: "#9A3412" }}>
+                              {t("financialReview.newDocValue")} ${Number(fieldConflict.new_value).toLocaleString(dateLocale, { maximumFractionDigits: 0 })}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
                 </div>
+                {(() => {
+                  const others = conflicts.filter(c => c.fiscal_year === row.fiscal_year && !NUMERIC_FIELDS.some(f => f.key === c.field));
+                  if (others.length === 0) return null;
+                  return (
+                    <div style={{ padding: "0 24px 12px", fontSize: 12, color: "#9A3412" }}>
+                      <div style={{ fontWeight: 600, marginBottom: 2 }}>{t("financialReview.conflictsOther")}</div>
+                      {others.map(c => (
+                        <div key={c.id}>{String(c.field).replace(/_/g, " ")}: {t("financialReview.newDocValue")} ${Number(c.new_value).toLocaleString(dateLocale, { maximumFractionDigits: 0 })}</div>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 <div className="debt-section">
                   <div className="debt-section-header">

@@ -112,6 +112,9 @@ export default function DealAnalysis() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
   const [showRescorePrompt, setShowRescorePrompt] = useState(false);
+  const [mergeOutcome, setMergeOutcome] = useState<"review" | "nothing" | "error" | null>(null);
+  const [extractingDocIds, setExtractingDocIds] = useState<string[]>([]);
+  const [openConflicts, setOpenConflicts] = useState<any[]>([]);
   const [isRescoring, setIsRescoring] = useState(false);
   const [rescoreError, setRescoreError] = useState<string | null>(null);
   const [latestFinUpdatedAt, setLatestFinUpdatedAt] = useState<string | null>(null);
@@ -238,6 +241,14 @@ export default function DealAnalysis() {
         .eq("deal_id", dealId)
         .order("version", { ascending: false });
       setHistoryVersions(hvRows ?? []);
+
+      const { data: conflictRows } = await supabase
+        .from("extraction_conflicts")
+        .select("id,fiscal_year,field,confirmed_value,new_value")
+        .eq("deal_id", dealId)
+        .eq("status", "open")
+        .order("fiscal_year", { ascending: true });
+      setOpenConflicts(conflictRows ?? []);
 
       setLoading(false);
     })();
@@ -670,7 +681,47 @@ export default function DealAnalysis() {
       }
       if (newDocs.length > 0) {
         setDocuments(prev => [...prev, ...newDocs]);
-        setShowRescorePrompt(true);
+        const isExtractable = !!docTypes.find((d: any) => d.key === uploadDocType)?.is_extracted;
+        if (!isExtractable) {
+          setShowRescorePrompt(true);
+        } else {
+          setMergeOutcome(null);
+          setShowRescorePrompt(false);
+          const ids: string[] = newDocs.map((d: any) => d.id);
+          setExtractingDocIds(ids);
+          try {
+            const { data: body, httpStatus } = await invokeFunctionWithDetails("score-deal", {
+              deal_id: dealId, extract_only: true, merge_mode: true, document_ids: ids,
+            });
+            if (httpStatus !== 200 || !body) {
+              console.error("[DealAnalysis] merge extraction:", httpStatus, body?.error);
+              setMergeOutcome("error");
+            } else {
+              const fileMap = new Map<string, any>((body.files ?? []).map((f: any) => [f.document_id, f]));
+              setDocuments(prev => prev.map((d: any) => {
+                const f = fileMap.get(d.id);
+                return f ? { ...d, extraction_status: f.status === "skipped_not_extractable" ? d.extraction_status : f.status, extraction_error: f.error ?? null } : d;
+              }));
+              const added = (body.years_added?.length ?? 0) + (body.fields_filled ?? 0);
+              if (body.conflicts?.length > 0) {
+                const { data: conflictRows } = await supabase
+                  .from("extraction_conflicts")
+                  .select("id,fiscal_year,field,confirmed_value,new_value")
+                  .eq("deal_id", dealId)
+                  .eq("status", "open")
+                  .order("fiscal_year", { ascending: true });
+                setOpenConflicts(conflictRows ?? []);
+              }
+              if (added > 0) setMergeOutcome("review");
+              else if (!(body.conflicts?.length > 0)) setMergeOutcome("nothing");
+            }
+          } catch (err) {
+            console.error("[DealAnalysis] merge extraction failed:", err);
+            setMergeOutcome("error");
+          } finally {
+            setExtractingDocIds([]);
+          }
+        }
       }
     } finally {
       setIsUploading(false);
@@ -2240,7 +2291,10 @@ export default function DealAnalysis() {
                             {dt && !dt.is_extracted && (
                               <div style={{ fontSize: 10, color: MUTED, fontStyle: "italic", marginTop: 1 }}>{t("analysis.docNotAnalysed")}</div>
                             )}
-                            {doc.extraction_status && (
+                            {extractingDocIds.includes(doc.id) && (
+                              <div style={{ fontSize: 10, marginTop: 1, fontWeight: 600, color: GOLD }}>{t("extraction.status.extracting")}</div>
+                            )}
+                            {!extractingDocIds.includes(doc.id) && doc.extraction_status && (
                               <div
                                 title={doc.extraction_error ?? undefined}
                                 style={{ fontSize: 10, marginTop: 1, fontWeight: 600, color: doc.extraction_status === "extracted" ? "#059669" : "#DC2626" }}
@@ -2277,6 +2331,53 @@ export default function DealAnalysis() {
                 {docViewError && (
                   <div style={{ background: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 6, padding: "8px 10px", fontSize: 12, color: "#B71C1C", marginBottom: 10 }}>
                     {docViewError}
+                  </div>
+                )}
+                {mergeOutcome === "review" && (
+                  <div style={{
+                    background: "#FFFBEB", border: `1px solid ${GOLD}`, borderRadius: 8,
+                    padding: "10px 12px", marginBottom: 12, display: "flex", flexDirection: "column", gap: 8,
+                  }}>
+                    <span style={{ fontSize: 12, color: "#92400E" }}>{t("analysis.mergeReviewNeeded")}</span>
+                    <div>
+                      <button onClick={() => setLocation(`/deals/${dealId}/review-financials`)} style={{
+                        padding: "4px 10px", borderRadius: 6, border: "none", background: GOLD,
+                        color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif",
+                      }}>{t("analysis.mergeReviewBtn")}</button>
+                    </div>
+                  </div>
+                )}
+                {mergeOutcome === "nothing" && (
+                  <div style={{ background: "#F5F3EE", border: "1px solid #E8E2D9", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 12, color: MUTED }}>
+                    {t("analysis.mergeNothingNew")}
+                  </div>
+                )}
+                {mergeOutcome === "error" && (
+                  <div style={{ background: "#FFF5F5", border: "1px solid #FFCDD2", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 12, color: "#B71C1C" }}>
+                    {t("analysis.mergeError")}
+                  </div>
+                )}
+                {openConflicts.length > 0 && (
+                  <div style={{ background: "#FFF7ED", border: "1px solid #FDBA74", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#9A3412", marginBottom: 2 }}>{t("analysis.conflictsTitle")}</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>{t("analysis.conflictsNote")}</div>
+                    {openConflicts.map((c: any) => (
+                      <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, padding: "6px 0", borderTop: "1px solid #FED7AA" }}>
+                        <div style={{ fontSize: 11, color: NAVY, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700 }}>{c.fiscal_year} · {String(c.field).replace(/_/g, " ")}</div>
+                          <div>{t("analysis.conflictsConfirmed")}: {"$" + Number(c.confirmed_value).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA", { maximumFractionDigits: 0 })}</div>
+                          <div>{t("analysis.conflictsNewDoc")}: {"$" + Number(c.new_value).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA", { maximumFractionDigits: 0 })}</div>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            const { error } = await supabase.from("extraction_conflicts").update({ status: "dismissed" }).eq("id", c.id);
+                            if (error) { console.error("[DealAnalysis] dismiss conflict failed:", error.message); return; }
+                            setOpenConflicts(prev => prev.filter((x: any) => x.id !== c.id));
+                          }}
+                          style={{ flexShrink: 0, padding: "3px 8px", borderRadius: 6, border: "1px solid #E8E2D9", background: "#fff", color: MUTED, fontSize: 11, cursor: "pointer", fontFamily: "Inter, sans-serif" }}
+                        >{t("analysis.conflictsDismiss")}</button>
+                      </div>
+                    ))}
                   </div>
                 )}
                 {showRescorePrompt && (
