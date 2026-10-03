@@ -1292,6 +1292,7 @@ const en: Record<string, string> = {
   "analysis.conflictsConfirmed":    "Confirmed",
   "analysis.conflictsNewDoc":       "New document",
   "analysis.conflictsDismiss":      "Dismiss",
+  "analysis.conflictUnitsMismatch": "Units mismatch: this document's figures look 1,000x different from the existing figures. No figures were changed. Check whether the document is in thousands.",
   "extraction.status.extracting":   "Reading…",
   "extraction.status.skipped_not_extractable": "Not analysed",
   "financialReview.newDocValue":    "New document:",

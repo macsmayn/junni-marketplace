@@ -660,6 +660,40 @@ export default function DealAnalysis() {
     }
   };
 
+  // After a failed merge call the server may still have finished: show the real outcome if any document has a status.
+  const recoverMergeOutcome = async (ids: string[]) => {
+    try {
+      const { data: docRows, error: docErr } = await supabase
+        .from("documents")
+        .select("id,extraction_status,extraction_error")
+        .in("id", ids);
+      if (docErr) throw docErr;
+      if (!(docRows ?? []).some((d: any) => d.extraction_status != null)) {
+        setMergeOutcome("error");
+        return;
+      }
+      const statusById = new Map((docRows ?? []).map((d: any) => [d.id, d]));
+      setDocuments(prev => prev.map((d: any) => {
+        const r: any = statusById.get(d.id);
+        return r ? { ...d, extraction_status: r.extraction_status, extraction_error: r.extraction_error ?? null } : d;
+      }));
+      const { data: dealRow } = await supabase.from("deals").select("financials_status").eq("id", dealId).maybeSingle();
+      const { data: conflictRows } = await supabase
+        .from("extraction_conflicts")
+        .select("id,fiscal_year,field,confirmed_value,new_value")
+        .eq("deal_id", dealId)
+        .eq("status", "open")
+        .order("fiscal_year", { ascending: true });
+      setOpenConflicts(conflictRows ?? []);
+      if ((conflictRows ?? []).length > 0) setConflictCurrency(await loadYearCurrencies(dealId));
+      if (dealRow?.financials_status) setFinStatus(dealRow.financials_status);
+      setMergeOutcome(dealRow?.financials_status === "extracted" || (conflictRows ?? []).length > 0 ? null : "nothing");
+    } catch (recoverErr) {
+      console.error("[DealAnalysis] could not re-check merge outcome:", recoverErr);
+      setMergeOutcome("error");
+    }
+  };
+
   const handleUploadDocs = async (files: FileList) => {
     if (!currentUser?.id || !dealId || !uploadDocType || isUploading) return;
     const { accepted, rejected } = validateFiles(files);
@@ -711,12 +745,12 @@ export default function DealAnalysis() {
           const ids: string[] = newDocs.map((d: any) => d.id);
           setExtractingDocIds(ids);
           try {
-            const { data: body, httpStatus } = await invokeFunctionWithDetails("score-deal", {
+            const { data: body, httpStatus, rawText } = await invokeFunctionWithDetails("score-deal", {
               deal_id: dealId, extract_only: true, merge_mode: true, document_ids: ids,
             });
             if (httpStatus !== 200 || !body) {
-              console.error("[DealAnalysis] merge extraction:", httpStatus, body?.error);
-              setMergeOutcome("error");
+              console.error("[DealAnalysis] merge extraction failed — httpStatus:", httpStatus, "raw response:", rawText);
+              await recoverMergeOutcome(ids);
             } else {
               const fileMap = new Map<string, any>((body.files ?? []).map((f: any) => [f.document_id, f]));
               setDocuments(prev => prev.map((d: any) => {
@@ -739,8 +773,8 @@ export default function DealAnalysis() {
               else if (!(body.conflicts?.length > 0)) setMergeOutcome("nothing");
             }
           } catch (err) {
-            console.error("[DealAnalysis] merge extraction failed:", err);
-            setMergeOutcome("error");
+            console.error("[DealAnalysis] merge extraction request threw (no HTTP response):", err);
+            await recoverMergeOutcome(ids);
           } finally {
             setExtractingDocIds([]);
           }
@@ -2402,9 +2436,18 @@ export default function DealAnalysis() {
                     {openConflicts.map((c: any) => (
                       <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, padding: "6px 0", borderTop: "1px solid #FED7AA" }}>
                         <div style={{ fontSize: 11, color: NAVY, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700 }}>{c.fiscal_year} · {t(`financialField.${c.field}`)}</div>
-                          <div>{t("analysis.conflictsConfirmed")}: {fmtMoney(c.confirmed_value, conflictCurrency[c.fiscal_year], lang)}</div>
-                          <div>{t("analysis.conflictsNewDoc")}: {fmtMoney(c.new_value, conflictCurrency[c.fiscal_year], lang)}</div>
+                          {c.field === "units_mismatch" ? (
+                            <>
+                              <div style={{ fontWeight: 700 }}>{c.fiscal_year}</div>
+                              <div>{t("analysis.conflictUnitsMismatch")}</div>
+                            </>
+                          ) : (
+                            <>
+                              <div style={{ fontWeight: 700 }}>{c.fiscal_year} · {t(`financialField.${c.field}`)}</div>
+                              <div>{t("analysis.conflictsConfirmed")}: {fmtMoney(c.confirmed_value, conflictCurrency[c.fiscal_year], lang)}</div>
+                              <div>{t("analysis.conflictsNewDoc")}: {fmtMoney(c.new_value, conflictCurrency[c.fiscal_year], lang)}</div>
+                            </>
+                          )}
                         </div>
                         <button
                           onClick={async () => {

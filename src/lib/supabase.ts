@@ -74,7 +74,7 @@ export async function invokeFunction(
 export async function invokeFunctionWithDetails(
   name: string,
   body: unknown
-): Promise<{ data: any; httpStatus: number }> {
+): Promise<{ data: any; httpStatus: number; rawText: string }> {
   const accessToken = await resolveAccessToken();
   const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
     method: 'POST',
@@ -86,6 +86,8 @@ export async function invokeFunctionWithDetails(
     body: JSON.stringify(body),
   });
   let data: any = null;
-  try { data = await res.json(); } catch {}
-  return { data, httpStatus: res.status };
+  let rawText = '';
+  try { rawText = await res.text(); } catch {}
+  try { data = JSON.parse(rawText); } catch {}
+  return { data, httpStatus: res.status, rawText };
 }

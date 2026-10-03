@@ -857,7 +857,11 @@ export default function FinancialReview() {
                     <div style={{ padding: "0 24px 12px", fontSize: 12, color: "#9A3412" }}>
                       <div style={{ fontWeight: 600, marginBottom: 2 }}>{t("financialReview.conflictsOther")}</div>
                       {others.map(c => (
-                        <div key={c.id}>{t(`financialField.${c.field}`)}: {t("financialReview.newDocValue")} {fmtMoney(c.new_value, row.currency, dateLocale)}</div>
+                        <div key={c.id}>
+                          {c.field === "units_mismatch"
+                            ? t("analysis.conflictUnitsMismatch")
+                            : <>{t(`financialField.${c.field}`)}: {t("financialReview.newDocValue")} {fmtMoney(c.new_value, row.currency, dateLocale)}</>}
+                        </div>
                       ))}
                     </div>
                   );

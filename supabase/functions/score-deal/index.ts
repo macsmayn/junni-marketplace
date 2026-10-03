@@ -258,7 +258,25 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
+  let mergeLog: { deal_id: unknown; document_ids: unknown } | null = null;
+  try {
+    const peek = await req.clone().json();
+    if (peek?.merge_mode) mergeLog = { deal_id: peek.deal_id, document_ids: peek.document_ids };
+  } catch { /* body parsed again in the handler */ }
+  const startedAt = Date.now();
+  if (mergeLog) console.log(`[score-deal] merge call START deal_id=${mergeLog.deal_id} document_ids=${JSON.stringify(mergeLog.document_ids)}`);
+  let res: Response;
+  try {
+    res = await handleRequest(req);
+  } catch (fatal) {
+    if (mergeLog) console.error(`[score-deal] merge call END deal_id=${mergeLog.deal_id} document_ids=${JSON.stringify(mergeLog.document_ids)} duration_ms=${Date.now() - startedAt} status=thrown error=${(fatal as Error)?.message ?? fatal}`);
+    throw fatal;
+  }
+  if (mergeLog) console.log(`[score-deal] merge call END deal_id=${mergeLog.deal_id} document_ids=${JSON.stringify(mergeLog.document_ids)} duration_ms=${Date.now() - startedAt} status=${res.status}`);
+  return res;
+});
 
+async function handleRequest(req: Request): Promise<Response> {
   try {
     const { deal_id, extract_only, rescore_reason, merge_mode, document_ids } = await req.json();
     const tokenAcc: Record<string, { input: number; output: number }> = {};
@@ -555,9 +573,12 @@ ADDITIONAL CASH FLOW FIELDS — read from the cash flow statement or notes:
 
 MD&A / MANAGEMENT DISCUSSION: Beyond the financial statements, the document(s) may contain a Management Discussion & Analysis (MD&A) section, management commentary, or other narrative business context. Read all such narrative content in full and produce a concise digest (max ~200 words) capturing ONLY decision-relevant credit information: customer or supplier concentration, management's explanation of revenue/margin changes, forward guidance or outlook, named business risks, litigation or contingencies, liquidity or covenant commentary, and material events. Return this as a TOP-LEVEL JSON field mda_digest (not per-statement). If there is no narrative/MD&A content, return mda_digest: null. Do NOT invent content — digest only what is written. Do NOT include financial figures that contradict the extracted statements; the statements are the source of truth for numbers.
 
+DOCUMENT KIND: Return a TOP-LEVEL JSON field document_kind classifying the document: "financial_statements" = the document contains primary statements (balance sheet and/or income statement and/or cash flow statement) presented as statements; "commentary" = MD&A, management commentary, summary tables inside narrative text, and presentations; "other" = anything else. If several documents are provided, classify the set as "financial_statements" when any of them contains primary statements.
+
 Return ONLY valid JSON with no markdown fences or commentary. Use this exact shape:
 
 {
+  "document_kind": "<financial_statements | commentary | other>",
   "mda_digest": "<concise ~200-word digest of MD&A and management commentary, or null>",
   "statements": [
     {
@@ -675,11 +696,49 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
       const CONFLICT_THRESHOLD = 0.005;
       const mergeYearsAdded: number[] = [];
       let mergeFieldsFilled = 0;
-      const mergeConflicts: { fiscal_year: number; field: string; confirmed_value: number; new_value: number }[] = [];
+      const mergeConflicts: { fiscal_year: number; field: string; confirmed_value: number; new_value: number; source_document_id: string | null }[] = [];
+      const UNITS_RATIO_RANGES: [number, number][] = [[0.00095, 0.00105], [950, 1050]];
+      const isUnitsRatio = (r: number) => UNITS_RATIO_RANGES.some(([lo, hi]) => r >= lo && r <= hi);
+      const numOrNull = (v: unknown): number | null => (v == null || Number.isNaN(Number(v)) ? null : Number(v));
       let mergeRows: Map<number, any> | null = null;
       let mergeDigestAdded = false;
 
-      const mergeStatements = async (statements: any[], sourceDocId: string | null, mda_digest: string | null, sourceLabel: string) => {
+      // Commentary documents (MD&A etc.): append the digest only. No inserts, fills or conflicts.
+      const mergeDigestOnly = async (mda_digest: string | null, sourceLabel: string) => {
+        const digestText = mda_digest && mda_digest.trim() ? mda_digest.trim() : null;
+        if (!digestText) return;
+        await loadMergeRows();
+        for (const [fy, row] of [...mergeRows!.entries()]) {
+          const current: string | null = row.mda_digest ?? null;
+          if (current && current.includes(digestText)) continue;
+          const next = current ? `${current}\n\n— From ${sourceLabel} —\n${digestText}` : digestText;
+          const { data: updated, error: digestErr } = await supabase
+            .from("extracted_financials")
+            .update({ mda_digest: next })
+            .eq("deal_id", deal_id)
+            .eq("fiscal_year", fy)
+            .select("*")
+            .maybeSingle();
+          if (digestErr) console.error(`[score-deal] merge digest error (FY${fy}):`, digestErr);
+          else if (updated) { mergeRows!.set(fy, updated); mergeDigestAdded = true; }
+        }
+      };
+
+      const loadMergeRows = async () => {
+        if (!mergeRows) {
+          const { data: existing, error: loadErr } = await supabase
+            .from("extracted_financials")
+            .select("*")
+            .eq("deal_id", deal_id);
+          if (loadErr) throw new Error(`Could not load existing figures: ${loadErr.message}`);
+          mergeRows = new Map((existing ?? []).map((r: any) => [r.fiscal_year as number, r]));
+        }
+      };
+
+      // Returns { unitsBlocked: true } when a NEW year was refused because its figures look ~1000x
+      // different from the nearest existing year.
+      const mergeStatements = async (statements: any[], sourceDocId: string | null, mda_digest: string | null, sourceLabel: string): Promise<{ unitsBlocked: boolean }> => {
+        let unitsBlocked = false;
         if (!mergeRows) {
           const { data: existing, error: loadErr } = await supabase
             .from("extracted_financials")
@@ -702,10 +761,55 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
           return withD[0]?.mda_digest ?? null;
         };
 
+        const preExistingYears = [...rows.keys()];
+
         for (const stmt of statements) {
           if (!stmt.fiscal_year) continue;
           const fy: number = stmt.fiscal_year;
           const existing = rows.get(fy);
+
+          // Units guard (deterministic): a ~1000x ratio against existing figures means this
+          // document is in different units than the stored data.
+          if (existing && preExistingYears.includes(fy)) {
+            const pairs: { field: string; oldV: number; newV: number }[] = [];
+            const ratios: number[] = [];
+            for (const f of MERGE_MONETARY_FIELDS) {
+              const oldV = numOrNull(existing[f]);
+              const newV = numOrNull(stmt[f]);
+              if (oldV == null || newV == null || oldV === 0 || newV === 0) continue;
+              pairs.push({ field: f, oldV, newV });
+              ratios.push(Math.abs(newV) / Math.abs(oldV));
+            }
+            if (ratios.length > 0) {
+              const sorted = [...ratios].sort((a, b) => a - b);
+              const mid = Math.floor(sorted.length / 2);
+              const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+              if (isUnitsRatio(median)) {
+                const rev = pairs.find((p) => p.field === "revenue") ?? pairs[0];
+                console.warn(`[score-deal] merge units mismatch FY${fy} (${sourceLabel}): median new/existing ratio ${median} over ${ratios.length} fields — no figures changed.`);
+                mergeConflicts.push({ fiscal_year: fy, field: "units_mismatch", confirmed_value: rev.oldV, new_value: rev.newV, source_document_id: sourceDocId });
+                continue;
+              }
+            }
+          }
+          if (!existing && preExistingYears.length > 0) {
+            const nearest = preExistingYears.reduce((best, y) => {
+              const d = Math.abs(y - fy), bd = Math.abs(best - fy);
+              return d < bd || (d === bd && y > best) ? y : best;
+            }, preExistingYears[0]);
+            const ref = rows.get(nearest);
+            const flagged = ["revenue", "total_assets"].some((f) => {
+              const oldV = numOrNull(ref?.[f]);
+              const newV = numOrNull(stmt[f]);
+              if (oldV == null || newV == null || oldV === 0 || newV === 0) return false;
+              return isUnitsRatio(Math.abs(newV) / Math.abs(oldV));
+            });
+            if (flagged) {
+              console.warn(`[score-deal] merge units mismatch for new FY${fy} vs FY${nearest} (${sourceLabel}) — year not inserted.`);
+              unitsBlocked = true;
+              continue;
+            }
+          }
 
           if (!existing) {
             const unitsUncertain = String(stmt.units_evidence ?? "").trim().toLowerCase() === "none found";
@@ -741,7 +845,7 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
               const newV = stmt[f] == null ? null : Number(stmt[f]);
               if (oldV == null || newV == null || Number.isNaN(oldV) || Number.isNaN(newV)) continue;
               const differs = oldV === 0 ? newV !== 0 : Math.abs(newV - oldV) / Math.abs(oldV) > CONFLICT_THRESHOLD;
-              if (differs) mergeConflicts.push({ fiscal_year: fy, field: f, confirmed_value: oldV, new_value: newV });
+              if (differs) mergeConflicts.push({ fiscal_year: fy, field: f, confirmed_value: oldV, new_value: newV, source_document_id: sourceDocId });
             }
             // The only permitted write to a confirmed row: append the MD&A digest.
             const confirmedDigest = withDigest(existing.mda_digest ?? null);
@@ -789,10 +893,11 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
             mergeFieldsFilled += filledMonetary;
           }
         }
+        return { unitsBlocked };
       };
 
       // Shared Claude call + parse helper — retries handled by callJsonApi
-      const callExtractionApi = async (messages: any[], label: string): Promise<{ stmts: any[]; mda_digest: string | null }> => {
+      const callExtractionApi = async (messages: any[], label: string): Promise<{ stmts: any[]; mda_digest: string | null; document_kind: string | null; parsed: boolean }> => {
         const parsed = await callJsonApi(
           ANTHROPIC_API_KEY,
           { model: "claude-opus-4-8", max_tokens: 8000, messages },
@@ -800,14 +905,16 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
           3,
           tokenAcc,
         );
-        if (!parsed) return { stmts: [], mda_digest: null };
+        if (!parsed) return { stmts: [], mda_digest: null, document_kind: null, parsed: false };
         const stmts = parsed.statements ?? [];
         const mda_digest: string | null = parsed.mda_digest ?? null;
+        const document_kind: string | null = typeof parsed.document_kind === "string" ? parsed.document_kind.trim().toLowerCase() : null;
+        console.log(`[score-deal] ${label} document_kind: ${document_kind ?? "n/a"}`);
         stmts.forEach((s: any) => {
           console.log(`[score-deal] ${label} FY${s.fiscal_year} — units_detected: ${s.units_detected ?? "n/a"}, units_evidence: ${s.units_evidence ?? "n/a"}`);
         });
         console.log(`[score-deal] ${label} mda_digest: ${mda_digest ? mda_digest.slice(0, 80) + "…" : "null"}`);
-        return { stmts, mda_digest };
+        return { stmts, mda_digest, document_kind, parsed: true };
       };
 
       // STEP 1 — Download and prepare all documents into memory
@@ -888,9 +995,13 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
       if (preparedDocs.length === 0) {
         console.log(`[score-deal] No documents could be prepared — skipping extraction.`);
 
-      } else if (totalPayloadSize > 3_500_000) {
-        // TOKEN-LIMIT FALLBACK — process each document separately
-        console.log(`[score-deal] Consolidated extraction skipped (payload too large — ${totalPayloadSize} chars) — falling back to per-document extraction.`);
+      } else if (merge_mode || totalPayloadSize > 3_500_000) {
+        // Per-document extraction: always in merge mode (each document's role must be known),
+        // otherwise the token-limit fallback.
+        console.log(merge_mode
+          ? `[score-deal] Merge mode — extracting ${preparedDocs.length} document(s) one call each.`
+          : `[score-deal] Consolidated extraction skipped (payload too large — ${totalPayloadSize} chars) — falling back to per-document extraction.`);
+        const docCategoryById = new Map((financialDocs as any[]).map((d: any) => [d.id, d.doc_category as string]));
 
         for (const doc of preparedDocs) {
           try {
@@ -902,11 +1013,25 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
               : [{ role: "user", content: [
                   { type: "text", text: extractionPrompt + "\n\nSPREADSHEET CONTENTS:\n" + doc.content },
                 ] }];
-            const { stmts, mda_digest } = await callExtractionApi(messages, doc.fileName);
-            if (merge_mode) await mergeStatements(stmts, doc.docId, mda_digest, doc.fileName);
-            else await upsertStatements(stmts, doc.docId, mda_digest);
-            if (stmts.length > 0) setFileStatus(doc.docId, doc.fileName, "extracted");
-            else setFileStatus(doc.docId, doc.fileName, "failed", "Extraction returned no statements");
+            const { stmts, mda_digest, document_kind, parsed } = await callExtractionApi(messages, doc.fileName);
+            if (merge_mode) {
+              const isCommentary = document_kind === "commentary" || document_kind === "other" || docCategoryById.get(doc.docId) === "mda";
+              if (isCommentary) {
+                console.log(`[score-deal] "${doc.fileName}" treated as commentary (kind=${document_kind ?? "n/a"}, category=${docCategoryById.get(doc.docId)}) — digest only.`);
+                await mergeDigestOnly(mda_digest, doc.fileName);
+                if (parsed) setFileStatus(doc.docId, doc.fileName, "extracted");
+                else setFileStatus(doc.docId, doc.fileName, "failed", "Extraction returned no content");
+              } else {
+                const { unitsBlocked } = await mergeStatements(stmts, doc.docId, mda_digest, doc.fileName);
+                if (unitsBlocked) setFileStatus(doc.docId, doc.fileName, "failed", "Units appear inconsistent with existing figures (about 1000x)");
+                else if (stmts.length > 0) setFileStatus(doc.docId, doc.fileName, "extracted");
+                else setFileStatus(doc.docId, doc.fileName, "failed", "Extraction returned no statements");
+              }
+            } else {
+              await upsertStatements(stmts, doc.docId, mda_digest);
+              if (stmts.length > 0) setFileStatus(doc.docId, doc.fileName, "extracted");
+              else setFileStatus(doc.docId, doc.fileName, "failed", "Extraction returned no statements");
+            }
           } catch (err) {
             console.error(`[score-deal] Per-document extraction error for "${doc.fileName}":`, err);
             setFileStatus(doc.docId, doc.fileName, "failed", `Extraction error: ${(err as Error)?.message ?? err}`);
@@ -973,10 +1098,9 @@ All monetary values must be plain numbers (not strings), scaled to FULL actual d
             .eq("deal_id", deal_id)
             .eq("status", "open");
           const seen = new Set((openRows ?? []).map((r: any) => `${r.fiscal_year}|${r.field}|${Number(r.new_value)}`));
-          const srcId = preparedDocs[0]?.docId ?? null;
           const toInsert = mergeConflicts
             .filter((c) => !seen.has(`${c.fiscal_year}|${c.field}|${c.new_value}`))
-            .map((c) => ({ deal_id, fiscal_year: c.fiscal_year, field: c.field, confirmed_value: c.confirmed_value, new_value: c.new_value, source_document_id: srcId }));
+            .map((c) => ({ deal_id, fiscal_year: c.fiscal_year, field: c.field, confirmed_value: c.confirmed_value, new_value: c.new_value, source_document_id: c.source_document_id }));
           if (toInsert.length > 0) {
             const { error: confErr } = await supabase.from("extraction_conflicts").insert(toInsert);
             if (confErr) console.error("[score-deal] Failed to save extraction_conflicts:", confErr);
@@ -2318,4 +2442,4 @@ ${execParts.join("\n\n")}`;
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
   }
-});
+}

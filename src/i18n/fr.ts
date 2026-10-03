@@ -1094,6 +1094,7 @@ const fr: Record<string, string> = {
   "analysis.conflictsConfirmed":    "Confirmé",
   "analysis.conflictsNewDoc":       "Nouveau document",
   "analysis.conflictsDismiss":      "Ignorer",
+  "analysis.conflictUnitsMismatch": "Incohérence d'unités : les montants de ce document semblent 1 000 fois différents des chiffres existants. Aucun chiffre n'a été modifié. Vérifiez si le document est présenté en milliers.",
   "extraction.status.extracting":   "Lecture en cours…",
   "extraction.status.skipped_not_extractable": "Non analysé",
   "financialReview.newDocValue":    "Nouveau document :",
